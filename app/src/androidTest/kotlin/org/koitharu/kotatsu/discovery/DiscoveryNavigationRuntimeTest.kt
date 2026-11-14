@@ -137,9 +137,17 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 	@Test fun floatingDragPreviewsCustomTabAndHomeBeforeRelease() {
+		assertTabDragPreviewsCustomTabAndHome(legacy = false)
+	}
+
+	@Test fun legacyDragPreviewsCustomTabAndHomeBeforeRelease() {
+		assertTabDragPreviewsCustomTabAndHome(legacy = true)
+	}
+
+	private fun assertTabDragPreviewsCustomTabAndHome(legacy: Boolean) {
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
 		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
-		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, legacy).commit()
 		launch().use { scenario ->
 			compose.waitForIdle()
 			fun tabCenters() = listOf(NavItem.FAVORITES, NavItem.LOCAL, NavItem.DISCOVERY_HUB).map {

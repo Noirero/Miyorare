@@ -27,6 +27,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -66,6 +69,8 @@ fun LegacyGlowNavBar(
 	modifier: Modifier = Modifier,
 	onItemLongClick: (Int) -> Unit = {},
 	emphasizeFavourites: Boolean = false,
+	previewId: Int? = null,
+	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
 ) {
 	val visibleItems = items.take(MAX_LEGACY_ITEMS)
 	if (visibleItems.isEmpty()) return
@@ -233,14 +238,15 @@ fun LegacyGlowNavBar(
 				visibleItems.forEach { item ->
 					LegacyGlowNavItem(
 						item = item,
-						selected = item.id == selectedId,
+						selected = item.id == (previewId ?: selectedId),
 						showLabel = showLabels,
 						colors = colors,
 						accent = luminousAccent,
 						emphasizeFavourites = emphasizeFavourites,
 						lightMode = lightMode,
 						compactLabel = visibleItems.size >= MAX_LEGACY_ITEMS,
-						modifier = Modifier.weight(1f),
+						modifier = Modifier.weight(1f)
+							.onGloballyPositioned { onTabBounds(item.id, it.boundsInWindow()) },
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
 						},

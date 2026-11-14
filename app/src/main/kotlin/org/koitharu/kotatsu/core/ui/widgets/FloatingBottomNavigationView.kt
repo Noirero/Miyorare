@@ -124,6 +124,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.fillMaxWidth(),
 							emphasizeFavourites = emphasizeFavourites,
+							previewId = previewId,
+							onTabBounds = { id, bounds -> if (useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					} else {
 						FloatingNavBar(
@@ -143,7 +145,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onContinueClick = { continueClickListener?.invoke() },
 							onContinueLongClick = { continueLongClickListener?.invoke() },
 							previewId = previewId,
-							onTabBounds = { id, bounds -> tabBounds[id] = bounds },
+							onTabBounds = { id, bounds -> if (!useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					}
 				}
@@ -273,7 +275,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		if (action == MotionEvent.ACTION_DOWN) {
 			cancelTabDrag()
 			tabDrag = null
-			if (!useLegacyNavigation && onTabPreview != null) {
+			if (onTabPreview != null) {
 				getLocationInWindow(windowPosition)
 				val x = event.x + windowPosition[0]
 				val y = event.y + windowPosition[1]
