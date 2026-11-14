@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
+import android.content.res.Configuration
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
@@ -21,7 +22,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import java.util.Locale
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
@@ -38,7 +41,8 @@ class MigrationLandingScreenTest {
 	@get:Rule val compose = createComposeRule()
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 	private val loader = ImageLoader.Builder(context).build()
-	private val themedContext = ContextThemeWrapper(context, R.style.Theme_Kotatsu)
+	private val localeConfig = Configuration(context.resources.configuration).apply { setLocale(Locale.UK) }
+	private val themedContext = ContextThemeWrapper(context.createConfigurationContext(localeConfig), R.style.Theme_Kotatsu)
 
 	@After fun close() { loader.shutdown() }
 
@@ -70,7 +74,7 @@ class MigrationLandingScreenTest {
 	fun sourceFirstNavigationOpensASelectedManga() {
 		var opened = emptyList<Long>()
 		compose.setContent {
-			CompositionLocalProvider(LocalContext provides themedContext) {
+			CompositionLocalProvider(LocalContext provides themedContext, LocalConfiguration provides localeConfig) {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
 						state = state(), imageLoader = loader,
@@ -79,7 +83,7 @@ class MigrationLandingScreenTest {
 				}
 			}
 		}
-		compose.onNodeWithText("Pilih source").assertExists()
+		compose.onNodeWithText("Choose a source").assertExists()
 		compose.onNodeWithText("E-Hentai (EN)").performClick()
 		compose.onNodeWithText("Story 1").performClick()
 		assertEquals(listOf(1L), opened)
@@ -89,7 +93,7 @@ class MigrationLandingScreenTest {
 	fun sourceAllAndSearchUseOnlyTheExactSourceIdentity() {
 		var opened = emptyList<Long>()
 		compose.setContent {
-			CompositionLocalProvider(LocalContext provides themedContext) {
+			CompositionLocalProvider(LocalContext provides themedContext, LocalConfiguration provides localeConfig) {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
 						state = state(), imageLoader = loader,
@@ -103,7 +107,7 @@ class MigrationLandingScreenTest {
 		compose.onNodeWithText("Story 1").assertDoesNotExist()
 		compose.onNodeWithTag("migration-landing-search").performTextInput("Nothing")
 		compose.onNodeWithText("Story 2").assertDoesNotExist()
-		compose.onNodeWithText("Migrasikan semua (1)").performClick()
+		compose.onNodeWithText("Migrate all (1)").performClick()
 		assertEquals(listOf(2L), opened)
 	}
 
@@ -112,7 +116,7 @@ class MigrationLandingScreenTest {
 		var opened = emptyList<Long>()
 		var action: org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction? = null
 		compose.setContent {
-			CompositionLocalProvider(LocalContext provides themedContext) {
+			CompositionLocalProvider(LocalContext provides themedContext, LocalConfiguration provides localeConfig) {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
 						state = state(), imageLoader = loader, onRetry = {},
@@ -123,8 +127,8 @@ class MigrationLandingScreenTest {
 		}
 		compose.onNodeWithText("E-Hentai (EN)").performClick()
 		compose.onNodeWithText("Story 1").performTouchInput { longClick() }
-		compose.onNodeWithText("1 terpilih").assertExists()
-		compose.onNodeWithText("Salin (1)").performClick()
+		compose.onNodeWithText("1 selected").assertExists()
+		compose.onNodeWithText("Copy (1)").performClick()
 		assertEquals(listOf(1L), opened)
 		assertEquals(org.koitharu.kotatsu.alternatives.domain.MigrationBatchAction.COPY, action)
 	}
@@ -134,7 +138,7 @@ class MigrationLandingScreenTest {
 		var openedDetails = 0L
 		var migrated = 0
 		compose.setContent {
-			CompositionLocalProvider(LocalContext provides themedContext) {
+			CompositionLocalProvider(LocalContext provides themedContext, LocalConfiguration provides localeConfig) {
 				MaterialTheme {
 					BrokenSourcesMigrationScreen(
 						state = state(), imageLoader = loader, onRetry = {},
@@ -154,7 +158,7 @@ class MigrationLandingScreenTest {
     fun sourceBackAndToolbarUpUseSameNavigationAndFooterRemainsVisible() {
         var up: (() -> Unit)? = null
         compose.setContent {
-            CompositionLocalProvider(LocalContext provides themedContext) {
+            CompositionLocalProvider(LocalContext provides themedContext, LocalConfiguration provides localeConfig) {
                 MaterialTheme {
                     BrokenSourcesMigrationScreen(
                         state = state(), imageLoader = loader, onRetry = {},
@@ -167,14 +171,14 @@ class MigrationLandingScreenTest {
         compose.onNodeWithText("E-Hentai (EN)").performClick()
         compose.onNodeWithTag("migration-landing-footer").assertIsDisplayed()
         compose.onNodeWithText("Story 1").performTouchInput { longClick() }
-        compose.onNodeWithText("1 terpilih").assertExists()
+        compose.onNodeWithText("1 selected").assertExists()
         compose.runOnIdle { checkNotNull(up).invoke() }
-        compose.onNodeWithText("Pilih source").assertExists()
-        compose.onNodeWithText("1 terpilih").assertDoesNotExist()
+        compose.onNodeWithText("Choose a source").assertExists()
+        compose.onNodeWithText("1 selected").assertDoesNotExist()
         compose.runOnIdle { assertEquals(null, up) }
         compose.onNodeWithText("E-Hentai (EN)").performClick()
         compose.onNodeWithText("‹ Source").performClick()
-        compose.onNodeWithText("Pilih source").assertExists()
+        compose.onNodeWithText("Choose a source").assertExists()
     }
     @Test
     fun contentInsetRecomputesAfterAppBarFirstLayout() {
