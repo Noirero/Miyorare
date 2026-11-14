@@ -93,15 +93,15 @@ internal fun MigrationFlowScreen(
     ) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Text(if (state.explicitNotFavourite)
-                "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
-                else "Manga tidak tersedia untuk migrasi melalui Disukai Normal.")
+                stringResource(R.string.migration_flow_not_favourite)
+                else stringResource(R.string.migration_flow_unavailable))
         }
         return
     }
     if (state.failed && state.manga.isEmpty()) {
 		Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
 			horizontalAlignment = Alignment.CenterHorizontally) {
-			Text("Sesi migrasi tidak dapat dimuat")
+			Text(stringResource(R.string.migration_flow_session_failed))
 			TextButton(onClick = onRetry) { Text(stringResource(R.string.migration_retry)) }
 		}
 		return
@@ -149,10 +149,10 @@ internal fun MigrationFlowScreen(
 		val ready = state.manga.filter { it.id in readyIds }
 		AlertDialog(
 			onDismissRequest = { pendingAction = null },
-			title = { Text(if (action == MigrationBatchAction.COPY) "Konfirmasi salin" else "Konfirmasi migrasi") },
+			title = { Text(if (action == MigrationBatchAction.COPY) stringResource(R.string.migration_flow_confirm_copy) else stringResource(R.string.migration_flow_confirm_migrate)) },
 			text = { Text(
-				(if (action == MigrationBatchAction.COPY) "Salin " else "Migrasikan ") +
-				ready.size + " manga yang ditemukan?"
+				if (action == MigrationBatchAction.COPY) stringResource(R.string.migration_flow_confirm_copy_count, ready.size)
+				else stringResource(R.string.migration_flow_confirm_migrate_count, ready.size)
 			) },
 			confirmButton = {
 				TextButton(
@@ -163,24 +163,24 @@ internal fun MigrationFlowScreen(
 						step = 1
 					},
 					modifier = Modifier.testTag("migration-batch-confirm"),
-				) { Text(if (action == MigrationBatchAction.COPY) "Salin" else "Migrasikan") }
+				) { Text(if (action == MigrationBatchAction.COPY) stringResource(R.string.migration_flow_copy) else stringResource(R.string.migration_migrate)) }
 			},
-			dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Batal") } },
+			dismissButton = { TextButton(onClick = { pendingAction = null }) { Text(stringResource(R.string.migration_flow_cancel)) } },
 		)
 	}
 	pendingCancellationBatch?.let { confirmedBatch ->
 		AlertDialog(
 			onDismissRequest = { pendingCancellationBatch = null },
-			title = { Text("Hentikan pencarian?") },
+			title = { Text(stringResource(R.string.migration_flow_stop_search)) },
 			text = { Text(if (state.ownedBatchName != confirmedBatch)
-				"Batch migrasi lain masih berjalan. Hentikan batch aktif tersebut? Periksa hasil migrasi sebelum mencoba ulang."
-				else "Pekerjaan yang belum selesai akan dibatalkan. Periksa hasil migrasi sebelum mencoba ulang.") },
+				stringResource(R.string.migration_flow_stop_other)
+				else stringResource(R.string.migration_flow_stop_pending)) },
 			confirmButton = { TextButton(onClick = {
 				pendingCancellationBatch = null
 				// The active session may have changed while confirmation was open.
 				if (state.activeBatchName == confirmedBatch) onCancel(confirmedBatch)
-			}) { Text("Hentikan") } },
-			dismissButton = { TextButton(onClick = { pendingCancellationBatch = null }) { Text("Batal") } },
+			}) { Text(stringResource(R.string.migration_flow_stop)) } },
+			dismissButton = { TextButton(onClick = { pendingCancellationBatch = null }) { Text(stringResource(R.string.migration_flow_cancel)) } },
 		)
 	}
 }
@@ -276,16 +276,16 @@ private fun MigrationSearchSetup(
 ) {
 	val context = LocalContext.current
 	var showOptions by rememberSaveable { mutableStateOf(false) }
-	var activeTab by rememberSaveable { mutableStateOf("Semua") }
+	var activeTab by rememberSaveable { mutableStateOf("all") }
 	var sortAscending by rememberSaveable { mutableStateOf(true) }
 	var expandedKeys by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
 	val installed = state.installedSources
 	val groups = remember(installed, context) { destinationGroups(installed, context) }
 	val eligibleNames = state.availableSources.mapTo(hashSetOf(), MangaSource::name)
 	val order = listOf("Miyorare", "Store", "UMA", "Gekkoushi", "Other")
-	val tabs = listOf("Semua") + order.filter { name -> groups.any { it.origin.migrationTabTitle() == name } }
-	val selectedTab = activeTab.takeIf { it in tabs } ?: "Semua"
-	val visibleGroups = groups.filter { selectedTab == "Semua" || it.origin.migrationTabTitle() == selectedTab }
+	val tabs = listOf("all") + order.filter { name -> groups.any { it.origin.migrationTabTitle() == name } }
+	val selectedTab = activeTab.takeIf { it in tabs } ?: "all"
+	val visibleGroups = groups.filter { selectedTab == "all" || it.origin.migrationTabTitle() == selectedTab }
 		.let { filtered ->
 			if (selectedTab in setOf("Miyorare", "UMA", "Gekkoushi"))
 				filtered.sortedWith(compareBy<MigrationDestinationGroup> { migrationLanguageRank(it.languageCode) }
@@ -297,21 +297,21 @@ private fun MigrationSearchSetup(
 	Column(Modifier.fillMaxSize()) {
 		if (state.batchBusy && state.ownedBatchName == null) {
 			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-				Text("Batch migrasi lain sedang berjalan", modifier = Modifier.weight(1f),
+				Text(stringResource(R.string.migration_flow_other_running), modifier = Modifier.weight(1f),
 					style = MaterialTheme.typography.bodySmall)
 				TextButton(onClick = onCancelActive, enabled = state.activeBatchName != null) {
-					Text("Batalkan")
+					Text(stringResource(R.string.migration_flow_cancel_batch))
 				}
 			}
 		}
 		Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
 			verticalAlignment = Alignment.CenterVertically) {
-			Text("Pilih source tujuan", style = MaterialTheme.typography.titleLarge,
+			Text(stringResource(R.string.migration_flow_choose_destination), style = MaterialTheme.typography.titleLarge,
 				modifier = Modifier.weight(1f))
 			TextButton(onClick = { sortAscending = !sortAscending }) {
 				Text(if (sortAscending) "A–Z" else "Z–A")
 			}
-			TextButton(onClick = { showOptions = true }) { Text("Opsi") }
+			TextButton(onClick = { showOptions = true }) { Text(stringResource(R.string.migration_flow_options)) }
 		}
 		when {
 			state.sourceSelectionLoading -> LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -319,7 +319,7 @@ private fun MigrationSearchSetup(
 				Text(stringResource(R.string.migration_source_list_failed))
 				TextButton(onClick = onRetrySources) { Text(stringResource(R.string.migration_retry)) }
 			}
-			groups.isEmpty() -> Text("Tidak ada extension atau plugin terinstal.", modifier = Modifier.padding(16.dp))
+			groups.isEmpty() -> Text(stringResource(R.string.migration_flow_no_plugins), modifier = Modifier.padding(16.dp))
 			else -> {
 				ScrollableTabRow(
 					selectedTabIndex = tabs.indexOf(selectedTab),
@@ -328,27 +328,32 @@ private fun MigrationSearchSetup(
 				) {
 					tabs.forEach { tab ->
 						val count = groups
-							.filter { tab == "Semua" || it.origin.migrationTabTitle() == tab }
+							.filter { tab == "all" || it.origin.migrationTabTitle() == tab }
 							.sumOf { if (it.languageCode == null) 1 else it.sources.size }
 						Tab(selected = selectedTab == tab, onClick = { activeTab = tab },
-							text = { Text(tab + " (" + count + ")") })
+							text = { Text(stringResource(R.string.migration_scope_with_count,
+								when (tab) {
+									"all" -> stringResource(R.string.migration_flow_all)
+									"Other" -> stringResource(R.string.migration_source_origin_other)
+									else -> tab
+								}, count)) })
 					}
 				}
 				Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
 					horizontalArrangement = Arrangement.spacedBy(8.dp),
 					verticalAlignment = Alignment.CenterVertically) {
-					TextButton(onClick = onSelectAllSources, enabled = enabled) { Text("Semua") }
-					TextButton(onClick = onClearSources, enabled = enabled) { Text("Kosongkan") }
-					Text(state.selectedSourceNames.size.toString() + " source dipilih",
+					TextButton(onClick = onSelectAllSources, enabled = enabled) { Text(stringResource(R.string.migration_select_all_visible)) }
+					TextButton(onClick = onClearSources, enabled = enabled) { Text(stringResource(R.string.migration_deselect_all_visible)) }
+					Text(stringResource(R.string.migration_sources_selected, state.selectedSourceNames.size),
 						style = MaterialTheme.typography.bodySmall)
 				}
 				if (eligibleNames.isEmpty()) {
-					Text("Tidak ada source kompatibel untuk judul yang dipilih.",
+					Text(stringResource(R.string.migration_flow_no_compatible),
 						modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
 						color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 				if (state.sourceStrategy == MigrationSourceStrategy.FIRST_MATCH && selectedSet.isNotEmpty()) {
-					Text("Angka prioritas menentukan urutan pencarian, terlepas dari urutan A–Z/Z–A.",
+					Text(stringResource(R.string.migration_flow_priority_hint),
 						modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -380,7 +385,7 @@ private fun MigrationSearchSetup(
 											state.selectedSourceNames.indexOf(source.name).takeIf { it >= 0 }?.plus(1)
 										}.sorted()
 										if (groupPriorities.isNotEmpty()) Text(
-											"Prioritas: " + groupPriorities.joinToString(", "),
+											stringResource(R.string.migration_flow_priorities, groupPriorities.joinToString(", ")),
 											style = MaterialTheme.typography.labelSmall,
 											color = MaterialTheme.colorScheme.primary,
 											maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -408,13 +413,13 @@ private fun MigrationSearchSetup(
 									Column(modifier = Modifier.weight(1f)) {
 										Text(label, maxLines = 2, overflow = TextOverflow.Ellipsis)
 										if (!sourceEnabled && source.name !in eligibleNames) Text(
-											"Tidak kompatibel dengan judul terpilih",
+											stringResource(R.string.migration_flow_incompatible),
 											style = MaterialTheme.typography.labelSmall,
 											color = MaterialTheme.colorScheme.onSurfaceVariant,
 										)
 									}
 									if (index >= 0) {
-										Text("Prioritas " + (index + 1),
+										Text(stringResource(R.string.migration_flow_priority, index + 1),
 											modifier = Modifier.testTag("migration-priority-" + source.name),
 											style = MaterialTheme.typography.labelSmall,
 											color = MaterialTheme.colorScheme.primary)
@@ -434,14 +439,14 @@ private fun MigrationSearchSetup(
 			Column(Modifier.fillMaxWidth().padding(12.dp)) {
 				if (state.batchBusy || state.completedResults.isNotEmpty()) OutlinedButton(onClick = onViewProgress,
 					modifier = Modifier.fillMaxWidth()) {
-					Text(if (state.batchBusy) "Lihat pencarian" else "Lihat hasil")
+					Text(if (state.batchBusy) stringResource(R.string.migration_flow_view_search) else stringResource(R.string.migration_flow_view_results))
 				}
 				Button(onClick = onSearch,
 					enabled = enabled && state.manga.isNotEmpty() &&
 						state.selectedSourceNames.any { it in eligibleNames } &&
 						!state.sourceSelectionLoading && !state.sourceSelectionFailed,
 					modifier = Modifier.fillMaxWidth().height(52.dp).testTag("migration-batch-search")) {
-					Text("Mulai mencari (" + state.manga.size + ")")
+					Text(stringResource(R.string.migration_yokai_search_selected_count, state.manga.size))
 				}
 			}
 		}
@@ -450,24 +455,24 @@ private fun MigrationSearchSetup(
 		ModalBottomSheet(onDismissRequest = { showOptions = false }) {
 			Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
 				verticalArrangement = Arrangement.spacedBy(10.dp)) {
-				Text("Opsi pencarian", style = MaterialTheme.typography.titleLarge)
+				Text(stringResource(R.string.migration_flow_search_options), style = MaterialTheme.typography.titleLarge)
 				for (strategy in MigrationSourceStrategy.entries) {
 					Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onStrategy(strategy) },
 						verticalAlignment = Alignment.CenterVertically) {
 						RadioButton(selected = state.sourceStrategy == strategy,
 							onClick = { onStrategy(strategy) }, enabled = enabled)
-						Text(if (strategy == MigrationSourceStrategy.FIRST_MATCH) "Gunakan source pertama"
-							else "Gunakan yang memiliki chapter terbanyak")
+						Text(if (strategy == MigrationSourceStrategy.FIRST_MATCH) stringResource(R.string.migration_yokai_strategy_first)
+							else stringResource(R.string.migration_yokai_strategy_most))
 					}
 				}
 				OutlinedTextField(value = state.extraSearchParams, onValueChange = onExtraSearch,
-					enabled = enabled, label = { Text("Parameter pencarian tambahan") },
+					enabled = enabled, label = { Text(stringResource(R.string.migration_yokai_extra_search)) },
 					modifier = Modifier.fillMaxWidth())
 				Row(verticalAlignment = Alignment.CenterVertically) {
 					Checkbox(checked = state.skipSetup, onCheckedChange = onSkipSetup, enabled = enabled)
-					Text("Gunakan pengaturan ini berikutnya")
+					Text(stringResource(R.string.migration_flow_reuse_setup))
 				}
-				Button(onClick = { showOptions = false }, modifier = Modifier.fillMaxWidth()) { Text("Selesai") }
+				Button(onClick = { showOptions = false }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.migration_flow_done)) }
 			}
 		}
 	}
@@ -496,21 +501,21 @@ private fun MigrationReviewStep(
 	Column(Modifier.fillMaxSize()) {
 		Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
 			verticalAlignment = Alignment.CenterVertically) {
-			Text("Hasil pencarian", style = MaterialTheme.typography.titleLarge,
+			Text(stringResource(R.string.migration_flow_results), style = MaterialTheme.typography.titleLarge,
 				modifier = Modifier.weight(1f))
-			TextButton(onClick = onRetry, enabled = !busy) { Text("Source") }
+			TextButton(onClick = onRetry, enabled = !busy) { Text(stringResource(R.string.migration_change_sources)) }
 		}
 		if (busy) {
 			LinearProgressIndicator(Modifier.fillMaxWidth())
 			Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-				Text(if (state.batchTotal == 0) "Batch migrasi lain sedang berjalan"
-					else "Memproses " + state.batchCompleted + "/" + state.batchTotal,
+				Text(if (state.batchTotal == 0) stringResource(R.string.migration_flow_other_running)
+					else stringResource(R.string.migration_flow_processing, state.batchCompleted, state.batchTotal),
 					modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-				TextButton(onClick = onCancel, enabled = state.activeBatchName != null) { Text("Batalkan") }
+				TextButton(onClick = onCancel, enabled = state.activeBatchName != null) { Text(stringResource(R.string.migration_flow_cancel_batch)) }
 			}
 		}
 		if (state.failed) {
-			Text("Sebagian pekerjaan tidak dapat dijalankan. Periksa hasil atau coba lagi.",
+			Text(stringResource(R.string.migration_flow_partial_failure),
 				modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
 		}
 		LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp),
@@ -533,13 +538,13 @@ private fun MigrationReviewStep(
 			if (state.manga.isEmpty()) item {
                 Text(when {
                     state.explicitNotFavourite ->
-                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
-                    state.explicitUnavailable -> "Manga tidak tersedia untuk migrasi melalui Disukai Normal."
-                    else -> "Tidak ada manga dalam sesi ini."
+                        stringResource(R.string.migration_flow_not_favourite)
+                    state.explicitUnavailable -> stringResource(R.string.migration_flow_unavailable)
+                    else -> stringResource(R.string.migration_flow_empty_session)
                 })
             }
 			if (state.completedResults.isNotEmpty()) {
-				item { Text("Hasil sebelumnya", style = MaterialTheme.typography.titleSmall) }
+				item { Text(stringResource(R.string.migration_flow_previous_results), style = MaterialTheme.typography.titleSmall) }
 				items(state.completedResults, key = { "done:" + it.mangaId + ":" + it.generation }) { snapshot ->
 					val target = state.completedTarget(snapshot.mangaId)
 					if (target != null) {
@@ -560,18 +565,18 @@ private fun MigrationReviewStep(
 				if (readyIds.isNotEmpty() && !busy) {
 					if (state.preferredAction == MigrationBatchAction.COPY) {
 						Button(onClick = onCopy, modifier = Modifier.fillMaxWidth()
-							.testTag("migration-batch-copy")) { Text("Salin (" + readyIds.size + ")") }
+							.testTag("migration-batch-copy")) { Text(stringResource(R.string.migration_flow_copy_count, readyIds.size)) }
 						OutlinedButton(onClick = onContinue, modifier = Modifier.fillMaxWidth()
-							.testTag("migration-batch-migrate")) { Text("Migrasikan (" + readyIds.size + ")") }
+							.testTag("migration-batch-migrate")) { Text(stringResource(R.string.migration_flow_migrate_count, readyIds.size)) }
 					} else {
 						Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()
-							.testTag("migration-batch-migrate")) { Text("Migrasikan (" + readyIds.size + ")") }
+							.testTag("migration-batch-migrate")) { Text(stringResource(R.string.migration_flow_migrate_count, readyIds.size)) }
 						OutlinedButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()
-							.testTag("migration-batch-copy")) { Text("Salin (" + readyIds.size + ")") }
+							.testTag("migration-batch-copy")) { Text(stringResource(R.string.migration_flow_copy_count, readyIds.size)) }
 					}
 				} else {
-					Text(if (busy) "Pencarian / migrasi sedang berjalan"
-						else "Pilih kandidat secara manual jika belum ditemukan.",
+					Text(if (busy) stringResource(R.string.migration_flow_working)
+						else stringResource(R.string.migration_flow_manual_hint),
 						style = MaterialTheme.typography.bodySmall)
 				}
 			}
@@ -690,10 +695,10 @@ private fun MigrationMangaReviewItem(
 						.testTag("migration-target-title-" + manga.id)
 				) {
 				Text(targetManga?.title ?: targetTitle ?: when (status) {
-					MigrationBatchStatus.NO_REPLACEMENT -> "Tidak ditemukan"
-					MigrationBatchStatus.ERROR -> "Migrasi gagal"
-					MigrationBatchStatus.INTERRUPTED -> "Migrasi terhenti"
-					else -> "Mencari..."
+					MigrationBatchStatus.NO_REPLACEMENT -> stringResource(R.string.migration_flow_not_found)
+					MigrationBatchStatus.ERROR -> stringResource(R.string.migration_flow_failed)
+					MigrationBatchStatus.INTERRUPTED -> stringResource(R.string.migration_flow_interrupted)
+					else -> stringResource(R.string.migration_flow_searching)
 				},
 					style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
 				val publicSource = targetManga?.source?.getTitle(context)?.takeIf(String::isNotBlank)
@@ -704,37 +709,37 @@ private fun MigrationMangaReviewItem(
 				Text(stringResource(status.labelRes()), style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.primary)
                 if (status == MigrationBatchStatus.MIGRATED_PRESERVED) {
-                    Text("Sebagian data masih disimpan pada source asal.",
+                    Text(stringResource(R.string.migration_flow_preserved),
                         style = MaterialTheme.typography.bodySmall)
                 }
 				if (status == MigrationBatchStatus.ERROR) {
 					val explanation = when (failureStage) {
 						MigrationFailureStage.DESTINATION_DETAILS ->
-							"Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi."
+							stringResource(R.string.migration_flow_details_failed)
 						MigrationFailureStage.DESTINATION_STORAGE ->
-							"Gagal menyimpan detail kandidat; periksa penyimpanan sebelum mengulang."
+							stringResource(R.string.migration_flow_storage_failed)
 						MigrationFailureStage.DATA_CONFLICT -> when (conflictReason) {
                             MigrationConflictReason.CHAPTER_MAPPING ->
-                                "Chapter dengan data baca tidak dapat dipetakan secara aman; coba kandidat lain."
+                                stringResource(R.string.migration_flow_chapter_mapping)
                             MigrationConflictReason.DESTINATION_HISTORY ->
-                                "Riwayat baca asal dan tujuan berbeda; periksa kedua manga."
+                                stringResource(R.string.migration_flow_history_conflict)
                             MigrationConflictReason.LIBRARY_STATE ->
-                                "Kategori atau posisi Library asal dan tujuan bertabrakan; periksa kedua entri."
+                                stringResource(R.string.migration_flow_library_conflict)
                             MigrationConflictReason.READER_SETTINGS ->
-                                "Catatan atau pengaturan baca asal dan tujuan bertabrakan; periksa kedua manga."
+                                stringResource(R.string.migration_flow_reader_conflict)
                             MigrationConflictReason.BOOKMARKS ->
-                                "Bookmark asal dan tujuan bertabrakan; periksa kedua manga."
+                                stringResource(R.string.migration_flow_bookmark_conflict)
                             MigrationConflictReason.TRACKING_STATE ->
-                                "Data statistik atau tracker bertabrakan; periksa kedua manga."
+                                stringResource(R.string.migration_flow_tracking_conflict)
                             MigrationConflictReason.CHAPTER_NOTES ->
-                                "Catatan atau rating chapter bertabrakan; periksa kedua manga."
+                                stringResource(R.string.migration_flow_notes_conflict)
                             MigrationConflictReason.OTHER_DATA, null ->
-                                "Ada konflik data/riwayat dengan kandidat; periksa library atau pilih kandidat lain."
+                                stringResource(R.string.migration_flow_data_conflict)
                         }
 						MigrationFailureStage.DATA_TRANSFER ->
-							"Transfer data tidak selesai; periksa library dan riwayat sebelum mengulang."
+							stringResource(R.string.migration_flow_transfer_failed)
 						MigrationFailureStage.UNKNOWN, null ->
-							"Penyebab belum diketahui; periksa data library sebelum mengulang."
+							stringResource(R.string.migration_flow_unknown_failure)
 					}
 					Text(explanation, style = MaterialTheme.typography.labelSmall,
 						color = MaterialTheme.colorScheme.error)
@@ -744,16 +749,16 @@ private fun MigrationMangaReviewItem(
 			Box {
 				TextButton(onClick = { menuExpanded = true }) { Text("⋮") }
 				DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-				DropdownMenuItem(text = { Text("Cari manual") }, onClick = {
+				DropdownMenuItem(text = { Text(stringResource(R.string.migration_yokai_manual_search)) }, onClick = {
 					menuExpanded = false; onClick()
 				})
-				if (onMigrate != null) DropdownMenuItem(text = { Text("Migrasikan") }, onClick = {
+				if (onMigrate != null) DropdownMenuItem(text = { Text(stringResource(R.string.migration_migrate)) }, onClick = {
 					menuExpanded = false; onMigrate()
 				})
-				if (onCopy != null) DropdownMenuItem(text = { Text("Salin") }, onClick = {
+				if (onCopy != null) DropdownMenuItem(text = { Text(stringResource(R.string.migration_flow_copy)) }, onClick = {
 					menuExpanded = false; onCopy()
 				})
-				if (onSkip != null) DropdownMenuItem(text = { Text("Lewati") }, onClick = {
+				if (onSkip != null) DropdownMenuItem(text = { Text(stringResource(R.string.migration_yokai_skip_manga)) }, onClick = {
 					menuExpanded = false; onSkip()
 				})
 			}
@@ -782,31 +787,31 @@ private fun MigrationResultsStep(
 		LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp),
 			verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			item {
-				Text("Progress dan hasil", style = MaterialTheme.typography.titleLarge)
+				Text(stringResource(R.string.migration_flow_progress_results), style = MaterialTheme.typography.titleLarge)
 				if (state.failed) {
-					Text("Pekerjaan tidak dapat dimulai atau statusnya gagal dimuat. Periksa hasil lalu coba lagi.",
+					Text(stringResource(R.string.migration_flow_job_failed),
 						color = MaterialTheme.colorScheme.error,
 						style = MaterialTheme.typography.bodySmall)
 				}
 				if (inProgress) {
-					Text("Batch sedang berjalan · " + state.batchCompleted + " / " + state.batchTotal)
+					Text(stringResource(R.string.migration_flow_running_count, state.batchCompleted, state.batchTotal))
 					LinearProgressIndicator(progress = {
 						if (state.batchTotal == 0) 0f else
 							state.batchCompleted.toFloat() / state.batchTotal.toFloat()
 					}, modifier = Modifier.fillMaxWidth())
-					TextButton(onClick = onCancel) { Text("Batalkan batch berjalan") }
+					TextButton(onClick = onCancel) { Text(stringResource(R.string.migration_batch_cancel)) }
 				} else if (state.batchBusy) {
 					Text(stringResource(R.string.migration_batch_other_active))
 				} else if (state.scheduling) {
 					LinearProgressIndicator(Modifier.fillMaxWidth())
-					Text("Menyiapkan pekerjaan migrasi")
+					Text(stringResource(R.string.migration_flow_preparing))
 				} else {
-					Text("Tidak ada batch aktif pada sesi ini.",
+					Text(stringResource(R.string.migration_flow_no_active),
 						style = MaterialTheme.typography.bodySmall)
 				}
 			}
 			if (completed.isNotEmpty() || state.completedResults.isNotEmpty()) item {
-				Text("Berhasil", style = MaterialTheme.typography.titleMedium)
+				Text(stringResource(R.string.migration_flow_successful), style = MaterialTheme.typography.titleMedium)
 			}
 			items(completed, key = Manga::id) { manga ->
 				MigrationMangaReviewItem(manga, imageLoader, state.status(manga.id),
@@ -816,14 +821,14 @@ private fun MigrationResultsStep(
 			}
 			items(state.completedResults, key = { "complete:" + it.mangaId + ":" + it.generation }) { result ->
 				Column {
-					Text(result.outcome.destinationTitle ?: "Manga selesai",
+					Text(result.outcome.destinationTitle ?: stringResource(R.string.migration_flow_completed_manga),
 						style = MaterialTheme.typography.bodyMedium)
 					Text(stringResource(result.outcome.status.labelRes()),
                         style = MaterialTheme.typography.bodySmall)
                     if (result.outcome.status == MigrationBatchStatus.MIGRATED_PRESERVED) {
                         state.preservedSourceManga[result.mangaId]?.let { source ->
                             TextButton(onClick = { onReview(source) }) {
-                                Text("Buka manga asal untuk memulihkan data tersimpan")
+                                Text(stringResource(R.string.migration_flow_open_original_recovery))
                             }
                         }
                     }
@@ -831,23 +836,23 @@ private fun MigrationResultsStep(
 			}
             val preserved = state.preservedSourceManga.values.toList()
             if (preserved.isNotEmpty()) item {
-                Text("Data manga lama tersimpan", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.migration_flow_original_data), style = MaterialTheme.typography.titleMedium)
             }
             items(preserved, key = { "preserved:" + it.id }) { source ->
                 Column {
                     Text(source.title, style = MaterialTheme.typography.bodyMedium)
-                    Text("Data yang belum dipindahkan tetap tersedia di manga asal.",
+                    Text(stringResource(R.string.migration_flow_original_data_hint),
                         style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { onReview(source) }) { Text("Buka manga asal") }
+                    TextButton(onClick = { onReview(source) }) { Text(stringResource(R.string.migration_flow_open_original)) }
                 }
             }
-			if (failures.isNotEmpty()) item { Text("Gagal", style = MaterialTheme.typography.titleMedium) }
+			if (failures.isNotEmpty()) item { Text(stringResource(R.string.migration_flow_failed_header), style = MaterialTheme.typography.titleMedium) }
 			items(failures, key = Manga::id) { manga ->
 				MigrationMangaReviewItem(manga, imageLoader, state.status(manga.id),
 					null, null, onClick = { onReview(manga) })
 			}
 			if (unresolved.isNotEmpty() || state.unconfirmedResults.isNotEmpty()) item {
-				Text("Perlu diperiksa / belum selesai", style = MaterialTheme.typography.titleMedium)
+				Text(stringResource(R.string.migration_flow_unresolved), style = MaterialTheme.typography.titleMedium)
 			}
 			items(unresolved, key = Manga::id) { manga ->
 				MigrationMangaReviewItem(manga, imageLoader, state.status(manga.id),
@@ -857,12 +862,12 @@ private fun MigrationResultsStep(
 			}
 			items(state.unconfirmedResults, key = { "unconfirmed:" + it.mangaId + ":" + it.generation }) { result ->
 				Column {
-					Text(result.outcome.destinationTitle ?: "Hasil belum terkonfirmasi")
+					Text(result.outcome.destinationTitle ?: stringResource(R.string.migration_flow_unconfirmed))
 					Text(stringResource(R.string.migration_batch_check_library),
 						style = MaterialTheme.typography.bodySmall)
 				}
 			}
-			if (skipped.isNotEmpty()) item { Text("Dilewati", style = MaterialTheme.typography.titleMedium) }
+			if (skipped.isNotEmpty()) item { Text(stringResource(R.string.migration_flow_skipped), style = MaterialTheme.typography.titleMedium) }
 			items(skipped, key = Manga::id) { manga ->
 				MigrationMangaReviewItem(manga, imageLoader, state.status(manga.id),
 					null, null, onClick = { onReview(manga) })
@@ -870,13 +875,13 @@ private fun MigrationResultsStep(
 			if (!inProgress && completed.isEmpty() && failures.isEmpty() && unresolved.isEmpty() &&
 				skipped.isEmpty() && state.completedResults.isEmpty() &&
 				state.unconfirmedResults.isEmpty()) {
-				item { Text("Belum ada hasil migrasi untuk ditampilkan.") }
+				item { Text(stringResource(R.string.migration_flow_no_results)) }
 			}
 		}
 		Surface(tonalElevation = 3.dp) {
 			Column(Modifier.fillMaxWidth().padding(12.dp)) {
 				Button(onClick = onSearchAgain, modifier = Modifier.fillMaxWidth()) {
-					Text("Kembali ke pencarian")
+					Text(stringResource(R.string.migration_flow_back_search))
 				}
 			}
 		}
