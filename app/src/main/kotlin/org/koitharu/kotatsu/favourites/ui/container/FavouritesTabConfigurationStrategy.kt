@@ -32,6 +32,7 @@ import com.google.android.material.shape.ShapeAppearanceModel
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator.TabConfigurationStrategy
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.favourites.ui.systemFavouriteCategoryLabel
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -75,7 +76,7 @@ class FavouritesTabConfigurationStrategy(
 			view.minimumHeight = (MiyorareFavouritesVisualSpec.CATEGORY_TAB_MIN_HEIGHT_DP * density).roundToInt()
 			view.setPaddingRelative(horizontal, 0, horizontal, 0)
 		}
-		val title = item.title ?: view.context.getString(R.string.all_favourites)
+		val title = view.context.systemFavouriteCategoryLabel(item.id) ?: item.title ?: view.context.getString(R.string.all_favourites)
 		val style = systemStyle(item.id)
 		if (style == null) {
 			view.setBackgroundKeepingPadding(createCategoryBackground(view.context))
