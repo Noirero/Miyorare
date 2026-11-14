@@ -9,7 +9,6 @@ import android.widget.ScrollView
 import androidx.compose.ui.geometry.Rect
 import com.google.android.material.navigationrail.NavigationRailView
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
-import com.google.android.material.R as materialR
 
 /** Preserves the Material rail, including header, labels, expand/collapse and accessibility. */
 class DragNavigationRailView @JvmOverloads constructor(
@@ -23,7 +22,7 @@ class DragNavigationRailView @JvmOverloads constructor(
 		vertical = true,
 		visibleSlots = ::visibleTabSlots,
 		selectedId = { selectedItemId },
-		accent = { context.getThemeColor(materialR.attr.colorPrimary) },
+		accent = { context.getThemeColor(androidx.appcompat.R.attr.colorPrimary) },
 		onIndicatorChanged = { moving ->
 			if (moving) {
 				restoreNativeIndicator = isItemActiveIndicatorEnabled

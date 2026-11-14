@@ -84,7 +84,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		selectedId = { selectedItemId },
 		accent = {
 			if (navColorsState.value.selectedContainer == Color.BLACK) Color.WHITE
-			else context.getThemeColor(materialR.attr.colorPrimary)
+			else context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
 		},
 		onIndicatorChanged = { movingIndicator.value = it },
 	)

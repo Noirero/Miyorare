@@ -4,6 +4,8 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration as AndroidConfiguration
 import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
+import org.koitharu.kotatsu.core.ui.widgets.NavigationTabDrag
+import androidx.compose.ui.geometry.Rect as SlotRect
 import android.graphics.Rect
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -145,6 +147,40 @@ class DiscoveryNavigationRuntimeTest {
 
 	@Test fun legacyDragPreviewsCustomTabAndHomeBeforeRelease() {
 		assertTabDragPreviewsCustomTabAndHome(legacy = true)
+	}
+
+	@Test fun dragIndicatorMovesWithinOneSlotWithoutRepeatedPreview() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val host = View(app)
+			val slop = android.view.ViewConfiguration.get(app).scaledTouchSlop.toFloat().coerceAtLeast(1f)
+			val slots = listOf(
+				1 to SlotRect(0f, 0f, 10 * slop, 4 * slop),
+				2 to SlotRect(10 * slop, 0f, 20 * slop, 4 * slop),
+			)
+			val previews = mutableListOf<Int?>()
+			val drag = NavigationTabDrag(
+				host, vertical = false, visibleSlots = { slots }, selectedId = { 1 },
+				accent = { android.graphics.Color.RED }, onIndicatorChanged = {},
+			)
+			drag.preview = { previews.add(it); it != 2 }
+			val down = SystemClock.uptimeMillis()
+			fun send(action: Int, x: Float, elapsed: Long) {
+				val event = MotionEvent.obtain(down, down + elapsed, action, x * slop, 2 * slop, 0)
+				try { assertTrue(drag.dispatch(event) { true }) } finally { event.recycle() }
+			}
+			try {
+				send(MotionEvent.ACTION_DOWN, 5f, 0)
+				send(MotionEvent.ACTION_MOVE, 7f, 16)
+				assertEquals(7 * slop, checkNotNull(drag.indicatorBounds).center.x, 0.01f)
+				send(MotionEvent.ACTION_MOVE, 9f, 32)
+				assertEquals(9 * slop, checkNotNull(drag.indicatorBounds).center.x, 0.01f)
+				assertEquals(listOf(1), previews)
+				send(MotionEvent.ACTION_MOVE, 12f, 48)
+				assertNull("Rejected preview must not advertise a different tab", drag.indicatorBounds)
+			} finally {
+				drag.reset()
+			}
+		}
 	}
 
 	@Test fun landscapeRailPreviewsAndCommitsWithModernPreference() {

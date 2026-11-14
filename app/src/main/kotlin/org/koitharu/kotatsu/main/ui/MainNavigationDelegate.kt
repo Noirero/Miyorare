@@ -515,6 +515,7 @@ class MainNavigationDelegate(
 				},
 			)
 		}
+		(navBar as? DragNavigationRailView)?.cancelTabDrag()
 		(navBar as? FloatingBottomNavigationView)?.setComposeLabeled(value)
 		navRailHeader?.buttonExpand?.isVisible = value
 		if (!value) {

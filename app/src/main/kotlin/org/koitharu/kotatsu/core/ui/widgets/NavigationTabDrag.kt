@@ -32,7 +32,8 @@ internal class NavigationTabDrag(
 	private val density = host.resources.displayMetrics.density
 	private var stream: Stream? = null
 	private var previewId: Int? = null
-	private var indicator: Rect? = null
+	internal var indicatorBounds: Rect? = null
+		private set
 	private var settle: ValueAnimator? = null
 	private var settleId: Int? = null
 	private var progress = 0f
@@ -103,7 +104,7 @@ internal class NavigationTabDrag(
 			if (drag.captured) {
 				val slot = hit(drag.slots, x, y)
 				showPreview(slot?.first)
-				if (slot != null && !drag.rejected) {
+				if (slot != null && previewId == slot.first && !drag.rejected) {
 					val rect = slot.second
 					val axis = if (vertical) y else x
 					val first = drag.slots.minOf { center(it.second) }
@@ -142,14 +143,14 @@ internal class NavigationTabDrag(
 	}
 
 	private fun setIndicator(rect: Rect) {
-		val wasIdle = indicator == null
-		indicator = rect
+		val wasIdle = indicatorBounds == null
+		indicatorBounds = rect
 		if (wasIdle) onIndicatorChanged(true)
 		host.invalidate()
 	}
 
 	private fun settleToSelection() {
-		if (indicator == null || settle != null) return
+		if (indicatorBounds == null || settle != null) return
 		settleId = selectedId()
 		progress = 0f
 		settle = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -173,14 +174,14 @@ internal class NavigationTabDrag(
 		animation?.removeAllUpdateListeners()
 		animation?.cancel()
 		settleId = null
-		if (indicator == null) return
-		indicator = null
+		if (indicatorBounds == null) return
+		indicatorBounds = null
 		onIndicatorChanged(false)
 		host.invalidate()
 	}
 
 	fun draw(canvas: Canvas) {
-		val from = indicator ?: return
+		val from = indicatorBounds ?: return
 		val to = settleId?.let { id -> visibleSlots().firstOrNull { it.first == id }?.second } ?: from
 		fun blend(a: Float, b: Float) = a + (b - a) * progress
 		host.getLocationInWindow(origin)
