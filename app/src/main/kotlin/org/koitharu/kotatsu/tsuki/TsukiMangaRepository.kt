@@ -3,6 +3,7 @@
 package org.koitharu.kotatsu.tsuki
 
 import android.content.Context
+import org.koitharu.kotatsu.sources.compat.ExhentaiTitleTrace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
@@ -119,9 +120,14 @@ class TsukiMangaRepository(
 	override suspend fun getDetailsImpl(manga: Manga): Manga {
 		val handle = runtime.getHandle(source)
 		return withTsukiExceptions(handle.source) {
-			handle.parser.getDetails(manga.toTsuki(handle.rawSource, handle.source))
-				.toMiyorare(handle.source)
-				.copy(id = manga.id)
+			val parsed = handle.parser.getDetails(manga.toTsuki(handle.rawSource, handle.source))
+			val mapped = parsed.toMiyorare(handle.source).copy(id = manga.id)
+			if (runtime.titleTraceEnabled && ExhentaiTitleTrace.matches(handle.source.name, manga.publicUrl, manga.url)) {
+				ExhentaiTitleTrace.record("repository",
+					"jar=${handle.source.plugin.sha256} seed=${ExhentaiTitleTrace.fingerprint(manga.title)} " +
+						"parser=${ExhentaiTitleTrace.fingerprint(parsed.title)} mapped=${ExhentaiTitleTrace.fingerprint(mapped.title)}")
+			}
+			mapped
 		}
 	}
 
