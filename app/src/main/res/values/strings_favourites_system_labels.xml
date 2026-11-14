@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favourites_system_label_local">Local</string>
+    <string name="favourites_system_label_downloaded">Downloaded</string>
+    <string name="favourites_system_label_in_progress">In progress</string>
+    <string name="favourites_system_label_completed">Completed</string>
+</resources>
