@@ -1,6 +1,9 @@
 package org.koitharu.kotatsu.discovery
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration as AndroidConfiguration
+import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
 import android.graphics.Rect
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -142,6 +145,88 @@ class DiscoveryNavigationRuntimeTest {
 
 	@Test fun legacyDragPreviewsCustomTabAndHomeBeforeRelease() {
 		assertTabDragPreviewsCustomTabAndHome(legacy = true)
+	}
+
+	@Test fun landscapeRailPreviewsAndCommitsWithModernPreference() {
+		assertLandscapeRailDrag(legacy = false)
+	}
+
+	@Test fun landscapeRailPreviewsAndCommitsWithLegacyPreference() {
+		assertLandscapeRailDrag(legacy = true)
+	}
+
+	private fun assertLandscapeRailDrag(legacy: Boolean) {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, legacy).commit()
+		launch().use { scenario ->
+			scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+			compose.waitUntil(15000) {
+				var ready = false
+				scenario.onActivity { activity ->
+					val rail = activity.findViewById<DragNavigationRailView>(R.id.navRail)
+					ready = activity.resources.configuration.orientation == AndroidConfiguration.ORIENTATION_LANDSCAPE &&
+						rail?.findViewById<View>(R.id.nav_discovery_hub)?.let { it.isShown && it.height > 0 } == true
+				}
+				ready
+			}
+			fun send(action: Int, id: Int, down: Long, elapsed: Long) = scenario.onActivity { activity ->
+				val rail = checkNotNull(activity.findViewById<DragNavigationRailView>(R.id.navRail))
+				val item = checkNotNull(rail.findViewById<View>(id))
+				val visible = Rect()
+				assertTrue(item.getLocalVisibleRect(visible))
+				val railOrigin = IntArray(2).also { rail.getLocationInWindow(it) }
+				val itemOrigin = IntArray(2).also { item.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(down, down + elapsed, action,
+					itemOrigin[0] - railOrigin[0] + visible.exactCenterX(),
+					itemOrigin[1] - railOrigin[1] + visible.exactCenterY(), 0)
+				try {
+					assertTrue(rail.dispatchTouchEvent(event))
+				} finally {
+					event.recycle()
+				}
+			}
+			var down = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, R.id.nav_favorites, down, 0)
+			send(MotionEvent.ACTION_MOVE, R.id.nav_local, down, 32)
+			scenario.onActivity { activity ->
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(View.VISIBLE, local.requireView().visibility)
+				assertTrue(local.isHidden)
+			}
+			send(MotionEvent.ACTION_MOVE, R.id.nav_discovery_hub, down, 64)
+			compose.waitUntil(10000) {
+				var ready = false
+				scenario.onActivity { activity ->
+					val rail = activity.findViewById<DragNavigationRailView>(R.id.navRail)
+					assertEquals(R.id.nav_favorites, rail.selectedItemId)
+					val home = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+					assertTrue(home.isHidden)
+					assertEquals(Lifecycle.State.STARTED, home.lifecycle.currentState)
+					val host = home.requireView() as ComposeView
+					val root = host.getChildAt(0) as? ViewRootForTest ?: return@onActivity
+					val provider = root.semanticsOwner.unmergedRootSemanticsNode.findPreviewTag("catalog_provider_selector")
+					ready = host.isShown && host.alpha > 0f && host.getGlobalVisibleRect(Rect()) &&
+						provider?.boundsInWindow?.isEmpty == false
+				}
+				ready
+			}
+			send(MotionEvent.ACTION_CANCEL, R.id.nav_discovery_hub, down, 96)
+			scenario.onActivity { activity ->
+				val home = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+				assertEquals(View.GONE, home.requireView().visibility)
+				assertEquals(R.id.nav_favorites, activity.findViewById<DragNavigationRailView>(R.id.navRail).selectedItemId)
+			}
+			down = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, R.id.nav_favorites, down, 0)
+			send(MotionEvent.ACTION_MOVE, R.id.nav_discovery_hub, down, 32)
+			send(MotionEvent.ACTION_UP, R.id.nav_discovery_hub, down, 64)
+			compose.onNodeWithTag("catalog_home_list").assertIsDisplayed()
+			scenario.onActivity { activity ->
+				assertEquals(R.id.nav_discovery_hub, activity.findViewById<DragNavigationRailView>(R.id.navRail).selectedItemId)
+				assertEquals(0, activity.supportFragmentManager.backStackEntryCount)
+			}
+		}
 	}
 
 	private fun assertTabDragPreviewsCustomTabAndHome(legacy: Boolean) {

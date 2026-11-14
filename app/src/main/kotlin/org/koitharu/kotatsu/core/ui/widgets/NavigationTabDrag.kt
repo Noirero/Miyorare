@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.core.ui.widgets
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -110,6 +112,9 @@ internal class NavigationTabDrag(
 					// The visual position updates even when the hovered item has not changed.
 					setIndicator(if (vertical) Rect(rect.left, rect.top + offset, rect.right, rect.bottom + offset)
 					else Rect(rect.left + offset, rect.top, rect.right + offset, rect.bottom))
+				} else if (!drag.rejected) {
+					// Leaving the tab strip restores its committed highlight, too.
+					clearIndicator()
 				}
 			}
 		}
@@ -152,9 +157,11 @@ internal class NavigationTabDrag(
 			interpolator = OvershootInterpolator(0.8f)
 			addUpdateListener {
 				progress = it.animatedValue as Float
-				if (it.animatedFraction == 1f && it.currentPlayTime >= it.duration) clearIndicator()
-				else host.invalidate()
+				host.invalidate()
 			}
+			addListener(object : AnimatorListenerAdapter() {
+				override fun onAnimationEnd(animation: Animator) = clearIndicator()
+			})
 		}
 		settle?.start()
 	}
@@ -162,6 +169,7 @@ internal class NavigationTabDrag(
 	private fun clearIndicator() {
 		val animation = settle
 		settle = null
+		animation?.removeAllListeners()
 		animation?.removeAllUpdateListeners()
 		animation?.cancel()
 		settleId = null
