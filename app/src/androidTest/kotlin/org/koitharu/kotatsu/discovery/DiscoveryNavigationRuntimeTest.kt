@@ -164,6 +164,7 @@ class DiscoveryNavigationRuntimeTest {
 			compose.waitForIdle()
 			assertEquals(listOf(start, custom, home), tabCenters())
 			send(MotionEvent.ACTION_MOVE, home, 64)
+			compose.waitUntil(10000) { compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty() }
 			compose.onNodeWithTag("catalog_home_list").assertIsDisplayed()
 			scenario.onActivity { activity ->
 				val preview = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()

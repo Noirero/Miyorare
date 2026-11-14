@@ -615,7 +615,6 @@ private fun FloatingNavItem(
 			) {
 				Text(
 					text = title,
-					modifier = Modifier.alpha(if (hideLabel) 0f else 1f),
 					color = content,
 					fontSize = when {
 						isMiyorareModern && emphasizeFavourites ->
@@ -630,7 +629,9 @@ private fun FloatingNavItem(
 						else -> 20.sp
 					},
 					maxLines = 1,
-					modifier = Modifier.padding(start = if (isMiyorareModern) 6.dp else 8.dp),
+					modifier = Modifier
+						.alpha(if (hideLabel) 0f else 1f)
+						.padding(start = if (isMiyorareModern) 6.dp else 8.dp),
 				)
 			}
 		}
