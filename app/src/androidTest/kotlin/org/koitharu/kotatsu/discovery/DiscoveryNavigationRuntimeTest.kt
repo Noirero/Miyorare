@@ -1,9 +1,13 @@
 package org.koitharu.kotatsu.discovery
 
 import android.content.Intent
+import android.graphics.Rect
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -174,17 +178,24 @@ class DiscoveryNavigationRuntimeTest {
 				assertTrue(preview.isHidden)
 				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
 			}
-			val homeList = compose.onNodeWithTag("catalog_home_list").assertIsDisplayed()
-			compose.onNodeWithTag("catalog_provider_selector").assertIsDisplayed()
-			// Spotlight is a lazy item, not a readiness signal: Favorites still owns
-			// the app-bar space during preview, so this item can be below the viewport.
+			// Compose's test registry only exposes RESUMED roots. Read the STARTED
+			// preview's own semantics on main without promoting its lifecycle.
 			compose.waitUntil(10000) {
-				val keyIndex = homeList.fetchSemanticsNode().config.getOrNull(SemanticsProperties.IndexForKey)
-				keyIndex?.invoke("spotlight")?.let { it >= 0 } == true
+				var ready = false
+				scenario.onActivity { activity ->
+					val preview = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+					val host = preview.requireView() as ComposeView
+					val root = host.getChildAt(0) as? ViewRootForTest ?: return@onActivity
+					val semantics = root.semanticsOwner.unmergedRootSemanticsNode
+					val list = semantics.findPreviewTag("catalog_home_list")
+					val provider = semantics.findPreviewTag("catalog_provider_selector")
+					val spotlightIndex = list?.config?.getOrNull(SemanticsProperties.IndexForKey)?.invoke("spotlight")
+					ready = host.isShown && host.alpha > 0f && host.getGlobalVisibleRect(Rect()) &&
+						list?.boundsInWindow?.isEmpty == false && provider?.boundsInWindow?.isEmpty == false &&
+						spotlightIndex != null && spotlightIndex >= 0
+				}
+				ready
 			}
-			homeList.performScrollToKey("spotlight")
-			compose.onNodeWithTag("catalog_spotlight").assertIsDisplayed()
-			homeList.performScrollToIndex(0)
 			send(MotionEvent.ACTION_CANCEL, home, 96)
 			compose.waitForIdle()
 			scenario.onActivity { activity ->
@@ -266,6 +277,11 @@ class DiscoveryNavigationRuntimeTest {
 				assertEquals(0, manager.backStackEntryCount)
 			}
 		}
+	}
+
+	private fun SemanticsNode.findPreviewTag(tag: String): SemanticsNode? {
+		if (config.getOrNull(SemanticsProperties.TestTag) == tag) return this
+		return children.firstNotNullOfOrNull { it.findPreviewTag(tag) }
 	}
 
 	@Test fun classicLegacyMigrationAndRecreationPreserveFixedRootSelectionWithoutRefetch() {
