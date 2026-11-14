@@ -1,6 +1,13 @@
 package org.koitharu.kotatsu.discovery
 
 import android.content.Intent
+import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.View
+import androidx.compose.ui.geometry.Offset
+import androidx.lifecycle.Lifecycle
+import org.koitharu.kotatsu.local.ui.LocalListFragment
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.preference.PreferenceManager
@@ -122,6 +129,71 @@ class DiscoveryNavigationRuntimeTest {
 			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
 	}
+	@Test fun floatingDragPreviewsCustomTabAndHomeBeforeRelease() {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
+		launch().use { scenario ->
+			compose.waitForIdle()
+			fun tabCenters() = listOf(NavItem.FAVORITES, NavItem.LOCAL, NavItem.DISCOVERY_HUB).map {
+				compose.onNodeWithContentDescription(app.getString(it.navTitle)).fetchSemanticsNode().boundsInWindow.center
+			}
+			var downTime = SystemClock.uptimeMillis()
+			fun send(action: Int, point: Offset, elapsed: Long) = scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(
+					downTime, downTime + elapsed, action, point.x - origin[0], point.y - origin[1], 0,
+				)
+				try {
+					bar.dispatchTouchEvent(event)
+				} finally {
+					event.recycle()
+				}
+			}
+			val (start, custom, home) = tabCenters()
+			send(MotionEvent.ACTION_DOWN, start, 0)
+			send(MotionEvent.ACTION_MOVE, custom, 32)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(View.VISIBLE, preview.requireView().visibility)
+				assertEquals(Lifecycle.State.STARTED, preview.lifecycle.currentState)
+				assertTrue(preview.isHidden)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			send(MotionEvent.ACTION_MOVE, home, 64)
+			scenario.onActivity { activity ->
+				val preview = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+				assertEquals(View.VISIBLE, preview.requireView().visibility)
+				assertTrue(preview.isHidden)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			send(MotionEvent.ACTION_CANCEL, home, 96)
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val fragments = activity.supportFragmentManager.fragments
+				assertEquals(View.VISIBLE, fragments.filterIsInstance<FavouritesContainerFragment>().single().requireView().visibility)
+				assertEquals(View.GONE, fragments.filterIsInstance<DiscoveryHubFragment>().single().requireView().visibility)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			val (startAgain, localAgain, homeAgain) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, startAgain, 0)
+			send(MotionEvent.ACTION_MOVE, localAgain, 32)
+			send(MotionEvent.ACTION_MOVE, homeAgain, 64)
+			send(MotionEvent.ACTION_UP, homeAgain, 96)
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val manager = activity.supportFragmentManager
+				val selected = manager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+				assertFalse(selected.isHidden)
+				assertEquals(Lifecycle.State.RESUMED, selected.lifecycle.currentState)
+				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
+				assertEquals(0, manager.backStackEntryCount)
+			}
+		}
+	}
+
 	@Test fun classicLegacyMigrationAndRecreationPreserveFixedRootSelectionWithoutRefetch() {
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.CLASSIC)
 		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, true)

@@ -47,6 +47,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -120,6 +123,8 @@ fun FloatingNavBar(
 	emphasizeFavourites: Boolean = false,
 	onContinueClick: () -> Unit = {},
 	onContinueLongClick: () -> Unit = {},
+	previewId: Int? = null,
+	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
 ) {
 	if (items.isEmpty()) return
 	val context = LocalContext.current
@@ -388,7 +393,8 @@ fun FloatingNavBar(
 				items.forEach { item ->
 					FloatingNavItem(
 						item = item,
-						selected = item.id == selectedId,
+						selected = item.id == (previewId ?: selectedId),
+						modifier = Modifier.onGloballyPositioned { onTabBounds(item.id, it.boundsInWindow()) },
 						showLabel = showLabels,
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
@@ -460,6 +466,7 @@ private fun FloatingNavItem(
 	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
+	modifier: Modifier = Modifier,
 ) {
 	val container by animateColorAsState(
 		targetValue = if (selected) Color(colors.selectedContainer) else Color.Transparent,
@@ -542,7 +549,7 @@ private fun FloatingNavItem(
 	}
 
 	Box(
-		modifier = Modifier
+		modifier = modifier
 			.then(selectedChrome)
 			.height(
 				if (isMiyorareModern && emphasizeFavourites) {

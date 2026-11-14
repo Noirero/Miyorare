@@ -66,6 +66,8 @@ class MainNavigationDelegate(
 	NavigationBarView.OnItemReselectedListener, View.OnClickListener {
 
 	private val listeners = LinkedList<OnFragmentChangedListener>()
+	private var tabPreview: TabPreview? = null
+	private var committingTabDrag = false
 	val navRailHeader = (navBar as? NavigationRailView)?.headerView?.let {
 		NavigationRailFabBinding.bind(it)
 	}
@@ -129,6 +131,7 @@ class MainNavigationDelegate(
 			createMenu(settings.mainNavItems, navBar.menu)
 		}
 		(navBar as? FloatingBottomNavigationView)?.let { floating ->
+			floating.setTabDragListeners(::previewTab, ::commitTabDrag)
 			floating.setComposeItems(settings.mainNavItems)
 			floating.setComposeLabeled(settings.isNavLabelsVisible)
 			floating.setUseLegacyNavigation(settings.isLegacyNavigationBar)
@@ -240,23 +243,25 @@ class MainNavigationDelegate(
 	}
 
 	private fun onNavigationItemSelected(@IdRes itemId: Int): Boolean {
-		val newFragment = when (itemId) {
-			R.id.nav_history -> HistoryListFragment::class.java
-			R.id.nav_favorites -> FavouritesContainerFragment::class.java
-			R.id.nav_explore -> ExploreFragment::class.java
-			R.id.nav_feed -> FeedFragment::class.java
-			R.id.nav_local -> LocalListFragment::class.java
-			R.id.nav_suggestions -> SuggestionsFragment::class.java
-			R.id.nav_bookmarks -> AllBookmarksFragment::class.java
-			R.id.nav_updated -> UpdatesFragment::class.java
-			R.id.nav_reader_journey -> ReaderJourneyFragment::class.java
-			R.id.nav_discovery_hub -> DiscoveryHubFragment::class.java
-			else -> return false
-		}
+		val newFragment = fragmentClassForItem(itemId) ?: return false
 		if (!setPrimaryFragment(newFragment)) {
 			onNavigationItemReselected()
 		}
 		return true
+	}
+
+	private fun fragmentClassForItem(@IdRes itemId: Int): Class<out Fragment>? = when (itemId) {
+		R.id.nav_history -> HistoryListFragment::class.java
+		R.id.nav_favorites -> FavouritesContainerFragment::class.java
+		R.id.nav_explore -> ExploreFragment::class.java
+		R.id.nav_feed -> FeedFragment::class.java
+		R.id.nav_local -> LocalListFragment::class.java
+		R.id.nav_suggestions -> SuggestionsFragment::class.java
+		R.id.nav_bookmarks -> AllBookmarksFragment::class.java
+		R.id.nav_updated -> UpdatesFragment::class.java
+		R.id.nav_reader_journey -> ReaderJourneyFragment::class.java
+		R.id.nav_discovery_hub -> DiscoveryHubFragment::class.java
+		else -> null
 	}
 
 	private fun getItemId(fragment: Fragment) = when (fragment) {
@@ -273,7 +278,71 @@ class MainNavigationDelegate(
 		else -> 0
 	}
 
+	internal fun cancelTabDrag() {
+		(navBar as? FloatingBottomNavigationView)?.cancelTabDrag()
+		clearTabPreview()
+	}
+
+	private fun clearTabPreview() {
+		val preview = tabPreview ?: return
+		tabPreview = null
+		preview.target.visibility = preview.targetVisibility
+		preview.current.visibility = preview.currentVisibility
+	}
+
+	private fun previewTab(@IdRes itemId: Int?): Boolean {
+		clearTabPreview()
+		if (itemId == null) return true
+		if (fragmentManager.isStateSaved || navBar.menu.findItem(itemId)?.isVisible != true) return false
+		val current = primaryFragment ?: return false
+		if (getItemId(current) == itemId) return true
+		val currentView = current.view ?: return false
+		val type = fragmentClassForItem(itemId) ?: return false
+		val target = fragmentManager.findFragmentByTag(type.name) ?: newBottomTab(type).also { fragment ->
+			// First visit can load content, but doesn't resume the tab or hand off shared chrome.
+			fragmentManager.beginTransaction()
+				.setReorderingAllowed(true)
+				.add(R.id.container, fragment, type.name)
+				.hide(fragment)
+				.setMaxLifecycle(fragment, Lifecycle.State.STARTED)
+				.commitNow()
+		}
+		if (!target.isHidden) return false
+		val targetView = target.view ?: return false
+		// Fragment.show/hide dispatches search/app bar/account refresh hooks. Change
+		// only root view visibility during preview; preserve the committed lifecycle.
+		tabPreview = TabPreview(currentView, currentView.visibility, targetView, targetView.visibility)
+		currentView.visibility = View.INVISIBLE
+		targetView.visibility = View.VISIBLE
+		return true
+	}
+
+	private fun commitTabDrag(@IdRes itemId: Int) {
+		clearTabPreview()
+		if (fragmentManager.isStateSaved || primaryFragment?.let(::getItemId) == itemId ||
+			navBar.menu.findItem(itemId)?.isVisible != true
+		) return
+		committingTabDrag = true
+		try {
+			navBar.selectedItemId = itemId
+		} finally {
+			committingTabDrag = false
+		}
+	}
+
+	private data class TabPreview(
+		val current: View,
+		val currentVisibility: Int,
+		val target: View,
+		val targetVisibility: Int,
+	)
+
+	private fun newBottomTab(type: Class<out Fragment>): Fragment = instantiateFragment(type).apply {
+		arguments = buildBundle(1) { putBoolean(AppRouter.KEY_IS_BOTTOMTAB, true) }
+	}
+
 	private fun setPrimaryFragment(fragmentClass: Class<out Fragment>): Boolean {
+		cancelTabDrag()
 		if (fragmentManager.isStateSaved || fragmentClass.isInstance(primaryFragment)) {
 			return false
 		}
@@ -284,7 +353,7 @@ class MainNavigationDelegate(
 			.setReorderingAllowed(true)
 		val involvesFavourites = fragmentClass == FavouritesContainerFragment::class.java ||
 			current is FavouritesContainerFragment
-		if (!involvesFavourites) {
+		if (!involvesFavourites && !committingTabDrag) {
 			transaction.setCustomAnimations(
 				R.anim.m3_fade_through_enter,
 				R.anim.m3_fade_through_exit,
@@ -302,11 +371,7 @@ class MainNavigationDelegate(
 			shownFragment = existing
 			transaction.show(existing)
 		} else {
-			shownFragment = instantiateFragment(fragmentClass).apply {
-				arguments = buildBundle(1) {
-					putBoolean(AppRouter.KEY_IS_BOTTOMTAB, true)
-				}
-			}
+			shownFragment = newBottomTab(fragmentClass)
 			transaction.add(R.id.container, shownFragment, tag)
 		}
 		PerformanceDiagnostics.bind(shownFragment, trace)
@@ -319,7 +384,7 @@ class MainNavigationDelegate(
 			val shown = primaryFragment ?: shownFragment
 			onFragmentChanged(shown, fromUser = true)
 		}
-		transaction.commit()
+		if (committingTabDrag) transaction.commitNow() else transaction.commit()
 		return true
 	}
 
