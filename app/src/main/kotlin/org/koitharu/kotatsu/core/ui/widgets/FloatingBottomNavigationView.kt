@@ -6,7 +6,7 @@ import android.graphics.Color
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
+import android.graphics.Canvas
 import android.view.ViewGroup
 import androidx.annotation.IdRes
 import androidx.compose.foundation.layout.Box
@@ -55,11 +55,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val selectedIdState = MutableStateFlow(0)
 	private val previewIdState = MutableStateFlow<Int?>(null)
 	private val tabBounds = mutableMapOf<Int, Rect>()
-	private val windowPosition = IntArray(2)
-	private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
-	private var tabDrag: TabDrag? = null
-	private var onTabPreview: ((Int?) -> Boolean)? = null
-	private var onTabDragCommit: ((Int) -> Unit)? = null
+	private val movingIndicator = MutableStateFlow(false)
 	private val labeledState = MutableStateFlow(true)
 	private val navColorsState = MutableStateFlow(readNavColors())
 	private val continueVisibleState = MutableStateFlow(false)
@@ -77,6 +73,22 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
 
+	private val tabDrag = NavigationTabDrag(
+		host = this,
+		vertical = false,
+		visibleSlots = {
+			val items = composeItemsState.value
+			items.mapNotNull { item -> tabBounds[item.id]?.takeUnless { it.isEmpty }?.let { item.id to it } }
+				.takeIf { it.size == items.size }.orEmpty()
+		},
+		selectedId = { selectedItemId },
+		accent = {
+			if (navColorsState.value.selectedContainer == Color.BLACK) Color.WHITE
+			else context.getThemeColor(materialR.attr.colorPrimary)
+		},
+		onIndicatorChanged = { movingIndicator.value = it },
+	)
+
 	private val composeView: ComposeView = ComposeView(context).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
@@ -86,6 +98,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				val items by composeItemsState.collectAsState()
 				val selectedId by selectedIdState.collectAsState()
 				val previewId by previewIdState.collectAsState()
+				val indicatorMoving by movingIndicator.collectAsState()
 				val labeled by labeledState.collectAsState()
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
@@ -125,6 +138,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							modifier = Modifier.fillMaxWidth(),
 							emphasizeFavourites = emphasizeFavourites,
 							previewId = previewId,
+							indicatorMoving = indicatorMoving,
 							onTabBounds = { id, bounds -> if (useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					} else {
@@ -145,6 +159,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onContinueClick = { continueClickListener?.invoke() },
 							onContinueLongClick = { continueLongClickListener?.invoke() },
 							previewId = previewId,
+							indicatorMoving = indicatorMoving,
 							onTabBounds = { id, bounds -> if (!useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					}
@@ -253,116 +268,27 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	internal fun setTabDragListeners(preview: (Int?) -> Boolean, commit: (Int) -> Unit) {
-		onTabPreview = preview
-		onTabDragCommit = commit
+		tabDrag.preview = { id ->
+			val accepted = preview(id)
+			previewIdState.value = id.takeIf { accepted }
+			accepted
+		}
+		tabDrag.commit = commit
 	}
 
-	internal fun cancelTabDrag() {
-		val drag = tabDrag ?: return
-		// A captured stream must stay consumed until UP/CANCEL.
-		drag.cancelled = true
-		if (drag.captured) showTabPreview(null)
-	}
+	internal fun cancelTabDrag() = tabDrag.cancel()
 
 	override fun onDetachedFromWindow() {
-		cancelTabDrag()
-		tabDrag = null
+		tabDrag.reset()
 		super.onDetachedFromWindow()
 	}
 
-	override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-		val action = event.actionMasked
-		if (action == MotionEvent.ACTION_DOWN) {
-			cancelTabDrag()
-			tabDrag = null
-			if (onTabPreview != null) {
-				getLocationInWindow(windowPosition)
-				val x = event.x + windowPosition[0]
-				val y = event.y + windowPosition[1]
-				// Freeze the rendered slots: the active label changes widths and moves the pill.
-				val bounds = composeItemsState.value.mapNotNull { item ->
-					tabBounds[item.id]?.takeUnless { it.isEmpty }?.let { item.id to it }
-				}
-				if (bounds.size == composeItemsState.value.size && bounds.any { (_, r) ->
-						x >= r.left && x < r.right && y >= r.top && y < r.bottom
-					}) {
-					tabDrag = TabDrag(x, y, bounds)
-				}
-			}
-			return super.dispatchTouchEvent(event).also { if (!it) tabDrag = null }
-		}
-		val drag = tabDrag ?: return super.dispatchTouchEvent(event)
-		if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) cancelTabDrag()
-		if (!drag.cancelled && action == MotionEvent.ACTION_MOVE) {
-			getLocationInWindow(windowPosition)
-			val x = event.x + windowPosition[0]
-			val y = event.y + windowPosition[1]
-			if (!drag.captured) {
-				val dx = kotlin.math.abs(x - drag.startX)
-				val dy = kotlin.math.abs(y - drag.startY)
-				if (event.eventTime - event.downTime >= ViewConfiguration.getLongPressTimeout() ||
-					(dy > touchSlop && dy >= dx)
-				) {
-					drag.cancelled = true
-				} else if (dx > touchSlop && dx > dy) {
-					drag.captured = true
-					val cancel = MotionEvent.obtain(event)
-					try {
-						cancel.action = MotionEvent.ACTION_CANCEL
-						super.dispatchTouchEvent(cancel)
-					} finally {
-						cancel.recycle()
-					}
-					parent?.requestDisallowInterceptTouchEvent(true)
-				}
-			}
-			if (drag.captured) showTabPreview(drag.targetAt(x, y))
-		}
-		if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-			tabDrag = null
-			if (drag.captured) {
-				getLocationInWindow(windowPosition)
-				val target = if (action == MotionEvent.ACTION_UP && !drag.cancelled) {
-					drag.targetAt(event.x + windowPosition[0], event.y + windowPosition[1])
-				} else null
-				try {
-					if (target != null) onTabDragCommit?.invoke(target)
-				} finally {
-					showTabPreview(null)
-				}
-			}
-		}
-		return drag.captured || super.dispatchTouchEvent(event)
-	}
+	override fun dispatchTouchEvent(event: MotionEvent): Boolean =
+		tabDrag.dispatch(event) { super.dispatchTouchEvent(it) }
 
-	private fun showTabPreview(id: Int?) {
-		if (id == previewIdState.value) return
-		val accepted = onTabPreview?.invoke(id) == true
-		previewIdState.value = id.takeIf { accepted }
-	}
-
-	private class TabDrag(val startX: Float, val startY: Float, val bounds: List<Pair<Int, Rect>>) {
-		var captured = false
-		var cancelled = false
-
-		fun targetAt(x: Float, y: Float): Int? {
-			var left = Float.POSITIVE_INFINITY
-			var right = Float.NEGATIVE_INFINITY
-			var nearest: Int? = null
-			var distance = Float.POSITIVE_INFINITY
-			for ((id, rect) in bounds) {
-				if (y < rect.top || y >= rect.bottom) continue
-				if (x >= rect.left && x < rect.right) return id
-				left = minOf(left, rect.left)
-				right = maxOf(right, rect.right)
-				val gap = maxOf(rect.left - x, x - rect.right)
-				if (gap < distance) {
-					distance = gap
-					nearest = id
-				}
-			}
-			return nearest.takeIf { x >= left && x < right }
-		}
+	override fun dispatchDraw(canvas: Canvas) {
+		super.dispatchDraw(canvas)
+		tabDrag.draw(canvas)
 	}
 
 	private fun dispatchItemLongClick(@IdRes itemId: Int) {

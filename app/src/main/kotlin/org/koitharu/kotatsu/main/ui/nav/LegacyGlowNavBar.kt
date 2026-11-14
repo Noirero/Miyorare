@@ -70,6 +70,7 @@ fun LegacyGlowNavBar(
 	onItemLongClick: (Int) -> Unit = {},
 	emphasizeFavourites: Boolean = false,
 	previewId: Int? = null,
+	indicatorMoving: Boolean = false,
 	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
 ) {
 	val visibleItems = items.take(MAX_LEGACY_ITEMS)
@@ -239,6 +240,7 @@ fun LegacyGlowNavBar(
 					LegacyGlowNavItem(
 						item = item,
 						selected = item.id == (previewId ?: selectedId),
+						showSelectionChrome = !indicatorMoving,
 						showLabel = showLabels,
 						colors = colors,
 						accent = luminousAccent,
@@ -263,6 +265,7 @@ fun LegacyGlowNavBar(
 private fun LegacyGlowNavItem(
 	item: FloatingNavBarItem,
 	selected: Boolean,
+	showSelectionChrome: Boolean,
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	accent: Color,
@@ -342,7 +345,7 @@ private fun LegacyGlowNavItem(
 				else itemHeight + 6.dp,
 			)
 			.then(
-				if (selected && !emphasizeFavourites) {
+				if (selected && showSelectionChrome && !emphasizeFavourites) {
 					Modifier.background(accent.copy(alpha = SELECTED_GLOW_ALPHA), itemShape)
 				} else {
 					Modifier
@@ -357,7 +360,7 @@ private fun LegacyGlowNavItem(
 			.padding(3.dp),
 		contentAlignment = Alignment.Center,
 	) {
-		val selectedBrush = if (selected && emphasizeFavourites) {
+		val selectedBrush = if (selected && showSelectionChrome && emphasizeFavourites) {
 			Brush.horizontalGradient(
 				listOf(
 					selectedContainer,
@@ -373,7 +376,7 @@ private fun LegacyGlowNavItem(
 				.fillMaxWidth()
 				.height(itemHeight)
 				.then(
-					if (selected && emphasizeFavourites) {
+					if (selected && showSelectionChrome && emphasizeFavourites) {
 						Modifier
 							.drawBehind {
 								val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
@@ -399,7 +402,7 @@ private fun LegacyGlowNavItem(
 								)
 							}
 							.then(Modifier.background(checkNotNull(selectedBrush), itemShape))
-					} else if (selected) {
+					} else if (selected && showSelectionChrome) {
 						Modifier
 							.background(selectedContainer, itemShape)
 							.border(

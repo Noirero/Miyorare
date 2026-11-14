@@ -125,6 +125,7 @@ fun FloatingNavBar(
 	onContinueClick: () -> Unit = {},
 	onContinueLongClick: () -> Unit = {},
 	previewId: Int? = null,
+	indicatorMoving: Boolean = false,
 	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
 ) {
 	if (items.isEmpty()) return
@@ -395,6 +396,7 @@ fun FloatingNavBar(
 					FloatingNavItem(
 						item = item,
 						selected = item.id == (previewId ?: selectedId),
+						showSelectionChrome = !indicatorMoving,
 						layoutSelected = item.id == selectedId,
 						hideLabel = previewId != null && previewId != selectedId,
 						modifier = Modifier.onGloballyPositioned { onTabBounds(item.id, it.boundsInWindow()) },
@@ -463,6 +465,7 @@ private fun FloatingContinueButton(
 private fun FloatingNavItem(
 	item: FloatingNavBarItem,
 	selected: Boolean,
+	showSelectionChrome: Boolean,
 	layoutSelected: Boolean,
 	hideLabel: Boolean,
 	showLabel: Boolean,
@@ -474,7 +477,7 @@ private fun FloatingNavItem(
 	modifier: Modifier = Modifier,
 ) {
 	val container by animateColorAsState(
-		targetValue = if (selected) Color(colors.selectedContainer) else Color.Transparent,
+		targetValue = if (selected && showSelectionChrome) Color(colors.selectedContainer) else Color.Transparent,
 		animationSpec = FloatSpec_Color,
 		label = "navItemContainer",
 	)
@@ -514,7 +517,7 @@ private fun FloatingNavItem(
 			ColorUtils.blendARGB(selectedAccent.toArgb(), Color.White.toArgb(), 0.42f),
 		)
 	}
-	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
+	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected && showSelectionChrome) {
 		Modifier.drawBehind {
 			val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
 			drawRoundRect(
@@ -541,7 +544,7 @@ private fun FloatingNavItem(
 	} else {
 		Modifier
 	}
-	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
+	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected && showSelectionChrome) {
 		Brush.horizontalGradient(
 			listOf(
 				container,

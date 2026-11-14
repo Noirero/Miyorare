@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
+import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.core.ui.widgets.SlidingBottomNavigationView
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
@@ -140,6 +141,7 @@ class MainNavigationDelegate(
 				if (itemId == R.id.nav_favorites) openPrivateFavourites()
 			}
 		}
+		(navBar as? DragNavigationRailView)?.setTabDragListeners(::previewTab, ::commitTabDrag)
 		installNativePrivateLongClick()
 		observeSettings(lifecycleOwner)
 		val fragment = primaryFragment
@@ -211,6 +213,7 @@ class MainNavigationDelegate(
 
 	fun setItemVisibility(@IdRes itemId: Int, isVisible: Boolean) {
 		val item = navBar.menu.findItem(itemId) ?: return
+		if (item.isVisible != isVisible) (navBar as? DragNavigationRailView)?.cancelTabDrag()
 		item.isVisible = isVisible
 		(navBar as? FloatingBottomNavigationView)?.setComposeItemVisibility(itemId, isVisible)
 		if (item.isChecked && !isVisible) {
@@ -281,6 +284,7 @@ class MainNavigationDelegate(
 
 	internal fun cancelTabDrag() {
 		(navBar as? FloatingBottomNavigationView)?.cancelTabDrag()
+		(navBar as? DragNavigationRailView)?.cancelTabDrag()
 		clearTabPreview()
 	}
 
@@ -474,6 +478,7 @@ class MainNavigationDelegate(
 				val items = settings.mainNavItems
 				if ((0 until navBar.menu.size).map { navBar.menu.getItem(it).itemId } != items.map { item -> item.id }) {
 					val selected = getItemId(primaryFragment ?: return@onEach)
+					cancelTabDrag()
 					navBar.menu.clear()
 					createMenu(items, navBar.menu)
 					(navBar as? FloatingBottomNavigationView)?.setComposeItems(items)
@@ -526,6 +531,7 @@ class MainNavigationDelegate(
 		if (navBar !is NavigationRailView) {
 			return
 		}
+		(navBar as? DragNavigationRailView)?.cancelTabDrag()
 		if (value) {
 			navBar.expand()
 			navRailHeader?.run {
