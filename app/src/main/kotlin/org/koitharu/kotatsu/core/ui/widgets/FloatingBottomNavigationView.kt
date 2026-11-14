@@ -338,9 +338,22 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		var cancelled = false
 
 		fun targetAt(x: Float, y: Float): Int? {
-			val row = bounds.filter { (_, r) -> y >= r.top && y < r.bottom }
-			if (row.isEmpty() || x < row.minOf { it.second.left } || x >= row.maxOf { it.second.right }) return null
-			return row.minByOrNull { (_, r) -> maxOf(r.left - x, x - r.right, 0f) }?.first
+			var left = Float.POSITIVE_INFINITY
+			var right = Float.NEGATIVE_INFINITY
+			var nearest: Int? = null
+			var distance = Float.POSITIVE_INFINITY
+			for ((id, rect) in bounds) {
+				if (y < rect.top || y >= rect.bottom) continue
+				if (x >= rect.left && x < rect.right) return id
+				left = minOf(left, rect.left)
+				right = maxOf(right, rect.right)
+				val gap = maxOf(rect.left - x, x - rect.right)
+				if (gap < distance) {
+					distance = gap
+					nearest = id
+				}
+			}
+			return nearest.takeIf { x >= left && x < right }
 		}
 	}
 

@@ -161,7 +161,10 @@ class DiscoveryNavigationRuntimeTest {
 				assertTrue(preview.isHidden)
 				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
 			}
+			compose.waitForIdle()
+			assertEquals(listOf(start, custom, home), tabCenters())
 			send(MotionEvent.ACTION_MOVE, home, 64)
+			compose.onNodeWithTag("catalog_home_list").assertIsDisplayed()
 			scenario.onActivity { activity ->
 				val preview = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
 				assertEquals(View.VISIBLE, preview.requireView().visibility)
@@ -191,6 +194,15 @@ class DiscoveryNavigationRuntimeTest {
 				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
 				assertEquals(0, manager.backStackEntryCount)
 			}
+			compose.onNodeWithTag("catalog_home_list").performScrollToNode(hasTestTag("catalog_section_NOVEL_TOP_RATED"))
+			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
+			val (_, away, committedHome) = tabCenters()
+			downTime = SystemClock.uptimeMillis()
+			send(MotionEvent.ACTION_DOWN, committedHome, 0)
+			send(MotionEvent.ACTION_MOVE, away, 32)
+			send(MotionEvent.ACTION_CANCEL, away, 64)
+			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
+			assertEquals(1, calls.get())
 		}
 	}
 

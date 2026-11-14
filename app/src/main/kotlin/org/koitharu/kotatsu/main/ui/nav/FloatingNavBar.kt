@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -394,6 +395,8 @@ fun FloatingNavBar(
 					FloatingNavItem(
 						item = item,
 						selected = item.id == (previewId ?: selectedId),
+						layoutSelected = item.id == selectedId,
+						hideLabel = previewId != null && previewId != selectedId,
 						modifier = Modifier.onGloballyPositioned { onTabBounds(item.id, it.boundsInWindow()) },
 						showLabel = showLabels,
 						colors = effectiveColors,
@@ -460,6 +463,8 @@ private fun FloatingContinueButton(
 private fun FloatingNavItem(
 	item: FloatingNavBarItem,
 	selected: Boolean,
+	layoutSelected: Boolean,
+	hideLabel: Boolean,
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
@@ -589,7 +594,7 @@ private fun FloatingNavItem(
 					tint = content,
 					modifier = Modifier.size(
 						when {
-							isMiyorareModern && emphasizeFavourites && selected ->
+							isMiyorareModern && emphasizeFavourites && layoutSelected ->
 								MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ICON_DP.dp
 							isMiyorareModern && emphasizeFavourites ->
 								MiyorareFavouritesVisualSpec.BOTTOM_NAV_ICON_DP.dp
@@ -600,7 +605,9 @@ private fun FloatingNavItem(
 				)
 			}
 			AnimatedVisibility(
-				visible = selected && showLabel,
+				// Keep the committed label's space until UP so the hit regions and
+				// the icons agree throughout the gesture.
+				visible = layoutSelected && showLabel,
 				enter = expandHorizontally(animationSpec = FloatSpec_Size, expandFrom = Alignment.Start) +
 					fadeIn(animationSpec = FloatSpec_Float),
 				exit = shrinkHorizontally(animationSpec = FloatSpec_Size, shrinkTowards = Alignment.Start) +
@@ -608,6 +615,7 @@ private fun FloatingNavItem(
 			) {
 				Text(
 					text = title,
+					modifier = Modifier.alpha(if (hideLabel) 0f else 1f),
 					color = content,
 					fontSize = when {
 						isMiyorareModern && emphasizeFavourites ->

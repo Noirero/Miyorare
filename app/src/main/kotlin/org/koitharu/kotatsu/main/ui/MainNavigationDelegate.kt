@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
+import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.core.ui.widgets.SlidingBottomNavigationView
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
@@ -288,6 +289,7 @@ class MainNavigationDelegate(
 		tabPreview = null
 		preview.target.visibility = preview.targetVisibility
 		preview.current.visibility = preview.currentVisibility
+		preview.externalHeader?.let { (view, visibility) -> view.visibility = visibility }
 	}
 
 	private fun previewTab(@IdRes itemId: Int?): Boolean {
@@ -311,7 +313,17 @@ class MainNavigationDelegate(
 		val targetView = target.view ?: return false
 		// Fragment.show/hide dispatches search/app bar/account refresh hooks. Change
 		// only root view visibility during preview; preserve the committed lifecycle.
-		tabPreview = TabPreview(currentView, currentView.visibility, targetView, targetView.visibility)
+		// Favorites reparents its category header to the activity app bar. Hide it
+		// for another tab's preview without changing app-bar ownership or layout.
+		val externalHeader = if (current is FavouritesContainerFragment) {
+			(navBar.context.findActivity() as? AppBarOwner)?.appBar
+				?.findViewById<View>(R.id.layout_category_header)
+		} else null
+		tabPreview = TabPreview(
+			currentView, currentView.visibility, targetView, targetView.visibility,
+			externalHeader?.let { it to it.visibility },
+		)
+		externalHeader?.visibility = View.INVISIBLE
 		currentView.visibility = View.INVISIBLE
 		targetView.visibility = View.VISIBLE
 		return true
@@ -335,6 +347,7 @@ class MainNavigationDelegate(
 		val currentVisibility: Int,
 		val target: View,
 		val targetVisibility: Int,
+		val externalHeader: Pair<View, Int>?,
 	)
 
 	private fun newBottomTab(type: Class<out Fragment>): Fragment = instantiateFragment(type).apply {
