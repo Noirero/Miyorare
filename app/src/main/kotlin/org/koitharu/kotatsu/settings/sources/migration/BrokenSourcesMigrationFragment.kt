@@ -195,12 +195,12 @@ internal fun BrokenSourcesMigrationScreen(
 			}
 			state.loadFailed -> Column(Modifier.fillMaxSize().padding(24.dp),
 				verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-				Text("Daftar source tidak dapat dimuat", style = MaterialTheme.typography.titleMedium)
+				Text(stringResource(R.string.migration_surface_load_sources_failed), style = MaterialTheme.typography.titleMedium)
 				TextButton(onClick = onRetry) { Text(stringResource(R.string.migration_retry)) }
 			}
 			activeSource == null -> {
 				Column(Modifier.fillMaxSize()) {
-					Text("Pilih source", style = MaterialTheme.typography.titleLarge,
+					Text(stringResource(R.string.migration_surface_choose_source), style = MaterialTheme.typography.titleLarge,
 						modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 					if (hasManga && hasNovel) {
 						Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -215,7 +215,7 @@ internal fun BrokenSourcesMigrationScreen(
 						contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
 						verticalArrangement = Arrangement.spacedBy(10.dp),
 					) {
-						if (sourceRows.isEmpty()) item { Text("Tidak ada judul yang dapat dimigrasikan.") }
+						if (sourceRows.isEmpty()) item { Text(stringResource(R.string.migration_surface_no_titles)) }
 						items(sourceRows, key = { it.second.key }) { (group, variant, count) ->
 							val ids = domainManga.filter { it.source.name == variant.key }.map(Manga::id)
 							Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
@@ -228,11 +228,11 @@ internal fun BrokenSourcesMigrationScreen(
 										fontWeight = FontWeight.SemiBold)
 									Text(pluralStringResource(R.plurals.manga_count, count, count),
 										style = MaterialTheme.typography.bodySmall)
-									if (group.isUnavailable) Text("Source tidak tersedia",
+									if (group.isUnavailable) Text(stringResource(R.string.migration_surface_source_unavailable),
 										style = MaterialTheme.typography.labelSmall,
 										color = MaterialTheme.colorScheme.error)
 								}
-								TextButton(onClick = { onOpenManga(ids, null) }) { Text("Semua") }
+								TextButton(onClick = { onOpenManga(ids, null) }) { Text(stringResource(R.string.migration_flow_all)) }
 							}
 						}
 					}
@@ -253,19 +253,19 @@ internal fun BrokenSourcesMigrationScreen(
 				Column(Modifier.fillMaxSize()) {
 					Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
 						verticalAlignment = Alignment.CenterVertically) {
-						TextButton(onClick = leaveSource) { Text("‹ Source") }
+						TextButton(onClick = leaveSource) { Text(stringResource(R.string.migration_surface_back_source)) }
 						Text(source.title, style = MaterialTheme.typography.titleMedium,
 							modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
 					}
 					if (currentSelected.isNotEmpty()) {
 						Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
 							verticalAlignment = Alignment.CenterVertically) {
-							Text("${currentSelected.size} terpilih", modifier = Modifier.weight(1f),
+							Text(stringResource(R.string.migration_surface_selected_count, currentSelected.size), modifier = Modifier.weight(1f),
 								style = MaterialTheme.typography.titleSmall)
 							TextButton(onClick = { selectedIds = ArrayList(sourceManga.map(Manga::id)) }) {
-								Text("Pilih semua")
+								Text(stringResource(R.string.migration_surface_select_all))
 							}
-							TextButton(onClick = { clearSelection() }) { Text("Batal") }
+							TextButton(onClick = { clearSelection() }) { Text(stringResource(R.string.migration_flow_cancel)) }
 						}
 					}
 					LazyColumn(Modifier.weight(1f),
@@ -273,7 +273,7 @@ internal fun BrokenSourcesMigrationScreen(
 						verticalArrangement = Arrangement.spacedBy(8.dp)) {
 						item {
 							OutlinedTextField(value = query, onValueChange = { query = it },
-								label = { Text(if (showNovel) "Cari novel" else "Cari manga") }, singleLine = true,
+								label = { Text(if (showNovel) stringResource(R.string.migration_surface_search_novel) else stringResource(R.string.migration_surface_search_manga)) }, singleLine = true,
 								modifier = Modifier.fillMaxWidth().testTag("migration-landing-search"))
 						}
 						items(manga, key = Manga::id) { item ->
@@ -318,14 +318,14 @@ internal fun BrokenSourcesMigrationScreen(
 								horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 								androidx.compose.material3.OutlinedButton(
 									onClick = { onOpenManga(currentSelected, MigrationBatchAction.COPY) },
-									modifier = Modifier.weight(1f)) { Text("Salin (${currentSelected.size})") }
+									modifier = Modifier.weight(1f)) { Text(stringResource(R.string.migration_flow_copy_count, currentSelected.size)) }
 								Button(onClick = { onOpenManga(currentSelected, MigrationBatchAction.MIGRATE) },
-									modifier = Modifier.weight(1f)) { Text("Migrasikan (${currentSelected.size})") }
+									modifier = Modifier.weight(1f)) { Text(stringResource(R.string.migration_flow_migrate_count, currentSelected.size)) }
 							}
 						} else {
 							Button(onClick = { onOpenManga(sourceManga.map(Manga::id), null) },
 								modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-								Text("Migrasikan semua (${sourceManga.size})")
+								Text(stringResource(R.string.migration_surface_migrate_all, sourceManga.size))
 							}
 						}
 					}

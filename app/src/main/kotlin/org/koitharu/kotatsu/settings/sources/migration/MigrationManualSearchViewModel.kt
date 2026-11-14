@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.alternatives.domain.migrationConfigKey
 import org.koitharu.kotatsu.alternatives.work.MigrationBatchScheduler
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -67,17 +68,17 @@ class MigrationManualSearchViewModel @Inject constructor(
 
 	fun setQuery(value: String) {
 		if (state.value.searching || state.value.migrating || state.value.skipping) return
-		_state.update { it.copy(query = value, selected = null, groups = emptyMap(), errorMessage = null) }
+		_state.update { it.copy(query = value, selected = null, groups = emptyMap(), error = null) }
 	}
 
 	fun select(candidate: Manga) {
 		if (state.value.migrating || state.value.skipping || candidate.id == mangaId) return
-		_state.update { it.copy(selected = candidate, errorMessage = null) }
+		_state.update { it.copy(selected = candidate, error = null) }
 	}
 
 	fun clearSelection() {
 		if (state.value.migrating || state.value.skipping) return
-		_state.update { it.copy(selected = null, errorMessage = null) }
+		_state.update { it.copy(selected = null, error = null) }
 	}
 
 	fun search() {
@@ -90,7 +91,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 		_state.update { current ->
 			current.copy(
 				searching = true,
-				errorMessage = null,
+				error = null,
 				groups = sources.associate { source ->
 					source.name to ManualMigrationSourceResult(source = source, loading = true)
 				},
@@ -116,7 +117,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 								source = source,
 								manga = manga,
 								loading = false,
-								errorMessage = result.exceptionOrNull()?.message,
+								failed = result.isFailure,
 							)
 							current.copy(groups = next)
 						}
@@ -134,15 +135,15 @@ class MigrationManualSearchViewModel @Inject constructor(
 		val seed = current.seed ?: return
 		if (current.migrating || current.skipping || candidate.id == mangaId) return
 		searchJob?.cancel()
-		_state.update { it.copy(searching = false, migrating = true, errorMessage = null) }
+		_state.update { it.copy(searching = false, migrating = true, error = null) }
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
                     check(database.getMangaDao().isNormalMigrationFavourite(mangaId)) {
-                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                        throw ManualMigrationException(ManualMigrationError.NOT_FAVOURITE, "Manga is not in Normal Favourites")
                     }
                     check(canPersistCandidate(candidate)) {
-						"Selected result already belongs to another source"
+						throw ManualMigrationException(ManualMigrationError.SOURCE_CONFLICT, "Selected result already belongs to another source")
 					}
 					mangaDataRepository.storeManga(
 						manga = candidate, replaceExisting = true, stripAppliedOverride = false,
@@ -153,12 +154,12 @@ class MigrationManualSearchViewModel @Inject constructor(
 						selection = MigrationSelection.fromSearchResult(candidate),
 						destinationTitle = candidate.title,
 						configKey = sessionConfigKey,
-					)) { "Another migration batch is still running" }
+					)) { throw ManualMigrationException(ManualMigrationError.BATCH_ACTIVE, "Another migration batch is still running") }
 				}
 			}.onSuccess {
 				_state.update { it.copy(migrating = false, selectedReady = true) }
 			}.onFailure { error ->
-				_state.update { it.copy(migrating = false, errorMessage = error.message ?: error::class.java.simpleName) }
+				_state.update { it.copy(migrating = false, error = error.toManualMigrationError(ManualMigrationError.ACTION_FAILED)) }
 			}
 		}
 	}
@@ -171,7 +172,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 		val seed = state.value.seed ?: return
 		if (state.value.migrating || state.value.skipping) return
 		searchJob?.cancel()
-		_state.update { it.copy(searching = false, skipping = true, errorMessage = null) }
+		_state.update { it.copy(searching = false, skipping = true, error = null) }
 		viewModelScope.launch {
 			runCatchingCancellable {
 				batchScheduler.markSkipped(
@@ -183,10 +184,10 @@ class MigrationManualSearchViewModel @Inject constructor(
 				if (marked) {
 					_state.update { it.copy(skipping = false, skipped = true) }
 				} else {
-					_state.update { it.copy(skipping = false, errorMessage = "Another migration batch is still running") }
+					_state.update { it.copy(skipping = false, error = ManualMigrationError.BATCH_ACTIVE) }
 				}
 			}.onFailure { error ->
-				_state.update { it.copy(skipping = false, errorMessage = error.message ?: error::class.java.simpleName) }
+				_state.update { it.copy(skipping = false, error = error.toManualMigrationError(ManualMigrationError.ACTION_FAILED)) }
 			}
 		}
 	}
@@ -197,16 +198,16 @@ class MigrationManualSearchViewModel @Inject constructor(
 		val seed = current.seed ?: return
 		if (current.migrating || current.skipping || candidate.id == mangaId) return
 		searchJob?.cancel()
-		_state.update { it.copy(searching = false, migrating = true, errorMessage = null) }
+		_state.update { it.copy(searching = false, migrating = true, error = null) }
 		viewModelScope.launch {
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
-					check(candidate.id != mangaId) { "Selected replacement conflicts with the source manga identity" }
+					check(candidate.id != mangaId) { throw ManualMigrationException(ManualMigrationError.IDENTITY_CONFLICT, "Selected replacement conflicts with the source manga identity") }
                     check(database.getMangaDao().isNormalMigrationFavourite(mangaId)) {
-                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                        throw ManualMigrationException(ManualMigrationError.NOT_FAVOURITE, "Manga is not in Normal Favourites")
                     }
                     check(canPersistCandidate(candidate)) {
-						"Selected replacement id is already owned by a different source"
+						throw ManualMigrationException(ManualMigrationError.SOURCE_CONFLICT, "Selected replacement id is already owned by a different source")
 					}
 					mangaDataRepository.storeManga(
 						manga = candidate,
@@ -228,21 +229,21 @@ class MigrationManualSearchViewModel @Inject constructor(
 								configKey = sessionConfigKey,
 							),
 						),
-					) { "Another migration batch is still running" }
+					) { throw ManualMigrationException(ManualMigrationError.BATCH_ACTIVE, "Another migration batch is still running") }
 					val expected = if (mode == MigrationExecutionMode.COPY) MigrationBatchStatus.COPIED else MigrationBatchStatus.MIGRATED
 					check(snapshot.outcome.status == expected) {
 						"Migration execution ended with ${snapshot.outcome.status.name.lowercase()}" +
                             (snapshot.outcome.failureStage?.let { " at ${it.name.lowercase()}" } ?: "")
 					}
-					val destinationId = checkNotNull(snapshot.outcome.destinationId) { "Migration result has no destination" }
+					val destinationId = checkNotNull(snapshot.outcome.destinationId) { throw ManualMigrationException(ManualMigrationError.RESULT_UNAVAILABLE, "Migration result has no destination") }
 					checkNotNull(mangaDataRepository.findMangaById(destinationId, withChapters = false)) {
-						"Migrated manga $destinationId is no longer available"
+						throw ManualMigrationException(ManualMigrationError.RESULT_UNAVAILABLE, "Migrated manga $destinationId is no longer available")
 					}
 				}
 			}.onSuccess { result ->
 				_state.update { it.copy(migrating = false, completed = result, completedMode = mode) }
 			}.onFailure { error ->
-				_state.update { it.copy(migrating = false, errorMessage = error.message ?: error::class.java.simpleName) }
+				_state.update { it.copy(migrating = false, error = error.toManualMigrationError(ManualMigrationError.ACTION_FAILED)) }
 			}
 		}
 	}
@@ -257,7 +258,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 			runCatchingCancellable {
 				withContext(Dispatchers.IO) {
                     check(database.getMangaDao().isNormalMigrationFavourite(mangaId)) {
-                        "Manga ini belum ditambahkan ke Disukai. Tambahkan terlebih dahulu untuk memigrasikannya."
+                        throw ManualMigrationException(ManualMigrationError.NOT_FAVOURITE, "Manga is not in Normal Favourites")
                     }
                     val seed = checkNotNull(mangaDataRepository.findMangaById(mangaId, withChapters = true))
 					val pool = yokaiSearch.sourcePool(mangaId)
@@ -283,7 +284,7 @@ class MigrationManualSearchViewModel @Inject constructor(
 			}.onFailure { error ->
 				_state.value = MigrationManualSearchState(
 					loading = false,
-					errorMessage = error.message ?: error::class.java.simpleName,
+					error = error.toManualMigrationError(ManualMigrationError.SESSION_FAILED),
 				)
 			}
 		}
@@ -306,7 +307,7 @@ data class MigrationManualSearchState(
 	val sources: List<MangaSource> = emptyList(),
 	val groups: Map<String, ManualMigrationSourceResult> = emptyMap(),
 	val selected: Manga? = null,
-	val errorMessage: String? = null,
+	val error: ManualMigrationError? = null,
 	val completed: Manga? = null,
 	val completedMode: MigrationExecutionMode? = null,
 )
@@ -315,5 +316,25 @@ data class ManualMigrationSourceResult(
 	val source: MangaSource,
 	val manga: List<Manga> = emptyList(),
 	val loading: Boolean = false,
-	val errorMessage: String? = null,
+	val failed: Boolean = false,
 )
+
+enum class ManualMigrationError {
+	NOT_FAVOURITE,
+	BATCH_ACTIVE,
+	IDENTITY_CONFLICT,
+	SOURCE_CONFLICT,
+	SESSION_FAILED,
+	RESULT_UNAVAILABLE,
+	ACTION_FAILED,
+}
+
+private class ManualMigrationException(
+	val reason: ManualMigrationError,
+	message: String,
+) : IllegalStateException(message)
+
+private fun Throwable.toManualMigrationError(fallback: ManualMigrationError): ManualMigrationError {
+	printStackTraceDebug()
+	return (this as? ManualMigrationException)?.reason ?: fallback
+}
