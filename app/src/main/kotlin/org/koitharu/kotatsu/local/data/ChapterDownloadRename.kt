@@ -5,6 +5,7 @@ import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import java.io.File
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
+import java.util.zip.ZipFile
 
 /** Both the fast matcher and the fallback parser can supply a standalone chapter URL. */
 internal fun chapterDownloadFile(root: File, url: String): File? {
@@ -34,7 +35,9 @@ internal fun canRenameStandaloneChapterFile(root: File, file: File): Boolean = r
 	file.parentFile == root && file.extension.equals("cbz", ignoreCase = true) &&
 		file.isFile && !Files.isSymbolicLink(file.toPath()) &&
 		file.canonicalFile.parentFile == root.canonicalFile &&
-		!File(root, LocalMangaOutput.ENTRY_NAME_INDEX).exists()
+		!File(root, LocalMangaOutput.ENTRY_NAME_INDEX).exists() &&
+		// Reconciliation can assign a new chapter ID, while embedded indexes retain the old one.
+		ZipFile(file).use { it.size() > 0 && it.getEntry(LocalMangaOutput.ENTRY_NAME_INDEX) == null }
 }.getOrDefault(false)
 
 internal fun renameStandaloneChapterFile(root: File, file: File, input: String): Boolean {
