@@ -21,6 +21,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ArrayBlockingQueue
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -79,8 +80,9 @@ class AppLogger @Inject constructor(
 				startReadingLocked(generation)
 				diagnosticsSummary = ""
 				PerformanceDiagnostics.start(context)
+				if (BuildConfig.DEBUG) LegacyCbzDiagnosticExport.start()
 			} else {
-				diagnosticsSummary = PerformanceDiagnostics.stop()
+				diagnosticsSummary = stopDiagnostics()
 				stopReadingLocked()
 			}
 		}
@@ -89,7 +91,7 @@ class AppLogger @Inject constructor(
 	suspend fun stopAndDrainToString(): String {
 		val (job, summary) = synchronized(stateLock) {
 			if (isEnabled) {
-				diagnosticsSummary = PerformanceDiagnostics.stop()
+				diagnosticsSummary = stopDiagnostics()
 				isEnabled = false
 				generation++
 			}
@@ -98,6 +100,11 @@ class AppLogger @Inject constructor(
 		job?.join()
 		val diskLogs = getLogContent()
 		return diskLogs.ifBlank { drainToString() } + "\n" + summary
+	}
+
+	private fun stopDiagnostics(): String {
+		val summary = PerformanceDiagnostics.stop()
+		return if (BuildConfig.DEBUG) summary + "\n" + LegacyCbzDiagnosticExport.stop() else summary
 	}
 
 	private fun drainToString(): String {

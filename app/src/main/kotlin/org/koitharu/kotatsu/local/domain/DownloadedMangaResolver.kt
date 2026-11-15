@@ -1,9 +1,9 @@
 package org.koitharu.kotatsu.local.domain
 
-import android.util.Log
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
+import org.koitharu.kotatsu.core.logs.LegacyCbzDiagnosticExport
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.model.isBroken
@@ -170,7 +170,7 @@ internal class LegacyCbzTrace : AbstractCoroutineContextElement(Key) {
 		}
 
 		fun log(message: String) {
-			if (BuildConfig.DEBUG) Log.i("MiyorareLegacyCbz", message)
+			if (BuildConfig.DEBUG) LegacyCbzDiagnosticExport.record(message)
 		}
 	}
 }
