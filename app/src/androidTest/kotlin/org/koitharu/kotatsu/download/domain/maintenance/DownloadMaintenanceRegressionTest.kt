@@ -570,6 +570,57 @@ class DownloadMaintenanceRegressionTest {
 		assertArrayEquals("A read-only Details lookup must not rewrite the user's index", originalIndex, indexFile.readBytes())
 	}
 
+	@Test fun fullTitleExhentaiDownloadMapsToLocalPages() = runBlocking {
+		val gallery = offlineExhentaiGallery(812301L)
+		val receipt = org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(
+			FavouriteSpace.NORMAL, java.util.UUID.randomUUID(),
+		)
+		val cbz = writeGalleryFixture(gallery, appendId = false, bytes = byteArrayOf(1, 2, 3), receipt = receipt)
+		assertEquals(gallery.title, cbz.parentFile?.name)
+		assertEquals("Chapter.cbz", cbz.name)
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath),
+		)
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+	}
+
+	@Test fun compactOnlyExhentaiDownloadMapsToLocalPages() = runBlocking {
+		val gallery = offlineExhentaiGallery(812302L)
+		// MissingMangaSource has no Tsuki directory metadata; use the historical direct layout.
+		val cbz = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+	}
+
+	private fun offlineExhentaiGallery(gid: Long): Manga = galleryFixture(gid).let { gallery ->
+		gallery.copy(
+			title = "[Circle (Artist)] Offline gallery × Fixture [Chinese] [Translation Group] [Digital]",
+			chapters = listOf(requireNotNull(gallery.chapters).single().copy(branch = "Chinese", scanlator = null)),
+		)
+	}
+
+	private suspend fun assertExhentaiLocalRead(gallery: Manga, cbz: File, space: FavouriteSpace?) {
+		val bytes = cbz.readBytes()
+		val directory = checkNotNull(cbz.parentFile)
+		val entries = directory.list().orEmpty().toSet()
+		val chapter = requireNotNull(gallery.chapters).single()
+		val saved = checkNotNull(resolver.findSavedManga(gallery, space)) {
+			"Resolver returned no local artifact for ${cbz.name} in $space"
+		}
+		assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
+		val details = MangaDetails(gallery).copy(localManga = saved)
+		val rows = details.mapChapters(-1L, 0, chapter.branch, emptyList(), false, false)
+		assertTrue("Details did not mark the gallery chapter as downloaded in $space",
+			rows.any { it.chapter.id == chapter.id && it.isDownloaded })
+		val readerChapter = details.allChapters.single { it.id == chapter.id }
+		assertEquals(LocalMangaSource, readerChapter.source)
+		assertEquals(cbz.canonicalFile, File(java.net.URI(readerChapter.url)).canonicalFile)
+		assertTrue("Local CBZ must provide pages without calling the extension", local.getPages(readerChapter).isNotEmpty())
+		assertArrayEquals(bytes, cbz.readBytes())
+		assertEquals(entries, directory.list().orEmpty().toSet())
+	}
+
 	@Test fun fullExhentaiTitleFindsLegacyFileOnlyWithinRequestedRoot() = runBlocking {
 		val seed = remote()
 		val source = MissingMangaSource(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
