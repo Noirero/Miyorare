@@ -24,6 +24,10 @@ class FakeClient:
     def workflow_runs_for_head(self, sha):
         return self._runs
 
+    def jobs_for_attempt(self, run_id, attempt):
+        self.requested_attempt = (run_id, attempt)
+        return self._jobs
+
     def jobs_for_run(self, run_id):
         return self._jobs
 
@@ -453,6 +457,51 @@ class MiyoriStatusTests(unittest.TestCase):
 
     def test_legacy_marker_is_distinct(self):
         self.assertNotEqual(ms.CARD_MARKER, ms.LEGACY_MARKER)
+
+
+class FailureTriageTests(unittest.TestCase):
+    def test_reads_exact_attempt_and_prefers_step_evidence(self):
+        client = FakeClient(jobs=[
+            {"name": "Build", "conclusion": "failure", "steps": [
+                {"name": "Set up environment", "conclusion": "success"},
+                {"name": "Upload artifact", "conclusion": "failure"},
+                {"name": "Cleanup", "conclusion": "skipped"},
+            ]},
+        ])
+        details = ms.failure_details(client, {"id": 42, "run_attempt": 2, "conclusion": "failure"})
+        self.assertEqual(client.requested_attempt, (42, 2))
+        self.assertEqual(details, ["**artifact delivery** · `Build` → `Upload artifact`"])
+
+    def test_attempt_endpoint_is_paginated(self):
+        client = ms.GitHubClient("https://api.github.com", "Noirero/Miyorare", "unused")
+        paths = []
+
+        def get(path):
+            paths.append(path)
+            return {"jobs": [{"id": 1}] * 100 if len(paths) == 1 else [{"id": 2}]}
+
+        client.get = get
+        self.assertEqual(len(client.jobs_for_attempt(42, 2)), 101)
+        prefix = "/repos/Noirero/Miyorare/actions/runs/42/attempts/2/jobs?per_page=100&page="
+        self.assertEqual(paths, [prefix + "1", prefix + "2"])
+
+    def test_missing_attempt_or_job_evidence_does_not_guess(self):
+        client = FakeClient()
+        self.assertIn("cause unknown", ms.failure_details(client, {"conclusion": "failure"})[0])
+        self.assertFalse(hasattr(client, "requested_attempt"))
+        self.assertIn("cause unknown", ms.failure_details(
+            client, {"id": 42, "run_attempt": 2, "conclusion": "failure"}
+        )[0])
+
+    def test_non_failure_never_fetches_failure_details(self):
+        client = FakeClient()
+        for conclusion in ("success", "skipped", "cancelled"):
+            with self.subTest(conclusion=conclusion):
+                self.assertEqual(ms.failure_details(client, {"conclusion": conclusion}), [])
+        self.assertFalse(hasattr(client, "requested_attempt"))
+
+    def test_labels_cannot_break_out_of_markdown_code_span(self):
+        self.assertEqual(ms.failure_label("job`\n@user", "fallback"), "job' @user")
 
 
 if __name__ == "__main__":
