@@ -72,4 +72,6 @@
     <string name="migration_flow_skipped">Skipped</string>
     <string name="migration_flow_no_results">No migration results yet.</string>
     <string name="migration_flow_back_search">Back to search</string>
+    <string name="migration_flow_store_tab">Store</string>
+    <string name="migration_flow_other_global">🏳️ Other / Global</string>
 </resources>

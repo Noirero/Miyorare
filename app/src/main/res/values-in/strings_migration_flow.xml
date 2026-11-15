@@ -72,4 +72,6 @@
     <string name="migration_flow_skipped">Dilewati</string>
     <string name="migration_flow_no_results">Belum ada hasil migrasi untuk ditampilkan.</string>
     <string name="migration_flow_back_search">Kembali ke pencarian</string>
+    <string name="migration_flow_store_tab">Toko</string>
+    <string name="migration_flow_other_global">🏳️ Lainnya / Global</string>
 </resources>

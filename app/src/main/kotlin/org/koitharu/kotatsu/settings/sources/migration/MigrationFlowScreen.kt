@@ -335,6 +335,7 @@ private fun MigrationSearchSetup(
 								when (tab) {
 									"all" -> stringResource(R.string.migration_flow_all)
 									"Other" -> stringResource(R.string.migration_source_origin_other)
+									"Store" -> stringResource(R.string.migration_flow_store_tab)
 									else -> tab
 								}, count)) })
 					}
@@ -379,7 +380,10 @@ private fun MigrationSearchSetup(
 									})
 								}.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
 									Column(Modifier.weight(1f)) {
-										Text(group.label + " (" + group.sources.size + ")",
+										val label = if (group.languageCode == "other") {
+											stringResource(R.string.migration_flow_other_global)
+										} else group.label
+										Text(stringResource(R.string.migration_scope_with_count, label, group.sources.size),
 											maxLines = 2, overflow = TextOverflow.Ellipsis)
 										val groupPriorities = eligibleGroup.mapNotNull { source ->
 											state.selectedSourceNames.indexOf(source.name).takeIf { it >= 0 }?.plus(1)
