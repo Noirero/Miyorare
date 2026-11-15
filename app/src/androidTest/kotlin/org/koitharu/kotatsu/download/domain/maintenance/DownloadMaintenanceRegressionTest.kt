@@ -572,6 +572,8 @@ class DownloadMaintenanceRegressionTest {
 
 	@Test fun fullTitleExhentaiDownloadMapsToLocalPages() = runBlocking {
 		val gallery = offlineExhentaiGallery(812301L)
+		// The ownership row references the persisted manga, as it does for a real download.
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
 		val receipt = org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(
 			FavouriteSpace.NORMAL, java.util.UUID.randomUUID(),
 		)
