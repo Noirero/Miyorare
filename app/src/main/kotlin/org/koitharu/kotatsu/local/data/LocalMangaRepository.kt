@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.data.output.LocalMangaUtil
 import org.koitharu.kotatsu.local.domain.MangaLock
+import org.koitharu.kotatsu.local.domain.LegacyCbzTrace
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.InternalParsersApi
 import org.koitharu.kotatsu.parsers.model.ContentRating
@@ -320,8 +321,14 @@ class LocalMangaRepository @Inject constructor(
 		space: FavouriteSpace? = null,
 		request: java.util.UUID? = null,
 	): ExhentaiDownloadedCopy.Match? {
-		val match = ExhentaiDownloadedCopy.find(remote, path, withDetails, space, request) ?: return null
+		val match = ExhentaiDownloadedCopy.find(remote, path, withDetails, space, request)
+		if (org.koitharu.kotatsu.BuildConfig.DEBUG && (match != null || path.exists())) {
+			LegacyCbzTrace.record(LegacyCbzTrace.Stage.CANDIDATE)
+			if (match == null) LegacyCbzTrace.record(LegacyCbzTrace.Stage.ARCHIVE_REJECTED)
+		}
+		if (match == null) return null
 		if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, match.local.file, match.verified)) {
+			LegacyCbzTrace.record(LegacyCbzTrace.Stage.OWNERSHIP_CONFLICT)
 			return null
 		}
 		return match
@@ -339,12 +346,16 @@ class LocalMangaRepository @Inject constructor(
 		val otherRoots = space?.let {
 			downloadDestinationStore.readableRoots(if (it == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL)
 		}.orEmpty()
-		fun ExhentaiDownloadedCopy.Match.allowed(): Boolean =
-			!local.file.isInsideAny(otherRoots) || (space != null && receipt?.space == space)
+		suspend fun ExhentaiDownloadedCopy.Match.allowed(): Boolean {
+			val allowed = !local.file.isInsideAny(otherRoots) || (space != null && receipt?.space == space)
+			if (!allowed) LegacyCbzTrace.record(LegacyCbzTrace.Stage.SPACE_REJECTED)
+			return allowed
+		}
 		val hints = favouriteDownloadOwnershipIndex.pathsForManga(remote.id) + listOfNotNull(localMangaIndex.findIndexedPath(remote.id))
 		for (hint in hints.distinct()) {
 			if (!hint.isInsideAny(roots)) continue
 			findExhentaiAtPath(remote, hint, withDetails, space, request)?.takeIf {
+				if (!it.verified) LegacyCbzTrace.record(LegacyCbzTrace.Stage.UNVERIFIED_ALIAS)
 				it.verified && it.allowed()
 			}?.let {
 				return@withContext it.local
@@ -367,7 +378,10 @@ class LocalMangaRepository @Inject constructor(
 				val match = findExhentaiAtPath(remote, path, withDetails, space, request) ?: continue
 				if (!match.verified || !match.allowed()) continue
 				recovered[match.local.file.canonicalFile] = match.local
-				if (recovered.size > 1) return@withContext null
+				if (recovered.size > 1) {
+					LegacyCbzTrace.record(LegacyCbzTrace.Stage.AMBIGUOUS_RECOVERY)
+					return@withContext null
+				}
 			}
 		}
 		recovered.values.singleOrNull()?.let { return@withContext it }

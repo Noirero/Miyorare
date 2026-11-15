@@ -1,5 +1,9 @@
 package org.koitharu.kotatsu.local.domain
 
+import android.util.Log
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.model.isBroken
@@ -15,6 +19,8 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -49,6 +55,27 @@ class DownloadedMangaResolver @Inject constructor(
 	}
 
 	suspend fun findSavedManga(
+		manga: Manga,
+		favouriteSpace: FavouriteSpace?,
+	): LocalManga? {
+		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
+			return resolveSavedManga(manga, favouriteSpace)
+		}
+		val trace = LegacyCbzTrace()
+		return withContext(trace) {
+			val saved = resolveSavedManga(manga, favouriteSpace)
+			val result = when {
+				saved == null && trace.hasCandidate -> "REJECTED"
+				saved == null -> "NOT_FOUND"
+				saved.manga.chapters.isNullOrEmpty() -> "CHAPTER_NOT_MAPPED"
+				else -> "LOCAL_CHAPTER_AVAILABLE"
+			}
+			LegacyCbzTrace.log("LOOKUP_${favouriteSpace?.name ?: "BROWSE"} $result ${trace.summary()}")
+			saved
+		}
+	}
+
+	private suspend fun resolveSavedManga(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
@@ -123,5 +150,27 @@ class DownloadedMangaResolver @Inject constructor(
 			.path.trimEnd(File.separatorChar)
 		val filePath = runCatching { canonicalFile }.getOrDefault(absoluteFile).path
 		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
+	}
+}
+
+/** Debug-only, per lookup, fixed reason codes; never stores gallery or filesystem identifiers. */
+internal class LegacyCbzTrace : AbstractCoroutineContextElement(Key) {
+	enum class Stage {
+		CANDIDATE, ARCHIVE_REJECTED, OWNERSHIP_CONFLICT, UNVERIFIED_ALIAS, SPACE_REJECTED,
+		AMBIGUOUS_RECOVERY,
+	}
+
+	private val stages = java.util.EnumSet.noneOf(Stage::class.java)
+	val hasCandidate get() = Stage.CANDIDATE in stages
+	fun summary(): String = stages.joinToString(",")
+
+	companion object Key : CoroutineContext.Key<LegacyCbzTrace> {
+		suspend fun record(stage: Stage) {
+			if (BuildConfig.DEBUG) currentCoroutineContext()[Key]?.stages?.add(stage)
+		}
+
+		fun log(message: String) {
+			if (BuildConfig.DEBUG) Log.i("MiyorareLegacyCbz", message)
+		}
 	}
 }

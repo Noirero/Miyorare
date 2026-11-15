@@ -7,7 +7,10 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.local.domain.LegacyCbzTrace
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.core.parser.FreshChapterPagesRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
@@ -193,6 +196,12 @@ class ChaptersLoader @Inject constructor(
         }
 
     private suspend fun loadPagesLocalFirst(chapter: MangaChapter): List<MangaPage> {
+        val trace = BuildConfig.DEBUG && EhentaiSourceFamily.isOfficialSource(
+            (if (chapter.source == LocalMangaSource) sourceChapters[chapter.id]?.source else chapter.source)?.name.orEmpty(),
+        )
+        if (trace) {
+            LegacyCbzTrace.log(if (chapter.source == LocalMangaSource) "READER_SELECTED_LOCAL" else "READER_SELECTED_REMOTE")
+        }
         val primary = runCatchingCancellable {
             mangaRepositoryFactory.create(chapter.source).getPages(chapter)
         }
@@ -201,6 +210,7 @@ class ChaptersLoader @Inject constructor(
         val sourceChapter = sourceChapters[chapter.id]
         if (chapter.source == LocalMangaSource && sourceChapter != null &&
             sourceChapter.source != LocalMangaSource) {
+            if (trace) LegacyCbzTrace.log("READER_LOCAL_EMPTY_OR_FAILED_FALLBACK_REMOTE")
             return mangaRepositoryFactory.create(sourceChapter.source).getPages(sourceChapter)
         }
         return primary.getOrThrow()
