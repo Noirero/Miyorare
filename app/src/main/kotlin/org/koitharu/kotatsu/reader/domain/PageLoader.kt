@@ -34,6 +34,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -394,7 +395,9 @@ class PageLoader @Inject constructor(
 		val pageUrl = getReaderPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
 		val uri = pageUrl.toUri()
-		if (!skipCache && !(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)) {
+		if (!skipCache && !uri.isZipUri() &&
+			!(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)
+		) {
 			cache.get(pageUrl)?.let { return it.toUri() }
 		}
 		return when {
@@ -471,17 +474,20 @@ class PageLoader @Inject constructor(
 		cacheKey: String,
 		reuseCache: Boolean,
 	): Uri = cbzMaterializeLock.withLock {
-		if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
-		val file = File(requireNotNull(uri.schemeSpecificPart) { "CBZ path is null: $uri" })
-		val entryName = requireNotNull(uri.fragment) { "CBZ entry is null: $uri" }
-		ZipFile(file).use { zip ->
-			val entry = requireNotNull(zip.getEntry(entryName)) { "CBZ entry not found: $entryName" }
-			zip.getInputStream(entry).source().use { source ->
-				cache.set(
-					cacheKey,
-					source,
-					MimeTypes.getMimeTypeFromExtension(entry.name),
-				).toUri()
+		withContext(Dispatchers.IO) {
+			val file = File(requireNotNull(uri.schemeSpecificPart) { "CBZ path is null: $uri" })
+			val entryName = requireNotNull(uri.fragment) { "CBZ entry is null: $uri" }
+			ZipFile(file).use { zip ->
+				val entry = requireNotNull(zip.getEntry(entryName)) { "CBZ entry not found: $entryName" }
+				val versionedKey = cbzPageCacheKey(cacheKey, entry)
+				if (reuseCache) cache[versionedKey]?.let { return@withContext it.toUri() }
+				zip.getInputStream(entry).source().use { source ->
+					cache.set(
+						versionedKey,
+						source,
+						MimeTypes.getMimeTypeFromExtension(entry.name),
+					).toUri()
+				}
 			}
 		}
 	}
