@@ -174,7 +174,11 @@ class PageLoader @Inject constructor(
 		var task = synchronized(tasks) { tasks[key] }?.takeIf { it.isValid() }
 		if (force) {
 			task?.cancel()
-		} else if (task?.isCancelled == false) {
+		} else if (task?.isCancelled == false &&
+			// A completed ZIP task only proves the extracted file still exists, not that its
+			// source entry is unchanged. Recheck the entry before reusing the disk cache.
+			(!task.isCompleted || !page.url.toUri().isZipUri())
+		) {
 			return task
 		}
 		task = loadPageAsyncImpl(page, skipCache = force, isPrefetch = false)
