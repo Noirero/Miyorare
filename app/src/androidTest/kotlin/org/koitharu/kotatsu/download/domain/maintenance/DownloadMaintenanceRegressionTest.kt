@@ -595,6 +595,43 @@ class DownloadMaintenanceRegressionTest {
 		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
 	}
 
+	@Test fun replacingExhentaiArchiveAtSamePathRechecksCurrentArtifact() = runBlocking {
+		val gallery = offlineExhentaiGallery(812303L)
+		val space = FavouriteSpace.NORMAL
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
+		// The same physical destination can be shared by Normal and Private.
+		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
+		val receipt = org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(
+			space, java.util.UUID.randomUUID(),
+		)
+		val cbz = writeGalleryFixture(gallery, appendId = false, bytes = byteArrayOf(1, 2, 3), receipt = receipt)
+		val ownership = FavouriteDownloadIndexEntity(gallery.id, space.dbValue, cbz.canonicalPath)
+		val dao = db.getFavouriteDownloadIndexDao()
+		dao.upsert(ownership)
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, space)
+
+		// Keep the folder, filename and recorded path. Change only the physical ZIP.
+		val oldBytes = cbz.readBytes()
+		chapterFile(checkNotNull(cbz.parentFile), cbz.name)
+		assertFalse(oldBytes.contentEquals(cbz.readBytes()))
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, space)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
+
+		// A stale path must not override explicit evidence that the replacement is another gallery.
+		ZipOutputStream(cbz.outputStream()).use { zip ->
+			zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(812304L))
+			zip.putNextEntry(ZipEntry("1.jpg"))
+			zip.write(byteArrayOf(4, 5, 6))
+			zip.closeEntry()
+		}
+		assertNull(resolver.findSavedManga(gallery, null))
+		assertNull(resolver.findSavedManga(gallery, space))
+		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
+	}
+
 	private fun offlineExhentaiGallery(gid: Long): Manga = galleryFixture(gid).let { gallery ->
 		gallery.copy(
 			title = "[Circle (Artist)] Offline gallery × Fixture [Chinese] [Translation Group] [Digital]",
