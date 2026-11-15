@@ -161,9 +161,17 @@ sealed class LocalMangaOutput(
 		/** Bounded title candidates. Suffixed paths are recovery-only, never legacy identity. */
 		internal fun exhentaiReadCandidates(root: File, manga: Manga, recoverSuffixes: Boolean = false): List<File> {
 			val rootPath = root.canonicalFile.toPath()
-			val source = getSourceDirectory(File(root, DOWNLOADS_DIR_NAME), manga)
+			val downloads = File(root, DOWNLOADS_DIR_NAME)
+			val source = getSourceDirectory(downloads, manga)
 			val names = setOf(manga.title.toReadableFileName(), ExhentaiTitlePolicy.legacyFolderTitle(manga.title).toReadableFileName())
-			val parents = linkedSetOf(source).apply { addAll(legacySourceDirectories(root, manga)) }
+			val parents = linkedSetOf(source).apply {
+				// Details/Reader may have the persisted source key but no live Tsuki directory metadata.
+				// A pre-receipt archive then has no verified index hint to recover its physical path.
+				if (EhentaiSourceFamily.isOfficialSource(manga.source.name)) {
+					add(File(downloads, externalSourceDirectoryName("ExHentai", "other").toReadableFileName()))
+				}
+				addAll(legacySourceDirectories(root, manga))
+			}
 			return parents.flatMap { parent ->
 				if (!parent.canonicalFile.toPath().startsWith(rootPath)) return@flatMap emptyList()
 				if (recoverSuffixes) {
