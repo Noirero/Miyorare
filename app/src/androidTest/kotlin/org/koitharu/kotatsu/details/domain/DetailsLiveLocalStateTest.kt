@@ -38,12 +38,15 @@ import org.koitharu.kotatsu.details.data.ChapterProgressRepository
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
+import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.renameableChapterFile
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
@@ -65,6 +68,7 @@ class DetailsLiveLocalStateTest {
 
 	@Inject lateinit var interactor: DetailsInteractor
 	@Inject lateinit var localIndex: LocalMangaIndex
+	@Inject lateinit var localRepository: LocalMangaRepository
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var bookmarksRepository: BookmarksRepository
 	@Inject lateinit var historyRepository: HistoryRepository
@@ -386,6 +390,47 @@ class DetailsLiveLocalStateTest {
 		emit(otherSpace) // Serial barrier; this concrete event is rejected by the space boundary.
 
 		assertEquals(1, vm.reloads.get())
+	}
+
+	@Test
+	fun renamedOrphanReattachesToCanonicalChapterAndResolvesPagesOffline() = runBlocking {
+		val remote = remote()
+		val old = File(root, "Chapter 1 END.cbz")
+		check(cbz(root, 1).renameTo(old))
+		val originalBytes = old.readBytes()
+		val other = cbz(root, 2)
+
+		suspend fun lookup() = localRepository.findSavedMangaAtPath(remote, root, rememberIdentity = false)
+		fun MangaDetails.rows() = mapChapters(
+			currentChapterId = -1L, newCount = 0, branch = null, bookmarks = emptyList(),
+			isGrid = false, isDownloadedOnly = false,
+		)
+
+		val before = MangaDetails(remote).copy(localManga = requireNotNull(lookup()))
+		val oldRow = before.rows().single { it.chapter.title == "Chapter 1 END" }
+		val onlineRow = before.rows().single { it.chapter.title == "Chapter 1" }
+		assertFalse(onlineRow.isDownloaded)
+		assertEquals(null, before.renameableChapterFile(onlineRow))
+		assertEquals(old, before.renameableChapterFile(oldRow))
+
+		val otherCopy = concrete(remote, listOf(cbz(privateRoot, 1)), privateRoot)
+		val wrongRoot = runCatching {
+			localRepository.renameChapterDownload(remote, root, old, "Chapter 1") { otherCopy }
+		}
+		assertTrue(wrongRoot.isFailure)
+		assertTrue(old.isFile)
+		assertTrue(localRepository.renameChapterDownload(remote, root, old, "Chapter 1") { lookup() })
+
+		val rows = MangaDetails(remote).copy(localManga = requireNotNull(lookup())).rows()
+		assertEquals(listOf("Chapter 1", "Chapter 2"), rows.map { it.chapter.title })
+		assertEquals(setOf(1L, 2L), rows.downloadedIds())
+		assertEquals(LocalMangaSource, rows.first().chapter.source)
+		val pageUri = localRepository.getPages(rows.first().chapter).single().url.toUri()
+		assertEquals("1.jpg", pageUri.fragment)
+		assertEquals(File(root, "Chapter 1.cbz").canonicalFile, File(checkNotNull(pageUri.path)).canonicalFile)
+		assertTrue(originalBytes.contentEquals(File(root, "Chapter 1.cbz").readBytes()))
+		assertFalse(old.exists())
+		assertTrue(other.isFile)
 	}
 
 	private suspend fun register(remote: Manga, event: LocalManga) {

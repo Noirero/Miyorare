@@ -206,6 +206,23 @@ class LocalMangaRepository @Inject constructor(
 		localStorageChanges.emit(null)
 	}
 
+	internal suspend fun renameChapterDownload(
+		manga: Manga,
+		root: File,
+		file: File,
+		name: String,
+		resolveOwnedCopy: suspend () -> LocalManga?,
+	) = lock.withLock(manga) {
+		withContext(Dispatchers.IO) {
+			check(!manga.isLocal && !manga.source.isNovelSource && !ExhentaiDownloadedCopy.isOfficial(manga))
+			val owned = checkNotNull(resolveOwnedCopy()) { "Download is no longer available" }
+			check(owned.file.canonicalFile == root.canonicalFile && owned.manga.chapters.orEmpty().any {
+				chapterDownloadFile(owned.file, it.url) == file
+			}) { "Chapter download changed; refresh Details and try again" }
+			renameStandaloneChapterFile(root, file, name)
+		}
+	}
+
 	suspend fun deleteChapters(manga: Manga, ids: Set<Long>) = lock.withLock(manga) {
 		check(!ExhentaiDownloadedCopy.isOfficial(manga)) { "ExHentai remote deletion requires a verified space-owned artifact" }
 		val subject = if (manga.isLocal) manga else checkNotNull(findSavedManga(manga, withDetails = true)) {
