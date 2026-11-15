@@ -81,8 +81,8 @@ class MigrationFlowScreenTest {
 			}.associateBy { it.mangaId },
 		)
 
-	private fun setEnglishContent(content: @Composable () -> Unit) {
-		val config = Configuration(context.resources.configuration).apply { setLocale(Locale.ENGLISH) }
+	private fun setLocalizedContent(locale: Locale, content: @Composable () -> Unit) {
+		val config = Configuration(context.resources.configuration).apply { setLocale(locale) }
 		val localized = context.createConfigurationContext(config)
 		compose.setContent {
 			CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides config) {
@@ -102,8 +102,9 @@ class MigrationFlowScreenTest {
 		onCopyOne: (Long) -> Unit = {},
 		onCancel: (String) -> Unit = {},
 		stateProvider: () -> SourceMangaListState = { state },
+		locale: Locale = Locale.ENGLISH,
 	) {
-		setEnglishContent {
+		setLocalizedContent(locale) {
 			MaterialTheme {
 				MigrationFlowScreen(
 					state = stateProvider(), imageLoader = loader,
@@ -120,6 +121,29 @@ class MigrationFlowScreenTest {
 				)
 			}
 		}
+	}
+
+	@Test
+	fun indonesianBatchSetupLocalizesTabsAndHeading() {
+		show(screenState(MigrationBatchStatus.UNCHECKED), locale = Locale.forLanguageTag("id-ID"))
+		compose.onNodeWithText("Semua (1)").assertExists()
+		compose.onNodeWithText("Lainnya (1)").assertExists()
+		compose.onNodeWithText("Pilih source tujuan").assertExists()
+	}
+
+	@Test
+	fun indonesianManualErrorUsesTheLocalizedActionMessage() {
+		setLocalizedContent(Locale.forLanguageTag("id-ID")) {
+			MaterialTheme {
+				MigrationManualSearchScreen(
+					state = MigrationManualSearchState(loading = false, error = ManualMigrationError.SOURCE_CONFLICT),
+					imageLoader = loader,
+					onQueryChange = {}, onSearch = {}, onSelect = {}, onClearSelection = {},
+					onUseSelected = {}, onMigrate = {}, onCopy = {}, onSkip = {}, onOpenResult = {},
+				)
+			}
+		}
+		compose.onNodeWithText("Hasil ini bertabrakan dengan entri dari source lain. Pilih hasil lain.").assertExists()
 	}
 
 	@Test

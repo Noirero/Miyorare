@@ -130,7 +130,7 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 }
 
 @Composable
-private fun MigrationManualSearchScreen(
+internal fun MigrationManualSearchScreen(
 	state: MigrationManualSearchState,
 	imageLoader: ImageLoader,
 	onQueryChange: (String) -> Unit,
