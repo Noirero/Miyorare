@@ -641,6 +641,46 @@ class DownloadMaintenanceRegressionTest {
 		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
 	}
 
+	@Test fun unmarkedExhentaiWithSharedActiveRootNeedsSpaceOwnership() = runBlocking {
+		// Private follows Normal, so both lookups can see the same candidate path.
+		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
+		assertOverlappingExhentaiRequiresOwnership(812307L)
+	}
+
+	@Test fun unmarkedExhentaiWithOverlappingHistoricalRootNeedsSpaceOwnership() = runBlocking {
+		// Active destinations are distinct, but this copy is inside a Private historical root.
+		prefs.edit(commit = true) {
+			putStringSet("private_download_legacy_roots", setOf(root.path))
+		}
+		assertOverlappingExhentaiRequiresOwnership(812308L)
+	}
+
+	private suspend fun assertOverlappingExhentaiRequiresOwnership(gid: Long) {
+		val gallery = offlineExhentaiGallery(gid)
+		val directory = folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture")
+		val cbz = chapterFile(directory, "Chapter.cbz")
+		register(gallery, directory)
+		val dao = db.getFavouriteDownloadIndexDao()
+		val parsed = checkNotNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
+		assertFalse(parsed.verified)
+		assertEquals(cbz.canonicalFile, parsed.local.file.canonicalFile)
+		assertEquals(gallery.chapters!!.single().id, parsed.local.manga.chapters?.single()?.id)
+
+		// A matching Local alias and a readable archive do not establish space ownership.
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertTrue(dao.findEntries(listOf(gallery.id)).isEmpty())
+
+		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.PRIVATE.dbValue, cbz.canonicalPath))
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+
+		dao.delete(FavouriteSpace.PRIVATE.dbValue, gallery.id)
+		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath))
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+	}
+
 	@Test fun compareV1424IndexedFallbackWithCurrentExhentaiResolver() = runBlocking {
 		val gallery = offlineExhentaiGallery(812306L)
 		val chapter = requireNotNull(gallery.chapters).single()
