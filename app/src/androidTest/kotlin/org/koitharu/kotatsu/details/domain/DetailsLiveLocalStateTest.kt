@@ -264,6 +264,31 @@ class DetailsLiveLocalStateTest {
 	}
 
 	@Test
+	fun reusedExhentaiCopyUpdatesOpenDetailsWithoutAliasOrRefresh() = runBlocking {
+		val source = MangaSource("TSUKI:MIYORARE:miyorare-global:EXHENTAI")
+		val seed = remote()
+		val chapter = seed.chapters.orEmpty().first().copy(source = source)
+		val remote = seed.copy(source = source, chapters = listOf(chapter))
+		val file = cbz(root, 1)
+		val parsed = LocalMangaParser(file).getManga(withDetails = false)
+		val reused = parsed.copy(manga = parsed.manga.copy(chapters = listOf(
+			chapter.copy(source = LocalMangaSource, url = file.toUri().toString()),
+		)))
+		val vm = viewModel(MangaDetails(remote))
+		val changes = localRepository.reusedExhentaiCopies
+
+		withTimeout(5_000L) {
+			vm.chapters.first { it.singleOrNull()?.isDownloaded == false }
+			changes.subscriptionCount.first { it > 0 }
+			changes.emit(LocalMangaRepository.ReusedExhentaiCopy(remote.id, FavouriteSpace.NORMAL, reused))
+			val row = vm.chapters.first { it.singleOrNull()?.isDownloaded == true }.single()
+			assertEquals(LocalMangaSource, row.chapter.source)
+			assertEquals(file.toUri().toString(), row.chapter.url)
+		}
+		assertEquals(0, vm.reloads.get())
+	}
+
+	@Test
 	fun firstDownloadIsAcceptedThroughAliasDespiteStaleNonEmptyRemoteIndexRow() = runBlocking {
 		cbz(root, 1)
 		val remote = remote()

@@ -37,6 +37,9 @@ class DetailsInteractor @Inject constructor(
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
 
+	internal val reusedExhentaiCopies: Flow<LocalMangaRepository.ReusedExhentaiCopy>
+		get() = localMangaRepository.reusedExhentaiCopies
+
 	fun observeFavourite(
 		mangaId: Long,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,

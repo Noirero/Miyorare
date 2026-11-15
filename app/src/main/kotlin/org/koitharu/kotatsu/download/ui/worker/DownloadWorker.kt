@@ -629,6 +629,9 @@ class DownloadWorker @AssistedInject constructor(
 		val requested = getChapters(manga, task)
 		val savedIds = saved.manga.chapters.orEmpty().mapTo(HashSet()) { it.id }
 		if (requested.isEmpty() || requested.any { it.value.id !in savedIds }) return false
+		localMangaRepository.reusedExhentaiCopies.emit(
+			LocalMangaRepository.ReusedExhentaiCopy(manga.id, task.favouriteSpace, saved),
+		)
 		publishState(currentState.copy(
 			localManga = saved,
 			totalChapters = requested.size,

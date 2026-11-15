@@ -313,6 +313,11 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
+	internal data class ReusedExhentaiCopy(val mangaId: Long, val space: FavouriteSpace, val local: LocalManga)
+
+	// Reuse does not mutate storage. Scope its notification even when both spaces share a root.
+	internal val reusedExhentaiCopies = MutableSharedFlow<ReusedExhentaiCopy>()
+
 	internal suspend fun findExhentaiAtPath(
 		remote: Manga,
 		path: File,

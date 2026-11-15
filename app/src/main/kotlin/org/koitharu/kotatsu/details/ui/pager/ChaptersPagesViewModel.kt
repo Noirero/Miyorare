@@ -468,6 +468,16 @@ abstract class ChaptersPagesViewModel(
 				.collect { onDownloadComplete(it) }
 		}
 		launchJob(Dispatchers.Default) {
+			interactor.reusedExhentaiCopies.collect { event ->
+				if (event.space != favouriteSpace || isSmartLocal) return@collect
+				mangaDetails.update { current ->
+					if (current == null || current.id != event.mangaId || current.isLocal) return@update current
+					val updated = current.copy(localManga = event.local)
+					if (isScanlatorsMerged.value) updated.withMergedBranches() else updated
+				}
+			}
+		}
+		launchJob(Dispatchers.Default) {
 			LocalMangaIndex.rebuildEvents.collect {
 				if (!isSmartLocal) onLocalIndexRebuilt()
 			}
