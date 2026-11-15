@@ -1,38 +1,28 @@
-## Miyorare v1.4.24
+## Miyorare v1.4.25
 
-This update makes it easier to find sources in Explore, browse what they offer, and choose where to search for a title from a tracker catalogue.
+### What's new
 
-### ✨ What's new
+- **Live tab preview:** Drag across the bottom navigation bar, or along the navigation rail in wide landscape, to preview tabs before switching. Release to select the previewed tab, or cancel to return to the original tab.
+- **Rename downloaded chapters:** Rename eligible standalone manga CBZ files from Details without changing the source chapter title. Shared archives, novels, and official ExHentai copies are excluded.
 
-- **Source Overview in Explore** — Opening a source now shows **Latest** and **Popular** shelves where supported. Tap a cover to open Details, or choose **See all** to browse that shelf’s catalogue without changing your saved sort order. Sources that support neither shelf still open their catalogue directly.
-- **Find sources without leaving Explore** — Choose **Search sources** from the overflow menu to filter the current source list by name. Existing content, origin, and language filters still apply.
-- **Choose where to search from tracker Details** — Use **Search in** to search your preferred sources, all enabled sources, or one compatible source. Titles already linked to a reading source still open directly.
-- **Dedicated Project Credits** — About is more compact, with third-party project credits and community links on a separate screen that’s also accessible through Settings Search.
+### Fixes
 
-### 🐞 Fixes and refinements
-
-- Long chapter titles in Details pan when they don’t fit, without moving the row controls.
-- In Modern Normal Favourites, cover borders no longer appear while covers are loading.
-- The Explore source grid uses up to seven columns on compact phones in landscape, with fewer columns when space is limited.
-- Discovery Hub now uses a finite width when its layout receives an unbounded measurement, addressing a crash path reported in landscape.
+- **ExHentai downloads:** Preserve full source titles, with compact titles available as a display option. Legacy downloads remain readable, and a separate-copy action lets you save a gallery without replacing an existing archive.
+- **Local CBZ Reader:** Avoid showing stale cached pages when an archive is replaced at the same path.
+- **Localization:** Translate built-in Favourites labels and more of the batch, manual, and broken-source migration screens.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Pembaruan ini mempermudah pencarian sumber di Jelajah, penelusuran katalog sumber, dan pemilihan sumber baca untuk judul dari katalog tracker.
+### Yang baru
 
-### ✨ Yang baru
+- **Pratinjau tab saat digeser:** Geser di bilah navigasi bawah atau sepanjang rel navigasi pada layar lanskap lebar untuk melihat isi tab sebelum berpindah. Lepas untuk memilih tab yang dipratinjau, atau batalkan untuk kembali ke tab semula.
+- **Ubah nama file chapter unduhan:** Ubah nama file CBZ manga mandiri yang memenuhi syarat langsung dari Details, tanpa mengubah judul chapter di sumber. Arsip bersama, novel, dan salinan resmi ExHentai tidak termasuk.
 
-- **Ringkasan sumber di Jelajah** — Saat sumber dibuka, rak **Terbaru** dan **Populer** ditampilkan jika didukung. Ketuk cover untuk membuka Details, atau pilih **Lihat semua** untuk membuka katalog dengan urutan rak tersebut tanpa mengubah preferensi urutan yang tersimpan. Sumber yang tidak mendukung kedua rak tetap langsung membuka katalog.
-- **Cari sumber tanpa keluar dari Jelajah** — Pilih **Cari sumber** dari menu titik tiga untuk menyaring daftar sumber berdasarkan nama. Filter konten, asal, dan bahasa yang aktif tetap berlaku.
-- **Pilih sumber pencarian dari Details katalog tracker** — Gunakan **Cari di** untuk mencari di sumber pilihan, semua sumber aktif, atau satu sumber yang kompatibel. Judul yang sudah terhubung ke sumber baca tetap bisa dibuka langsung.
-- **Halaman khusus Kredit Proyek** — Halaman Tentang lebih ringkas. Kredit proyek pihak ketiga dan tautan komunitas kini punya halaman tersendiri yang juga bisa ditemukan lewat pencarian Pengaturan.
+### Perbaikan
 
-### 🐞 Perbaikan dan penyempurnaan
-
-- Judul chapter yang terlalu panjang di Details bergeser secara horizontal tanpa menggeser tombol pada baris yang sama.
-- Pada Favourites Normal dengan tampilan Modern, bingkai cover tidak lagi muncul saat cover masih dimuat.
-- Grid sumber di Jelajah memakai maksimal tujuh kolom pada ponsel berlayar ringkas dalam mode lanskap, dan menyesuaikan ke lebih sedikit kolom jika ruang terbatas.
-- Discovery Hub kini membatasi lebar saat layout menerima ukuran tak terbatas, untuk menangani jalur crash yang dilaporkan pada mode lanskap.
+- **Unduhan ExHentai:** Judul lengkap dari sumber tetap dipertahankan, dengan judul ringkas sebagai opsi tampilan. Unduhan lama tetap dapat dibaca, dan opsi salinan terpisah memungkinkan galeri disimpan tanpa menimpa arsip yang sudah ada.
+- **Reader CBZ lokal:** Mencegah halaman lama dari cache muncul setelah arsip diganti di lokasi yang sama.
+- **Pelokalan:** Label bawaan Favourites dan lebih banyak bagian layar migrasi massal, manual, dan sumber bermasalah kini diterjemahkan.
 
 </details>

@@ -8,6 +8,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -65,9 +66,12 @@ class DownloadedMangaResolver @Inject constructor(
 		if (ownership != null) {
 			val ownedFile = File(ownership.path)
 			if (roots.any { ownedFile.isInside(it) }) {
-				localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let {
-					return it
+				val saved = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+					localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = favouriteSpace)?.local
+				} else {
+					localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)
 				}
+				if (saved != null) return saved
 			}
 		}
 
@@ -75,6 +79,9 @@ class DownloadedMangaResolver @Inject constructor(
 		// owns an unindexed legacy artifact. Do not let opening Details manufacture ownership for the
 		// active space; the background legacy reconciler is the only compatibility path allowed to
 		// persist ownership after checking favourite membership and chapter evidence.
+		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = favouriteSpace)
+		}
 		if (!canInferSpaceFromPath()) return null
 
 		// With distinct roots the global Local index is safe as a compatibility hint, but it still has

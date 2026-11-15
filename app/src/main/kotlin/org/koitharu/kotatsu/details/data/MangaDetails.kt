@@ -14,6 +14,8 @@ import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.parsers.util.ifNullOrEmpty
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.reader.data.filterChapters
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiTitlePolicy
 import java.util.Locale
 
 data class MangaDetails(
@@ -37,6 +39,12 @@ data class MangaDetails(
 
     val sourceManga: Manga
         get() = manga
+
+    internal val isOfficialExhentai: Boolean get() = EhentaiSourceFamily.isOfficialSource(manga.source.name)
+
+    internal fun displayTitle(full: Boolean): String =
+        override?.title?.takeIf { it.isNotEmpty() }
+            ?: if (isOfficialExhentai && !full) ExhentaiTitlePolicy.compactTitle(manga.title) else manga.title
 
     val artist: String?
         get() = override?.artist?.trim()?.takeIf { it.isNotEmpty() }

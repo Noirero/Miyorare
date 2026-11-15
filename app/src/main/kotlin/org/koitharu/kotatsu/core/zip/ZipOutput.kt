@@ -17,6 +17,7 @@ import java.util.zip.ZipOutputStream
 class ZipOutput(
 	val file: File,
 	private val compressionLevel: Int = Deflater.DEFAULT_COMPRESSION,
+	private val archiveComment: String? = null,
 ) : Closeable {
 
 	private val entryNames = ArraySet<String>()
@@ -152,6 +153,7 @@ class ZipOutput(
 
 	private fun newOutput(append: Boolean) = ZipOutputStream(FileOutputStream(file, append)).also {
 		it.setLevel(compressionLevel)
+		archiveComment?.let(it::setComment)
 		cachedOutput?.closeSafe()
 		cachedOutput = it
 	}

@@ -453,7 +453,7 @@ class SmartLocalCoverPipelineTest {
         assertClosedDescriptors()
     }
 
-    @Test fun downloadedCbzPageKeepsOriginalPageCache() = runBlocking {
+    @Test fun downloadedCbzReusesSharedCacheButRejectsOldBytesAfterReplacement() = runBlocking {
         val image = png(Color.YELLOW)
         val downloaded = File(context.storage, "download-${UUID.randomUUID()}.cbz")
         downloaded.writeBytes(archive(image, "001.png"))
@@ -477,10 +477,25 @@ class SmartLocalCoverPipelineTest {
             val first = pageLoader.loadPage(page, force = false)
             assertEquals("file", first.scheme)
             assertArrayEquals(image, File(first.path!!).readBytes())
-            assertNotNull("Downloaded pages must use the original shared cache",
-                pageStorage[page.url])
-            val reopened = pageLoader.loadPage(page, force = false)
-            assertEquals(first, reopened)
+            val originalKey = java.util.zip.ZipFile(downloaded).use { zip ->
+                org.koitharu.kotatsu.reader.domain.cbzPageCacheKey(page.url, zip.getEntry("001.png"))
+            }
+            assertEquals("Downloaded pages must use the shared page storage",
+                File(first.path!!), pageStorage[originalKey])
+            assertEquals(first, pageLoader.loadPage(page, force = false))
+
+            // Both the page URL and page ID remain unchanged; keep old cache entries populated.
+            val replacement = png(Color.BLUE)
+            downloaded.writeBytes(archive(replacement, "001.png"))
+            val updated = pageLoader.loadPage(page, force = false)
+            assertNotEquals(first, updated)
+            assertArrayEquals(replacement, File(updated.path!!).readBytes())
+            assertArrayEquals(image, File(first.path!!).readBytes())
+            val replacementKey = java.util.zip.ZipFile(downloaded).use { zip ->
+                org.koitharu.kotatsu.reader.domain.cbzPageCacheKey(page.url, zip.getEntry("001.png"))
+            }
+            assertEquals(File(updated.path!!), pageStorage[replacementKey])
+            assertEquals(updated, pageLoader.loadPage(page, force = false))
         }
     }
 

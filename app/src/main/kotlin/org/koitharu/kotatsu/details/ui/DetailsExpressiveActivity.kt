@@ -208,6 +208,9 @@ class DetailsExpressiveActivity :
 			it?.let { d -> title = d.toManga().title }
 			invalidateOptionsMenu()
 		}
+		viewModel.onChapterDownloadRenameMessage.observeEvent(this) { message ->
+			Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+		}
 		viewModel.onTrackingProgressSynced.observeEvent(this) { chapter ->
 			Toast.makeText(
 				this,
@@ -392,6 +395,7 @@ class DetailsExpressiveActivity :
 			onChaptersMarkRead = { ids -> viewModel.setChaptersReadState(ids, true) },
 			onChaptersMarkUnread = { ids -> viewModel.setChaptersReadState(ids, false) },
 			onChapterPersonalClick = viewModel::editChapterPersonal,
+			onChapterRenameClick = ::showChapterRenameDialog,
 			onChapterNotesSearchClick = { viewModel.performChapterNoteSearch("") },
 			onChapterNotesQueryChange = viewModel::performChapterNoteSearch,
 			onChapterNotesSearchExit = viewModel::exitChapterNoteSearch,
@@ -653,6 +657,34 @@ class DetailsExpressiveActivity :
 			if (note == null) remove(viewModel.mangaId.toString()) else putString(viewModel.mangaId.toString(), note)
 		}.apply()
 		mangaNote.value = note
+	}
+
+	private fun showChapterRenameDialog(item: ChapterListItem) {
+		val currentName = viewModel.mangaDetails.value?.renameableChapterFile(item)?.nameWithoutExtension ?: return
+		val input = EditText(this).apply {
+			setSingleLine(true)
+			inputType = InputType.TYPE_CLASS_TEXT
+			setText(currentName)
+			selectAll()
+		}
+		val dialog = buildAlertDialog(this) {
+			setTitle(R.string.rename_chapter_download)
+			setView(input)
+			setPositiveButton(R.string.done, null)
+			setNegativeButton(android.R.string.cancel, null)
+		}
+		dialog.show()
+		dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+			val name = input.text.toString()
+			if (org.koitharu.kotatsu.local.data.chapterDownloadStem(name) == null) {
+				input.error = getString(R.string.invalid_chapter_download_name)
+			} else {
+				dialog.dismiss()
+				viewModel.renameChapterDownload(item, name)
+			}
+		}
+		input.requestFocus()
+		dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
 	}
 
 	private fun showNoteDialog() {

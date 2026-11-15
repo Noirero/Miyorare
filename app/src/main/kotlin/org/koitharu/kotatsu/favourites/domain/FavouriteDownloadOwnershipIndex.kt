@@ -65,6 +65,23 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 		}
 	}
 
+	internal suspend fun hasExhentaiOwnershipConflict(
+		mangaId: Long,
+		space: FavouriteSpace?,
+		file: File,
+		verified: Boolean,
+	): Boolean {
+		val physical = file.canonicalFile
+		val paths = if (verified) listOf(physical.path)
+		else listOfNotNull(physical.path, physical.takeIf(File::isFile)?.parentFile?.path)
+		return db.getFavouriteDownloadIndexDao().findEntriesByPaths(paths).any {
+			(space != null && it.space != space.dbValue) || (!verified && it.mangaId != mangaId)
+		}
+	}
+
+	internal suspend fun pathsForManga(mangaId: Long): List<File> =
+		db.getFavouriteDownloadIndexDao().findEntries(listOf(mangaId)).map { File(it.path) }
+
 	suspend fun removePath(file: File) {
 		db.getFavouriteDownloadIndexDao().deleteByPath(file.canonicalOrAbsolute())
 	}

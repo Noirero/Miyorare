@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.discovery
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -151,7 +153,9 @@ class DiscoveryCatalogUiTest {
 		val resolution = mutableStateOf(CatalogResolutionState(visible = true))
 		var selected: CatalogSearchScope? = null
 		var opened = false
+		lateinit var focusManager: FocusManager
 		compose.setContent {
+			focusManager = LocalFocusManager.current
 			MaterialTheme {
 				CatalogReadingSourceSheet(
 					resolution = resolution.value,
@@ -173,6 +177,9 @@ class DiscoveryCatalogUiTest {
 		}
 		compose.onNodeWithTag("catalog_scope_source_query").performScrollTo().performTextInput("no-such-source")
 		compose.onNodeWithTag("catalog_scope_source_query").performTextClearance()
+		// End text editing before checking rows: clearing text does not clear focus,
+		// and the keyboard can otherwise reduce the modal sheet's visible viewport.
+		compose.runOnIdle { focusManager.clearFocus() }
 		val list = compose.onNodeWithTag("catalog_scope_picker")
 		list.performScrollToKey(pinned.name)
 		compose.onNodeWithText(context.getString(R.string.hub_scope_pinned_section, 1)).assertExists()
@@ -180,14 +187,14 @@ class DiscoveryCatalogUiTest {
 		compose.onNode(
 			hasText(context.getString(R.string.explore_source_origin_miyorare_pack)) and hasAnyAncestor(pinnedRow),
 			useUnmergedTree = true,
-		).assertIsDisplayed()
+		).performScrollTo().assertIsDisplayed()
 		list.performScrollToKey(source.name)
 		compose.onNodeWithText(context.getString(R.string.hub_scope_other_section, 1)).assertExists()
 		val selectedRow = hasTestTag("catalog_scope_option_${source.name}")
 		compose.onNode(
 			hasText(context.getString(R.string.explore_source_origin_gekkoushi)) and hasAnyAncestor(selectedRow),
 			useUnmergedTree = true,
-		).assertIsDisplayed()
+		).performScrollTo().assertIsDisplayed()
 		compose.onNode(selectedRow).performClick()
 		compose.onNode(
 			hasText(context.getString(

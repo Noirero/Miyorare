@@ -46,6 +46,7 @@ import org.koitharu.kotatsu.core.util.ext.isRemoteCoverUrl
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 
 @Composable
 internal fun CoverCard(
@@ -182,13 +183,14 @@ internal fun HeroTexts(
 	accent: Color,
 	actions: DetailsExpressiveActions,
 	showAuthors: Boolean = true,
+	displayTitle: String = manga.title,
 	compactExpanded: Boolean = false,
 	onTitleLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
 	val align = if (centered) TextAlign.Center else TextAlign.Start
 	val titleStyle = if (centered) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall
 	Text(
-		text = manga.title,
+		text = displayTitle,
 		style = titleStyle,
 		fontWeight = FontWeight.Bold,
 		color = MaterialTheme.colorScheme.onSurface,
@@ -199,7 +201,7 @@ internal fun HeroTexts(
 		modifier = Modifier.clickable { actions.onTitleClick(manga.title) },
 	)
 	val altTitle = manga.altTitles.firstOrNull()?.takeIf { it.isNotBlank() }
-	if (centered && altTitle != null) {
+	if (centered && altTitle != null && !EhentaiSourceFamily.isOfficialSource(manga.source.name)) {
 		Spacer(Modifier.height(6.dp))
 		Text(
 			text = altTitle,

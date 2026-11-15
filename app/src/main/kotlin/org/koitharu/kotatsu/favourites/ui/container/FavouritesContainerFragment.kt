@@ -39,6 +39,7 @@ import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.favourites.ui.systemFavouriteCategoryLabel
 import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -107,6 +108,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
 	private val listWorkOwner = FavouritesListWorkOwner()
+	internal var isTabPreviewVisible = false
+		private set
 	private var diagnosticPageSelections = 0
 	private var diagnosticPagerLayouts = 0
 	// Android 16 landscape can transiently report a zero measured width for ViewPager2's
@@ -163,7 +166,16 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	internal val isListWorkActive: Boolean
-		get() = listWorkOwner.isActive(hasView = view != null, hidden = isHidden)
+		get() = listWorkOwner.isActive(
+			hasView = view != null, hidden = isHidden, previewVisible = isTabPreviewVisible,
+		)
+
+	/** Preview needs the list producer, not RESUMED lifecycle or shared chrome ownership. */
+	internal fun setTabPreviewVisible(visible: Boolean) {
+		if (isTabPreviewVisible == visible) return
+		isTabPreviewVisible = visible
+		updateListWorkActivity()
+	}
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -356,6 +368,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	override fun onDestroyView() {
+		isTabPreviewVisible = false
 		listWorkOwner.onDestroyView()
 		updateListWorkActivity()
 		rememberCurrentCategory()
@@ -782,7 +795,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	) {
 		val binding = viewBinding ?: return
 		val item = categories.getOrNull(binding.pager.currentItem) ?: categories.firstOrNull() ?: return
-		val title = item.title ?: getString(R.string.all_favourites)
+		val title = requireContext().systemFavouriteCategoryLabel(item.id) ?: item.title ?: getString(R.string.all_favourites)
 		binding.buttonCategoryPicker.text = if (options.showCategoryCounts) {
 			getString(
 				R.string.favourites_category_selector_with_count,
@@ -800,7 +813,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		val options = displayPreferences.current(contentTypeStore.selectedType.value)
 		PopupMenu(requireContext(), binding.buttonCategoryPicker).apply {
 			categories.forEachIndexed { index, item ->
-				val title = item.title ?: getString(R.string.all_favourites)
+				val title = requireContext().systemFavouriteCategoryLabel(item.id) ?: item.title ?: getString(R.string.all_favourites)
 				val label = if (options.showCategoryCounts) {
 					"$title • ${item.count.coerceAtMost(MAX_CATEGORY_BADGE_COUNT)}"
 				} else {

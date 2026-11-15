@@ -155,6 +155,10 @@ class LocalMangaIndex @Inject constructor(
 		_rebuildEvents.tryEmit(Unit)
 	}
 
+	/** A hint only: its contents and root must be verified by the caller. */
+	internal suspend fun findIndexedPath(mangaId: Long): File? =
+		(readDownloadAlias(mangaId)?.path ?: db.getLocalMangaIndexDao().findPath(mangaId))?.let(::File)
+
 	suspend fun get(mangaId: Long, withDetails: Boolean): LocalManga? {
 		val dao = db.getLocalMangaIndexDao()
 		var path = dao.findPath(mangaId)

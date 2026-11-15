@@ -51,7 +51,7 @@ fun mangaListDetailedItemAD(
 			binding.textViewTitle.setTextColor(ContextCompat.getColor(context, R.color.smart_local_cream))
 			binding.textViewAuthor.setTextColor(ContextCompat.getColor(context, R.color.smart_local_muted))
 		}
-		binding.textViewTitle.text = item.title
+		binding.textViewTitle.text = item.displayTitle(binding.root.context)
 		val secondary = buildList {
 			item.manga.authors.joinToString(", ").takeIf { it.isNotBlank() }?.let(::add)
 			item.languageLabel?.let(::add)

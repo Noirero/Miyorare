@@ -37,6 +37,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -57,6 +58,9 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.local.data.canRenameStandaloneChapterFile
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
@@ -119,6 +123,7 @@ class DetailsExpressiveActions(
 	val onTrackerRecommendationProvider: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
 	val onMangaUpdatesProgressRetry: () -> Unit,
 	val onChapterPersonalClick: (ChapterListItem) -> Unit,
+	val onChapterRenameClick: (ChapterListItem) -> Unit = {},
 	val onChapterNotesSearchClick: () -> Unit = {},
 	val onChapterNotesQueryChange: (String) -> Unit = {},
 	val onChapterNotesSearchExit: () -> Unit = {},
@@ -181,6 +186,8 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
+	var fullExhentaiTitle by rememberBooleanPref(AppSettings.KEY_EXHENTAI_FULL_TITLE, false)
+	val visibleTitle = details?.displayTitle(fullExhentaiTitle).orEmpty()
 	val swipeBookmarkEnabled = manga?.let { !it.isNovelContent && !it.isEpub } == true
 	val managed = manga?.url?.let { org.koitharu.kotatsu.local.library.isSmartLocalUri(it) } == true
 	val galleryAvailable = managed && indexedLocalBook?.contentType == org.koitharu.kotatsu.local.library.LocalContentType.MANGA
@@ -318,7 +325,7 @@ fun DetailsExpressiveScreen(
 			if (galleryAvailable && gallerySelected) {
 				LocalChapterGallery(
 					chapters = chapters,
-					mangaTitle = manga?.title.orEmpty(),
+					mangaTitle = visibleTitle,
 					topPadding = topInset,
 					bottomPadding = bottomContentPadding,
 					coverForChapter = coverForChapter,
@@ -347,6 +354,7 @@ fun DetailsExpressiveScreen(
 							centered = centered,
 							manga = manga,
 							details = details,
+							displayTitle = visibleTitle,
 							sourceTitle = sourceTitle,
 							accent = accentColor,
 							imageLoader = imageLoader,
@@ -406,6 +414,8 @@ fun DetailsExpressiveScreen(
 							manga = manga,
 							details = details,
 							accent = accentColor,
+							fullExhentaiTitle = fullExhentaiTitle,
+							onToggleExhentaiTitle = { fullExhentaiTitle = !fullExhentaiTitle },
 						)
 					}
 
@@ -629,6 +639,21 @@ fun DetailsExpressiveScreen(
 			}
 
 			if (selectedChapterIds.isNotEmpty() && !gallerySelected) {
+				val selectedChapter = selectedChapterIds.singleOrNull()?.let { id ->
+					chapters.singleOrNull { it.chapter.id == id }
+				}
+				val renameFile = selectedChapter?.let { details?.renameableChapterFile(it) }
+				val renameRoot = details?.local?.file
+				val canRename = key(renameRoot, renameFile) {
+					produceState(false, renameRoot, renameFile) {
+						if (renameRoot != null && renameFile != null) {
+							value = withContext(Dispatchers.IO) {
+								canRenameStandaloneChapterFile(renameRoot, renameFile)
+							}
+						}
+					}.value
+				}
+				val renameChapter = selectedChapter.takeIf { canRename }
 				val canMarkRead = chapters.any { it.chapter.id in selectedChapterIds && it.isUnread }
 				val canMarkUnread = chapters.any { it.chapter.id in selectedChapterIds && !it.isUnread }
 				Surface(
@@ -667,6 +692,12 @@ fun DetailsExpressiveScreen(
 								enabled = canMarkUnread,
 								modifier = Modifier.weight(1f),
 							) { Text(stringResource(R.string.mark_as_unread), maxLines = 2) }
+							renameChapter?.let { chapter ->
+								TextButton(onClick = {
+									selectedChapterIds = emptySet()
+									actions.onChapterRenameClick(chapter)
+								}) { Text(stringResource(R.string.rename_chapter_download), maxLines = 2) }
+							}
 						}
 					}
 				}

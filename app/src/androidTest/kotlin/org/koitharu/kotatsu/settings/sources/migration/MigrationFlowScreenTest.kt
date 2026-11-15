@@ -1,7 +1,12 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
+import android.content.res.Configuration
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -11,6 +16,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
+import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -75,6 +81,16 @@ class MigrationFlowScreenTest {
 			}.associateBy { it.mangaId },
 		)
 
+	private fun setLocalizedContent(locale: Locale, content: @Composable () -> Unit) {
+		val config = Configuration(context.resources.configuration).apply { setLocale(locale) }
+		val localized = context.createConfigurationContext(config)
+		compose.setContent {
+			CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides config) {
+				content()
+			}
+		}
+	}
+
 	private fun show(
 		state: SourceMangaListState,
 		onMigrate: () -> Unit = {},
@@ -86,8 +102,9 @@ class MigrationFlowScreenTest {
 		onCopyOne: (Long) -> Unit = {},
 		onCancel: (String) -> Unit = {},
 		stateProvider: () -> SourceMangaListState = { state },
+		locale: Locale = Locale.ENGLISH,
 	) {
-		compose.setContent {
+		setLocalizedContent(locale) {
 			MaterialTheme {
 				MigrationFlowScreen(
 					state = stateProvider(), imageLoader = loader,
@@ -107,6 +124,29 @@ class MigrationFlowScreenTest {
 	}
 
 	@Test
+	fun indonesianBatchSetupLocalizesTabsAndHeading() {
+		show(screenState(MigrationBatchStatus.UNCHECKED), locale = Locale.forLanguageTag("id-ID"))
+		compose.onNodeWithText("Semua (1)").assertExists()
+		compose.onNodeWithText("Lainnya (1)").assertExists()
+		compose.onNodeWithText("Pilih source tujuan").assertExists()
+	}
+
+	@Test
+	fun indonesianManualErrorUsesTheLocalizedActionMessage() {
+		setLocalizedContent(Locale.forLanguageTag("id-ID")) {
+			MaterialTheme {
+				MigrationManualSearchScreen(
+					state = MigrationManualSearchState(loading = false, error = ManualMigrationError.SOURCE_CONFLICT),
+					imageLoader = loader,
+					onQueryChange = {}, onSearch = {}, onSelect = {}, onClearSelection = {},
+					onUseSelected = {}, onMigrate = {}, onCopy = {}, onSkip = {}, onOpenResult = {},
+				)
+			}
+		}
+		compose.onNodeWithText("Hasil ini bertabrakan dengan entri dari source lain. Pilih hasil lain.").assertExists()
+	}
+
+	@Test
 	fun readyReviewRequiresExplicitConfirmationBeforeMigration() {
 		var invoked = 0
 		show(screenState(MigrationBatchStatus.READY), onMigrate = { invoked++ })
@@ -115,7 +155,7 @@ class MigrationFlowScreenTest {
 		assertEquals(0, invoked)
 		compose.onNodeWithTag("migration-batch-confirm").performClick()
 		assertEquals(1, invoked)
-		compose.onNodeWithText("Hasil pencarian").assertExists()
+		compose.onNodeWithText("Search results").assertExists()
 	}
 
 	@Test
@@ -147,7 +187,7 @@ class MigrationFlowScreenTest {
 		show(screenState(MigrationBatchStatus.READY), onMigrateOne = { executed = it })
 		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithText("⋮").performClick()
-		compose.onNodeWithText("Migrasikan").performClick()
+		compose.onNodeWithText("Migrate").performClick()
 		assertEquals(1L, executed)
 	}
 
@@ -157,14 +197,14 @@ class MigrationFlowScreenTest {
 		show(screenState(MigrationBatchStatus.READY), onCopyOne = { copied = it })
 		compose.onNodeWithTag("migration-batch-search").performClick()
 		compose.onNodeWithText("⋮").performClick()
-		compose.onNodeWithText("Salin").performClick()
+		compose.onNodeWithText("Copy").performClick()
 		assertEquals(1L, copied)
 	}
 
 	@Test
 	fun destinationTabsCountInstalledLogicalGroups() {
 		show(screenState(MigrationBatchStatus.UNCHECKED))
-		compose.onNodeWithText("Semua (1)").assertExists()
+		compose.onNodeWithText("All (1)").assertExists()
 		compose.onNodeWithText("Other (1)").assertExists()
 		compose.onNodeWithText("A–Z").performClick()
 		compose.onNodeWithText("Z–A").assertExists()
@@ -174,8 +214,8 @@ class MigrationFlowScreenTest {
 	fun installedInventoryWithoutCompatibleSourcesStillShowsCountedTabs() {
 		val state = screenState(MigrationBatchStatus.UNCHECKED).copy(availableSources = emptyList())
 		show(state)
-		compose.onNodeWithText("Semua (1)").assertExists()
-		compose.onNodeWithText("Tidak ada source kompatibel untuk judul yang dipilih.").assertExists()
+		compose.onNodeWithText("All (1)").assertExists()
+		compose.onNodeWithText("No compatible sources for the selected titles.").assertExists()
 		compose.onNodeWithTag("migration-batch-search").assertIsNotEnabled()
 	}
 
@@ -188,17 +228,17 @@ class MigrationFlowScreenTest {
 			selectedSourceNames = listOf(destination.name, other.name),
 		)
 		show(state)
-		compose.onNodeWithText("Prioritas 1").assertExists()
-		compose.onNodeWithText("Prioritas 2").assertExists()
+		compose.onNodeWithText("Priority 1").assertExists()
+		compose.onNodeWithText("Priority 2").assertExists()
 		compose.onNodeWithText("A–Z").performClick()
 		compose.onNodeWithText("Z–A").assertExists()
-		compose.onNodeWithText("Prioritas 1").assertExists()
+		compose.onNodeWithText("Priority 1").assertExists()
 	}
 
 	@Test
 	fun sourceSelectionKeepsSearchActionAvailable() {
 		show(screenState(MigrationBatchStatus.UNCHECKED))
-		compose.onNodeWithText("Pilih source tujuan").assertExists()
+		compose.onNodeWithText("Choose destination sources").assertExists()
 		compose.onNodeWithTag("migration-batch-search").assertExists()
 	}
 
@@ -337,10 +377,10 @@ class MigrationFlowScreenTest {
             batchTotal = 0,
         )
         show(state, onCancel = { cancelled += it })
-        compose.onNodeWithText("Batch migrasi lain sedang berjalan").assertExists()
-        compose.onNodeWithText("Batalkan").performClick()
+        compose.onNodeWithText("Another migration batch is running").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
         assertEquals(emptyList<String>(), cancelled)
-        compose.onNodeWithText("Hentikan").performClick()
+        compose.onNodeWithText("Stop").performClick()
         assertEquals(listOf("migration_batch:foreign-session"), cancelled)
     }
 
@@ -354,11 +394,11 @@ class MigrationFlowScreenTest {
             batchTotal = 0,
         )
         show(state, onCancel = { cancellations++ })
-        compose.onNodeWithText("Lihat pencarian").performClick()
-        compose.onNodeWithText("Memproses 0/0").assertDoesNotExist()
-        compose.onNodeWithText("Batch migrasi lain sedang berjalan").assertExists()
-        compose.onNodeWithText("Batalkan").performClick()
-        compose.onNodeWithText("Hentikan").performClick()
+        compose.onNodeWithText("View search").performClick()
+        compose.onNodeWithText("Processing 0/0").assertDoesNotExist()
+        compose.onNodeWithText("Another migration batch is running").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Stop").performClick()
         assertEquals(1, cancellations)
     }
 
@@ -373,12 +413,12 @@ class MigrationFlowScreenTest {
         ))
         val cancelled = mutableListOf<String>()
         show(liveState.value, onCancel = { cancelled += it }, stateProvider = { liveState.value })
-        compose.onNodeWithText("Batalkan").performClick()
+        compose.onNodeWithText("Cancel").performClick()
         compose.runOnUiThread {
             liveState.value = liveState.value.copy(activeBatchName = replacement)
         }
         compose.waitForIdle()
-        compose.onNodeWithText("Hentikan").performClick()
+        compose.onNodeWithText("Stop").performClick()
         assertEquals(emptyList<String>(), cancelled)
     }
 
@@ -393,10 +433,10 @@ class MigrationFlowScreenTest {
         ))
         show(state)
         compose.onNodeWithTag("migration-batch-search").performClick()
-        compose.onNodeWithText("Migrasi gagal").assertExists()
-        compose.onNodeWithText("Mencari...").assertDoesNotExist()
+        compose.onNodeWithText("Migration failed").assertExists()
+        compose.onNodeWithText("Searching…").assertDoesNotExist()
         compose.onNodeWithText(
-            "Gagal membaca detail source tujuan; periksa jaringan/source, lalu coba lagi.",
+            "Could not load details from the destination source. Check the connection and source, then retry.",
         ).assertExists()
     }
     @Test
@@ -412,7 +452,7 @@ class MigrationFlowScreenTest {
         show(state)
         compose.onNodeWithTag("migration-batch-search").performClick()
         compose.onNodeWithText(
-            "Chapter dengan data baca tidak dapat dipetakan secara aman; coba kandidat lain.",
+            "Chapters with reading progress could not be matched safely. Try another replacement.",
         ).assertExists()
     }
 
@@ -448,7 +488,7 @@ class MigrationFlowScreenTest {
 				destinationId = target.id, destinationSource = target.source.name))))
 		val opened = mutableListOf<Manga>()
 		show(state, onOpenTarget = { opened += it })
-		compose.onNodeWithText("Lihat hasil").performClick()
+		compose.onNodeWithText("View results").performClick()
 		compose.onNodeWithTag("migration-completed-title-1").performClick()
 		compose.onNodeWithTag("migration-completed-cover-1").performClick()
 		assertEquals(listOf(target, target), opened)

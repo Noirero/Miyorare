@@ -127,7 +127,10 @@ class DetailsMenuProvider(
 			}
 
 			R.id.action_save -> {
-				router.showDownloadDialog(manga, snackbarHost)
+				val sourceManga = viewModel.mangaDetails.value?.sourceManga
+				router.showDownloadDialog(sourceManga?.takeIf {
+					org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.isOfficialSource(it.source.name)
+				} ?: manga, snackbarHost)
 			}
 
 			R.id.action_browser -> {

@@ -41,8 +41,12 @@ internal class FavouritesListWorkOwner {
 	}
 	fun onDestroyView() = onStop()
 
-	fun isActive(hasView: Boolean, hidden: Boolean, containerActive: Boolean? = null): Boolean =
-		hasView && started && !hidden && (containerActive ?: resumed)
+	fun isActive(
+		hasView: Boolean,
+		hidden: Boolean,
+		containerActive: Boolean? = null,
+		previewVisible: Boolean = false,
+	): Boolean = hasView && started && (previewVisible || (!hidden && (containerActive ?: resumed)))
 }
 
 /** Keeps the last published list, but owns its producer and enrichment only while the UI is active. */

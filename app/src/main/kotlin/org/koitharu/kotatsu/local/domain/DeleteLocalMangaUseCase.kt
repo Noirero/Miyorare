@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
@@ -35,6 +36,10 @@ class DeleteLocalMangaUseCase @Inject constructor(
 ) {
 
 	suspend operator fun invoke(manga: Manga) {
+		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+			check(deleteExhentaiCopy(manga, FavouriteSpace.NORMAL)) { "Downloaded ExHentai gallery is unavailable" }
+			return
+		}
 		val victim = if (manga.isLocal) manga else localMangaRepository.findSavedManga(manga)?.manga
 		checkNotNull(victim) { "Cannot find saved manga for ${manga.title}" }
 		val victimFile = victim.url.toUri().toFile()
@@ -51,6 +56,32 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	}
 
 
+	/** A compatibility read match is not enough evidence to delete a remote gallery's file. */
+	internal suspend fun deleteExhentaiCopy(
+		remote: Manga,
+		space: FavouriteSpace,
+		expectedFile: File? = null,
+		chapterIds: Set<Long>? = null,
+	): Boolean = mangaLock.withLock(remote) {
+		require(ExhentaiDownloadedCopy.isOfficial(remote))
+		val saved = downloadedMangaResolver.findSavedManga(remote, space) ?: return@withLock false
+		val file = saved.file.canonicalFile
+		val proven = ExhentaiDownloadedCopy.find(remote, file, withDetails = true)
+		if (!file.isFile || proven?.verified != true || proven.local.file.canonicalFile != file ||
+			(expectedFile != null && expectedFile.canonicalFile != file)) {
+			throw IOException("Cannot verify which ExHentai file belongs to this gallery. Files were kept.")
+		}
+		if (chapterIds != null && proven.local.manga.chapters?.singleOrNull()?.let { setOf(it.id) } != chapterIds) {
+			throw IOException("The selected ExHentai chapter could not be verified. Files were kept.")
+		}
+		val owners = database.getFavouriteDownloadIndexDao().findEntriesByPath(file.path)
+		if (owners.any { it.space != space.dbValue || it.mangaId != remote.id }) {
+			throw IOException("This file is shared with another library entry. Files were kept.")
+		}
+		invoke(proven.local.manga)
+		true
+	}
+
 	/**
 	 * The Downloads removal menu must delete the exact container written for the selected
 	 * WorkManager destination, never a global-index match for the same manga id.
@@ -58,7 +89,13 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	 * This intentionally fails closed for legacy/unindexed or ambiguous shared-space files.
 	 * Users can still remove their WorkManager history without touching any physical files.
 	 */
-	suspend fun deleteOwnedDownloadAtRoot(remoteManga: Manga, selectedRoot: File, space: FavouriteSpace) {
+	suspend fun deleteOwnedDownloadAtRoot(
+		remoteManga: Manga,
+		selectedRoot: File,
+		space: FavouriteSpace,
+		expectedFile: File? = null,
+		expectedRequest: java.util.UUID? = null,
+	) {
 		require(!remoteManga.isLocal) { "Only remote download tasks may delete their downloaded container" }
 		// The downloader locks a chapter-hydrated Manga from the repository. Use the same
 		// representation here rather than a metadata-only Downloads row.
@@ -72,12 +109,22 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			if (!isInsideDownloadRoot(selectedRoot, file) || !file.exists()) {
 				throw IOException("The selected download's original file is unavailable. Files were kept.")
 			}
-			val output = LocalMangaOutput.get(selectedRoot, lockedManga)
-				?: throw IOException("Cannot match the selected download to its saved file. Files were kept.")
-			val resolvedPath = try {
-				output.rootFile.canonicalFile
-			} finally {
-				output.close()
+			val resolvedPath = if (ExhentaiDownloadedCopy.isOfficial(lockedManga)) {
+				if (expectedFile == null || expectedRequest == null || expectedFile.canonicalFile != file) {
+					throw IOException("The selected job does not own the current ExHentai archive. Files were kept.")
+				}
+				val exact = ExhentaiDownloadedCopy.find(lockedManga, file, withDetails = false, space = space, request = expectedRequest)
+					?.takeIf { file.isFile && it.verified }
+					?: throw IOException("Cannot verify the selected ExHentai archive. Files were kept.")
+				exact.local.file.canonicalFile
+			} else {
+				val output = LocalMangaOutput.get(selectedRoot, lockedManga)
+					?: throw IOException("Cannot match the selected download to its saved file. Files were kept.")
+				try {
+					output.rootFile.canonicalFile
+				} finally {
+					output.close()
+				}
 			}
 			if (resolvedPath != file) {
 				throw IOException("Download storage has changed since this task. Files were kept.")
@@ -144,6 +191,10 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		var removed = 0
 		for (mangaId in ids) {
 			val manga = mangaDataRepository.findMangaById(mangaId, withChapters = true) ?: continue
+			if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+				if (deleteExhentaiCopy(manga, favouriteSpace)) removed++
+				continue
+			}
 			val target = if (manga.isLocal) {
 				manga
 			} else {

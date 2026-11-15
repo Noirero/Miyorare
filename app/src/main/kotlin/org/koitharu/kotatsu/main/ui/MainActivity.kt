@@ -296,6 +296,16 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		scheduleColdStartWarmups()
 	}
 
+	override fun onPause() {
+		if (::navigationDelegate.isInitialized) navigationDelegate.cancelTabDrag()
+		super.onPause()
+	}
+
+	override fun onSaveInstanceState(outState: Bundle) {
+		if (::navigationDelegate.isInitialized) navigationDelegate.cancelTabDrag()
+		super.onSaveInstanceState(outState)
+	}
+
 	override fun onDestroy() {
 		if (::navigationDelegate.isInitialized) {
 			viewBinding.container.removeCallbacks(exploreWarmupRunnable)

@@ -40,6 +40,8 @@ import org.koitharu.kotatsu.local.data.isEpubFile
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -65,6 +67,7 @@ import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.domain.resolveTrackerRecommendation
 import org.koitharu.kotatsu.details.domain.reconcileRoomChapters
+import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
 import org.koitharu.kotatsu.details.ui.pager.ChapterListOptionsStore
@@ -76,7 +79,9 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
+import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
+import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -130,6 +135,8 @@ class DetailsViewModel @Inject constructor(
 	private val contextualRecommendationUseCase: ContextualRecommendationUseCase,
 	private val mangaListMapper: MangaListMapper,
 	private val detailsLoadUseCase: DetailsLoadUseCase,
+	private val localMangaRepository: LocalMangaRepository,
+	private val downloadedMangaResolver: DownloadedMangaResolver,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val syncProgressFromScrobblersUseCase: SyncProgressFromScrobblersUseCase,
 	private val readTrackerDetailsUseCase: ReadTrackerDetailsUseCase,
@@ -188,6 +195,7 @@ class DetailsViewModel @Inject constructor(
 	private var expandedRelatedGeneration = 0L
 	val mangaId = intent.mangaId
 	val onTrackingProgressSynced = MutableEventFlow<Int>()
+	internal val onChapterDownloadRenameMessage = MutableEventFlow<Int>()
 
 	private val _isRefreshing = MutableStateFlow(false)
 	val isRefreshing = _isRefreshing.asStateFlow()
@@ -699,6 +707,29 @@ class DetailsViewModel @Inject constructor(
 		val state = _expandedRelated.value
 		if (state.isRequested && !state.isComplete && !state.isLoading) {
 			requestExpandedRelated()
+		}
+	}
+
+	fun renameChapterDownload(item: ChapterListItem, name: String) {
+		val details = mangaDetails.value ?: return
+		val file = details.renameableChapterFile(item) ?: return
+		val root = details.local?.file ?: return
+		val source = details.sourceManga
+		val space = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }
+		launchJob(Dispatchers.IO) {
+			runCatchingCancellable {
+				localMangaRepository.renameChapterDownload(source, root, file, name) {
+					downloadedMangaResolver.findSavedManga(source, space)
+				}
+			}.onSuccess { renamed ->
+				if (renamed) onChapterDownloadRenameMessage.call(R.string.chapter_download_renamed_refresh)
+			}.onFailure { error ->
+				error.printStackTraceDebug()
+				onChapterDownloadRenameMessage.call(
+					if (error is FileAlreadyExistsException) R.string.chapter_download_rename_conflict
+					else R.string.chapter_download_rename_failed,
+				)
+			}
 		}
 	}
 

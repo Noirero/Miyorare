@@ -155,6 +155,7 @@ class ReaderViewModel @Inject constructor(
         super.onCleared()
     }
 
+    private val titleSettings = settings
     private val intent = MangaIntent(savedStateHandle)
     private val pageMetadataRecoverySession = PageMetadataRecoverySession()
 
@@ -848,7 +849,7 @@ class ReaderViewModel @Inject constructor(
             else -> EPUB_SLIDER_MAX + 1
         }
         val newState = ReaderUiState(
-            mangaName = m.toManga().title,
+            mangaName = m.displayTitle(titleSettings.exhentaiFullTitle),
             chapter = chapter,
             chapterIndex = chapterIndex,
             chaptersTotal = m.chapters[chapter.branch].sizeOrZero(),

@@ -95,6 +95,7 @@ internal fun ModernDetailsHero(
 	centered: Boolean,
 	manga: Manga,
 	details: MangaDetails?,
+	displayTitle: String,
 	sourceTitle: String?,
 	accent: Color,
 	imageLoader: ImageLoader,
@@ -131,7 +132,7 @@ internal fun ModernDetailsHero(
 				actions = actions,
 			)
 			Spacer(Modifier.height(if (palette.isModern) 16.dp else 20.dp))
-			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions, showAuthors = false)
+			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions, showAuthors = false, displayTitle = displayTitle)
 			CreatorMetaText(centered = true, manga = manga, details = details, accent = accent, actions = actions)
 			if (!manga.isLocal || manga.state != null) {
 				Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
@@ -179,6 +180,7 @@ internal fun ModernDetailsHero(
 					accent = accent,
 					actions = actions,
 					showAuthors = false,
+					displayTitle = displayTitle,
 					compactExpanded = compactExpanded,
 					onTitleLayout = { if (!compactExpanded) onTitleOverflowChanged(it.hasVisualOverflow) },
 				)

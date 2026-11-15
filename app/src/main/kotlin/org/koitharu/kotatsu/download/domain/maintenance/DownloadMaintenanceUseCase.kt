@@ -21,7 +21,9 @@ import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.LocalDownloadScanner
+import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.MangaIndex
@@ -186,6 +188,18 @@ class DownloadMaintenanceUseCase @Inject constructor(
 		fun item(status: DownloadMaintenanceStatus, reason: DownloadMaintenanceReason, recognized: Int = 0, total: Int = 0) =
 			DownloadMaintenanceItem(file.canonicalPath, status, reason, recognized, total)
 		if (!file.canRead()) return item(DownloadMaintenanceStatus.UNAVAILABLE_STORAGE, DownloadMaintenanceReason.STORAGE_UNAVAILABLE)
+		// A title folder can hold multiple ExHentai galleries. Do not synthesize one owner,
+		// alias, or rewritten index for the whole directory.
+		if (file.isDirectory && (expected.any(ExhentaiDownloadedCopy::isOfficial) ||
+				knownIds.mapNotNull(byId::get).any(ExhentaiDownloadedCopy::isOfficial) ||
+				file.listFiles()?.any { ExhentaiChapterOwnership.inspect(it) is ExhentaiChapterOwnership.Evidence.Owned } == true)) {
+			return item(DownloadMaintenanceStatus.NO_CHANGE_REQUIRED, DownloadMaintenanceReason.OWNERSHIP_UNKNOWN)
+		}
+		// A scoped archive is published with its own gallery/space receipt. The generic
+		// repair path must not reassign it from favourites membership or a stale title index.
+		if ((ExhentaiChapterOwnership.inspect(file) as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt != null) {
+			return item(DownloadMaintenanceStatus.NO_CHANGE_REQUIRED, DownloadMaintenanceReason.VERIFIED)
+		}
 		val initialSnapshot = if (file.isDirectory) snapshot(file) else emptyList()
 		val parser = LocalMangaParser.getOrNull(file) ?: return item(DownloadMaintenanceStatus.NO_CHANGE_REQUIRED, DownloadMaintenanceReason.UNSUPPORTED_ARTIFACT)
 		val indexFile = File(file, LocalMangaOutput.ENTRY_NAME_INDEX)

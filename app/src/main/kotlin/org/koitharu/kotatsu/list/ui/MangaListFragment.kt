@@ -61,6 +61,7 @@ import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.search.ui.MangaListActivity
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -80,6 +81,7 @@ abstract class MangaListFragment :
 	lateinit var settings: AppSettings
 
 	private var listAdapter: MangaListAdapter? = null
+	private var lastExhentaiFullTitle: Boolean? = null
 	private var paginationListener: PaginationScrollListener? = null
 	private var selectionController: ListSelectionController? = null
 	private var spanResolver: GridSpanResolver? = null
@@ -215,6 +217,15 @@ abstract class MangaListFragment :
 
 	override fun onResume() {
 		super.onResume()
+		val fullTitle = settings.exhentaiFullTitle
+		if (lastExhentaiFullTitle?.let { it != fullTitle } == true) {
+			listAdapter?.let { adapter ->
+				adapter.items.forEachIndexed { index, item ->
+					if (item is MangaListModel && EhentaiSourceFamily.isOfficialSource(item.source.name)) adapter.notifyItemChanged(index)
+				}
+			}
+		}
+		lastExhentaiFullTitle = fullTitle
 		if (PerformanceDiagnostics.enabled && listAdapter?.items?.hasMeaningfulContent() == true) {
 			PerformanceDiagnostics.milestone(this, "adapter_ready")
 			viewBinding?.recyclerView?.let { PerformanceDiagnostics.drawn(this, it, meaningful = true) }

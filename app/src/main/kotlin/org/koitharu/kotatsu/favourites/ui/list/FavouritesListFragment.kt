@@ -277,11 +277,21 @@ class FavouritesListFragment : MangaListFragment() {
 		updateWorkActivity()
 	}
 
+	internal val isListWorkActive: Boolean
+		get() {
+			// ViewPager2 pages inherit isHidden from their parent, even during a view-only preview.
+			// Standalone Favorites lists keep their existing lifecycle and hidden checks.
+			val container = parentFragment as? FavouritesContainerFragment
+			return listWorkOwner.isActive(
+				hasView = view != null,
+				hidden = isHidden,
+				containerActive = container?.isListWorkActive,
+				previewVisible = container?.let { it.isTabPreviewVisible && it.isListWorkActive } == true,
+			)
+		}
+
 	internal fun updateWorkActivity() {
-		if (view == null) return
-		// FavouritesActivity also hosts this list directly, without a tab container.
-		val containerActive = (parentFragment as? FavouritesContainerFragment)?.isListWorkActive
-		viewModel.setWorkActive(listWorkOwner.isActive(hasView = true, hidden = isHidden, containerActive = containerActive))
+		if (view != null) viewModel.setWorkActive(isListWorkActive)
 	}
 
 	override fun onResume() {
