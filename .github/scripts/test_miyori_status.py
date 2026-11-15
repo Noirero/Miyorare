@@ -500,6 +500,36 @@ class FailureTriageTests(unittest.TestCase):
                 self.assertEqual(ms.failure_details(client, {"conclusion": conclusion}), [])
         self.assertFalse(hasattr(client, "requested_attempt"))
 
+    def test_status_card_explains_failure_and_clears_on_successful_rerun(self):
+        for base, gate in (
+            ("main", "Promotion to Main Gate"),
+            ("beta", "Miyorare Identity Guard"),
+            ("Amain2", "PR Compile & Unit Check"),
+        ):
+            with self.subTest(base=base):
+                failed_run = run(gate, conclusion="failure", run_id=42)
+                client = FakeClient(
+                    pr=make_pr(base=base, labels=["ci:owner-request", "non-theme"]),
+                    runs=[failed_run],
+                    jobs=[{"name": "Validation", "conclusion": "failure", "steps": [
+                        {"name": "Verify policy", "conclusion": "failure"},
+                    ]}],
+                )
+
+                def card():
+                    return ms.render_card(
+                        pr_number=123, analysis=ms.analyze_pr(client=client, pr_number=123),
+                        client=client, server_url="https://github.com",
+                    )
+
+                failed_card = card()
+                self.assertIn("`Validation` → `Verify policy`", failed_card)
+                self.assertIn("**Next:**", failed_card)
+                client._runs.append(run(gate, attempt=2, conclusion="success", run_id=42))
+                successful_card = card()
+                self.assertNotIn("`Verify policy`", successful_card)
+                self.assertNotIn("**Next:**", successful_card)
+
     def test_labels_cannot_break_out_of_markdown_code_span(self):
         self.assertEqual(ms.failure_label("job`\n@user", "fallback"), "job' @user")
 
