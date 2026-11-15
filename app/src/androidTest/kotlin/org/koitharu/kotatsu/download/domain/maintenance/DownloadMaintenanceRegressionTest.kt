@@ -595,6 +595,15 @@ class DownloadMaintenanceRegressionTest {
 		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
 	}
 
+	@Test fun compactExhentaiDownloadUnderOfficialSourceDirectoryNeedsNoSourceMetadataOrReceipt() = runBlocking {
+		val gallery = offlineExhentaiGallery(812305L)
+		// The on-disk folder comes from the installed source; the lookup seed has only its stored key.
+		val cbz = chapterFile(folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture"), "Chapter.cbz")
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+	}
+
 	@Test fun replacingExhentaiArchiveAtSamePathRechecksCurrentArtifact() = runBlocking {
 		val gallery = offlineExhentaiGallery(812303L)
 		val space = FavouriteSpace.NORMAL
