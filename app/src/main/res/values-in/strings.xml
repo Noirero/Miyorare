@@ -796,4 +796,7 @@
     <string name="chapter_personal_note_title">Catatan pribadi</string>
     <string name="chapter_personal_clear_note">Hapus catatan</string>
     <string name="chapter_personal_unrated">Belum diberi rating</string>
+    <string name="rename_chapter_download">Ganti Nama</string>
+    <string name="invalid_chapter_download_name">Masukkan nama file chapter yang valid.</string>
+    <string name="chapter_download_renamed_refresh">Nama file diubah. Segarkan Detail Manga untuk memperbarui daftar chapter.</string>
 </resources>

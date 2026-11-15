@@ -119,6 +119,7 @@ class DetailsExpressiveActions(
 	val onTrackerRecommendationProvider: (org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerRecommendation) -> Unit,
 	val onMangaUpdatesProgressRetry: () -> Unit,
 	val onChapterPersonalClick: (ChapterListItem) -> Unit,
+	val onChapterRenameClick: (ChapterListItem) -> Unit = {},
 	val onChapterNotesSearchClick: () -> Unit = {},
 	val onChapterNotesQueryChange: (String) -> Unit = {},
 	val onChapterNotesSearchExit: () -> Unit = {},
@@ -634,6 +635,8 @@ fun DetailsExpressiveScreen(
 			}
 
 			if (selectedChapterIds.isNotEmpty() && !gallerySelected) {
+				val renameChapter = chapters.singleOrNull { selectedChapterIds.size == 1 && it.chapter.id in selectedChapterIds }
+					?.takeIf { details?.renameableChapterFile(it) != null }
 				val canMarkRead = chapters.any { it.chapter.id in selectedChapterIds && it.isUnread }
 				val canMarkUnread = chapters.any { it.chapter.id in selectedChapterIds && !it.isUnread }
 				Surface(
@@ -672,6 +675,12 @@ fun DetailsExpressiveScreen(
 								enabled = canMarkUnread,
 								modifier = Modifier.weight(1f),
 							) { Text(stringResource(R.string.mark_as_unread), maxLines = 2) }
+							renameChapter?.let { chapter ->
+								TextButton(onClick = {
+									selectedChapterIds = emptySet()
+									actions.onChapterRenameClick(chapter)
+								}) { Text(stringResource(R.string.rename_chapter_download), maxLines = 2) }
+							}
 						}
 					}
 				}
