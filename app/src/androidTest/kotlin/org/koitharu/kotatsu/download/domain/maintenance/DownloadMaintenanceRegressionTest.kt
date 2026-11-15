@@ -641,6 +641,43 @@ class DownloadMaintenanceRegressionTest {
 		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
 	}
 
+	@Test fun compareV1424IndexedFallbackWithCurrentExhentaiResolver() = runBlocking {
+		val gallery = offlineExhentaiGallery(812306L)
+		val chapter = requireNotNull(gallery.chapters).single()
+		// Neither deterministic source paths nor legacy language buckets find this copy.
+		// Both routes get the same bytes and the same persisted remote-to-local alias.
+		val directory = folder("downloads/Archived/Offline gallery × Fixture")
+		val cbz = chapterFile(directory, "Chapter.cbz")
+		val bytes = cbz.readBytes()
+		register(gallery, directory)
+		assertEquals(directory, index.findIndexedPath(gallery.id)?.canonicalFile)
+		assertTrue(db.getFavouriteDownloadIndexDao().findEntries(listOf(gallery.id)).isEmpty())
+		assertEquals(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Evidence.Unmarked,
+			org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.inspect(cbz))
+
+		// Exercise the v1.4.24 index-hit branch using its unchanged chapter compatibility helpers.
+		// This is not execution of the v1.4.24 APK or its complete resolver.
+		val indexed = checkNotNull(index.get(gallery.id, withDetails = true))
+		val migrated = index.linkMigratedDownloadChapters(gallery.id, indexed)
+		val old = org.koitharu.kotatsu.local.data.LegacySplitChapterCompat.linkToRemote(gallery, migrated)
+			?: LegacyChapterDownloadCompat.linkToRemote(gallery, migrated)
+		val details = MangaDetails(gallery).copy(localManga = old)
+		assertTrue(details.mapChapters(-1L, 0, chapter.branch, emptyList(), false, false)
+			.any { it.chapter.id == chapter.id && it.isDownloaded })
+		val offline = details.allChapters.single { it.id == chapter.id }
+		assertEquals(LocalMangaSource, offline.source)
+		assertTrue(local.getPages(offline).isNotEmpty())
+
+		// The current parser can map this exact archive. The lookup rejects the alias
+		// because a hint outside the deterministic layouts must have verified provenance.
+		val candidate = checkNotNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
+		assertFalse(candidate.verified)
+		assertEquals(chapter.id, candidate.local.manga.chapters?.single()?.id)
+		assertNull(resolver.findSavedManga(gallery, null))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertArrayEquals(bytes, cbz.readBytes())
+	}
+
 	private fun offlineExhentaiGallery(gid: Long): Manga = galleryFixture(gid).let { gallery ->
 		gallery.copy(
 			title = "[Circle (Artist)] Offline gallery × Fixture [Chinese] [Translation Group] [Digital]",
