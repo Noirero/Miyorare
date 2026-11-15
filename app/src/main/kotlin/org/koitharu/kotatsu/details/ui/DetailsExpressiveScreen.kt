@@ -37,6 +37,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -57,6 +58,9 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.local.data.canRenameStandaloneChapterFile
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
@@ -635,8 +639,21 @@ fun DetailsExpressiveScreen(
 			}
 
 			if (selectedChapterIds.isNotEmpty() && !gallerySelected) {
-				val renameChapter = chapters.singleOrNull { selectedChapterIds.size == 1 && it.chapter.id in selectedChapterIds }
-					?.takeIf { details?.renameableChapterFile(it) != null }
+				val selectedChapter = selectedChapterIds.singleOrNull()?.let { id ->
+					chapters.singleOrNull { it.chapter.id == id }
+				}
+				val renameFile = selectedChapter?.let { details?.renameableChapterFile(it) }
+				val renameRoot = details?.local?.file
+				val canRename = key(renameRoot, renameFile) {
+					produceState(false, renameRoot, renameFile) {
+						if (renameRoot != null && renameFile != null) {
+							value = withContext(Dispatchers.IO) {
+								canRenameStandaloneChapterFile(renameRoot, renameFile)
+							}
+						}
+					}.value
+				}
+				val renameChapter = selectedChapter.takeIf { canRename }
 				val canMarkRead = chapters.any { it.chapter.id in selectedChapterIds && it.isUnread }
 				val canMarkUnread = chapters.any { it.chapter.id in selectedChapterIds && !it.isUnread }
 				Surface(

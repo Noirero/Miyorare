@@ -208,8 +208,8 @@ class DetailsExpressiveActivity :
 			it?.let { d -> title = d.toManga().title }
 			invalidateOptionsMenu()
 		}
-		viewModel.onChapterDownloadRenamed.observeEvent(this) {
-			Toast.makeText(this, R.string.chapter_download_renamed_refresh, Toast.LENGTH_SHORT).show()
+		viewModel.onChapterDownloadRenameMessage.observeEvent(this) { message ->
+			Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 		}
 		viewModel.onTrackingProgressSynced.observeEvent(this) { chapter ->
 			Toast.makeText(

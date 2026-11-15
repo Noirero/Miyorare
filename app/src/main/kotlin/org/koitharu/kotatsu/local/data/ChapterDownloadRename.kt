@@ -29,18 +29,24 @@ internal fun chapterDownloadStem(input: String): String? {
 	}
 }
 
-internal fun renameStandaloneChapterFile(root: File, file: File, input: String) {
+/** Filesystem eligibility must be checked off the main thread and again before mutation. */
+internal fun canRenameStandaloneChapterFile(root: File, file: File): Boolean = runCatching {
+	file.parentFile == root && file.extension.equals("cbz", ignoreCase = true) &&
+		file.isFile && !Files.isSymbolicLink(file.toPath()) &&
+		file.canonicalFile.parentFile == root.canonicalFile &&
+		!File(root, LocalMangaOutput.ENTRY_NAME_INDEX).exists()
+}.getOrDefault(false)
+
+internal fun renameStandaloneChapterFile(root: File, file: File, input: String): Boolean {
 	val stem = requireNotNull(chapterDownloadStem(input)) { "Invalid chapter file name" }
-	check(file.parentFile == root && file.canonicalFile.parentFile == root.canonicalFile &&
-		!Files.isSymbolicLink(file.toPath()) && file.isFile && file.extension.equals("cbz", ignoreCase = true)
-	) { "Only standalone chapter downloads can be renamed" }
-	check(!File(root, LocalMangaOutput.ENTRY_NAME_INDEX).exists()) { "Indexed chapter downloads cannot be renamed" }
+	check(canRenameStandaloneChapterFile(root, file)) { "Only standalone chapter downloads can be renamed" }
 	val destination = File(root, "$stem.${file.extension}")
-	if (destination == file) return
+	if (destination == file) return false
 	val entries = checkNotNull(root.listFiles()) { "Unable to read download directory" }
 	if (entries.any { it.name.equals(destination.name, ignoreCase = true) ||
-			it.name.equals(destination.name + ".tmp", ignoreCase = true)
+			it.name.equals(destination.name + LocalMangaOutput.SUFFIX_TMP, ignoreCase = true)
 		}
 	) throw FileAlreadyExistsException(destination.name)
 	Files.move(file.toPath(), destination.toPath())
+	return true
 }

@@ -799,4 +799,6 @@
     <string name="rename_chapter_download">Ganti Nama</string>
     <string name="invalid_chapter_download_name">Masukkan nama file chapter yang valid.</string>
     <string name="chapter_download_renamed_refresh">Nama file diubah. Segarkan Detail Manga untuk memperbarui daftar chapter.</string>
+    <string name="chapter_download_rename_conflict">Nama file chapter itu sudah ada atau sedang diunduh. Pilih nama lain.</string>
+    <string name="chapter_download_rename_failed">Nama file chapter tidak dapat diubah. Segarkan Detail Manga dan coba lagi.</string>
 </resources>

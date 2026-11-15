@@ -40,6 +40,8 @@ import org.koitharu.kotatsu.local.data.isEpubFile
 import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -193,7 +195,7 @@ class DetailsViewModel @Inject constructor(
 	private var expandedRelatedGeneration = 0L
 	val mangaId = intent.mangaId
 	val onTrackingProgressSynced = MutableEventFlow<Int>()
-	internal val onChapterDownloadRenamed = MutableEventFlow<Unit>()
+	internal val onChapterDownloadRenameMessage = MutableEventFlow<Int>()
 
 	private val _isRefreshing = MutableStateFlow(false)
 	val isRefreshing = _isRefreshing.asStateFlow()
@@ -715,10 +717,19 @@ class DetailsViewModel @Inject constructor(
 		val source = details.sourceManga
 		val space = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }
 		launchJob(Dispatchers.IO) {
-			localMangaRepository.renameChapterDownload(source, root, file, name) {
-				downloadedMangaResolver.findSavedManga(source, space)
+			runCatchingCancellable {
+				localMangaRepository.renameChapterDownload(source, root, file, name) {
+					downloadedMangaResolver.findSavedManga(source, space)
+				}
+			}.onSuccess { renamed ->
+				if (renamed) onChapterDownloadRenameMessage.call(R.string.chapter_download_renamed_refresh)
+			}.onFailure { error ->
+				error.printStackTraceDebug()
+				onChapterDownloadRenameMessage.call(
+					if (error is FileAlreadyExistsException) R.string.chapter_download_rename_conflict
+					else R.string.chapter_download_rename_failed,
+				)
 			}
-			onChapterDownloadRenamed.call(Unit)
 		}
 	}
 

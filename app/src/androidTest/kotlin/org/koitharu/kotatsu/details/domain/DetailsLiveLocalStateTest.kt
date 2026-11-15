@@ -413,13 +413,21 @@ class DetailsLiveLocalStateTest {
 		assertEquals(null, before.renameableChapterFile(onlineRow))
 		assertEquals(old, before.renameableChapterFile(oldRow))
 
-		localRepository.renameChapterDownload(remote, root, old, "Chapter 1") { lookup() }
+		val otherCopy = concrete(remote, listOf(cbz(privateRoot, 1)), privateRoot)
+		val wrongRoot = runCatching {
+			localRepository.renameChapterDownload(remote, root, old, "Chapter 1") { otherCopy }
+		}
+		assertTrue(wrongRoot.isFailure)
+		assertTrue(old.isFile)
+		assertTrue(localRepository.renameChapterDownload(remote, root, old, "Chapter 1") { lookup() })
 
 		val rows = MangaDetails(remote).copy(localManga = requireNotNull(lookup())).rows()
 		assertEquals(listOf("Chapter 1", "Chapter 2"), rows.map { it.chapter.title })
 		assertEquals(setOf(1L, 2L), rows.downloadedIds())
 		assertEquals(LocalMangaSource, rows.first().chapter.source)
-		assertEquals("1.jpg", localRepository.getPages(rows.first().chapter).single().url.toUri().fragment)
+		val pageUri = localRepository.getPages(rows.first().chapter).single().url.toUri()
+		assertEquals("1.jpg", pageUri.fragment)
+		assertEquals(File(root, "Chapter 1.cbz").canonicalFile, File(checkNotNull(pageUri.path)).canonicalFile)
 		assertTrue(originalBytes.contentEquals(File(root, "Chapter 1.cbz").readBytes()))
 		assertFalse(old.exists())
 		assertTrue(other.isFile)

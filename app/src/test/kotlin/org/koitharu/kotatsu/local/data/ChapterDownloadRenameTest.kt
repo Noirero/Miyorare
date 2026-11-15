@@ -19,7 +19,7 @@ class ChapterDownloadRenameTest {
 		val bytes = byteArrayOf(1, 2, 3)
 		val old = File(root, "Chapter 1 END.cbz").apply { writeBytes(bytes) }
 		val other = File(root, "Chapter 2.cbz").apply { writeText("other") }
-		renameStandaloneChapterFile(root, old, "Chapter 1")
+		assertTrue(renameStandaloneChapterFile(root, old, "Chapter 1"))
 		assertFalse(old.exists())
 		assertArrayEquals(bytes, File(root, "Chapter 1.cbz").readBytes())
 		assertEquals("other", other.readText())
@@ -36,6 +36,20 @@ class ChapterDownloadRenameTest {
 			assertEquals("other", other.readText())
 			assertTrue(other.delete())
 		}
+	}
+
+	@Test fun indexedOrMissingDownloadsAreNotEligible() {
+		val root = directory.root
+		val file = File(root, "Chapter 1.cbz")
+		assertFalse(canRenameStandaloneChapterFile(root, file))
+		file.writeText("chapter")
+		assertTrue(canRenameStandaloneChapterFile(root, file))
+		assertFalse(renameStandaloneChapterFile(root, file, "Chapter 1"))
+		File(root, "index.json").writeText("{}")
+		assertFalse(canRenameStandaloneChapterFile(root, file))
+		assertTrue(runCatching { renameStandaloneChapterFile(root, file, "Chapter 2") }.isFailure)
+		assertEquals("chapter", file.readText())
+		assertFalse(File(root, "Chapter 2.cbz").exists())
 	}
 
 	@Test fun rejectsInvalidNamesAndKeepsExtensionSeparate() {
