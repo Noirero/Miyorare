@@ -6,6 +6,9 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.util.MimeTypes
+import org.koitharu.kotatsu.core.util.ext.isImage
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -16,10 +19,8 @@ import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
-import java.util.zip.ZipFile
-import org.koitharu.kotatsu.core.util.MimeTypes
 import java.util.UUID
-import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import java.util.zip.ZipFile
 
 /** Resolve one physical artifact, not ownership of a title directory. Never modifies user files. */
 internal object ExhentaiDownloadedCopy {
