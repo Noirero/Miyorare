@@ -56,14 +56,26 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	}
 
 
-	/** A compatibility read match is not enough evidence to delete a remote gallery's file. */
+	/** Details can delete an unambiguous destination CBZ; other actions require a verified copy. */
 	internal suspend fun deleteExhentaiCopy(
 		remote: Manga,
 		space: FavouriteSpace,
 		expectedFile: File? = null,
 		chapterIds: Set<Long>? = null,
+		useDestination: Boolean = false,
 	): Boolean = mangaLock.withLock(remote) {
 		require(ExhentaiDownloadedCopy.isOfficial(remote))
+		if (useDestination) {
+			val destination = localMangaRepository.findExhentaiDestinationCopy(remote, space)
+			if (destination != null) {
+				val file = destination.file.canonicalFile
+				if (expectedFile != null && expectedFile.canonicalFile != file ||
+					chapterIds != null && destination.manga.chapters.orEmpty().map { it.id }.toSet() != chapterIds) {
+					throw IOException("The selected ExHentai file changed. Files were kept.")
+				}
+				return@withLock localMangaRepository.deleteExhentaiDestinationCopy(destination)
+			}
+		}
 		val saved = downloadedMangaResolver.findSavedManga(remote, space) ?: return@withLock false
 		val file = saved.file.canonicalFile
 		val proven = ExhentaiDownloadedCopy.find(remote, file, withDetails = true)

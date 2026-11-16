@@ -35,7 +35,7 @@ class DetailsDownloadResolutionBoundaryTest {
 			.substringAfter("suspendfunfindSavedManga(")
 			.substringBefore("privatesuspendfunrememberFavouriteDownloadOwnership")
 
-		val ownership = resolverBlock.indexOf("findEntry(favouriteSpace.dbValue,manga.id)")
+		val ownership = resolverBlock.indexOf("findEntry(space.dbValue,manga.id)")
 		val indexed = resolverBlock.indexOf("findSavedMangaIndexed(manga)")
 		assertTrue("FavouriteSpace ownership must be checked before global index fallback", ownership >= 0 && ownership < indexed)
 		assertFalse("Resolver must not expose an old/new execution switch", resolverBlock.contains("preferIndexed"))

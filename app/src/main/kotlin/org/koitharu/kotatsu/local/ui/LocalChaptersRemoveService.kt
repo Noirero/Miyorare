@@ -68,7 +68,7 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 				// this boundary a Private delete could hit a Normal copy from the global Local index.
 				val remote = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
 				if (ExhentaiDownloadedCopy.isOfficial(remote)) {
-					check(deleteLocalManga.deleteExhentaiCopy(remote, favouriteSpace, chapterIds = chaptersIds)) {
+					check(deleteLocalManga.deleteExhentaiCopy(remote, favouriteSpace, chapterIds = chaptersIds, useDestination = true)) {
 						"Downloaded ExHentai gallery is unavailable"
 					}
 					return@withPartialWakeLock

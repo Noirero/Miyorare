@@ -159,13 +159,28 @@ sealed class LocalMangaOutput(
 		}
 
 		/** Bounded title candidates. Suffixed paths are recovery-only, never legacy identity. */
-		internal fun exhentaiReadCandidates(root: File, manga: Manga, recoverSuffixes: Boolean = false): List<File> {
+		internal fun exhentaiReadCandidates(
+			root: File,
+			manga: Manga,
+			recoverSuffixes: Boolean = false,
+			preferFullTitle: Boolean = false,
+		): List<File> {
 			val rootPath = root.canonicalFile.toPath()
-			val source = getSourceDirectory(File(root, DOWNLOADS_DIR_NAME), manga)
+			val downloads = File(root, DOWNLOADS_DIR_NAME)
+			val source = getSourceDirectory(downloads, manga)
 			val names = setOf(manga.title.toReadableFileName(), ExhentaiTitlePolicy.legacyFolderTitle(manga.title).toReadableFileName())
-			val parents = linkedSetOf(source).apply { addAll(legacySourceDirectories(root, manga)) }
-			return parents.flatMap { parent ->
-				if (!parent.canonicalFile.toPath().startsWith(rootPath)) return@flatMap emptyList()
+			val parents = linkedSetOf(source).apply {
+				// Details/Reader may have the persisted source key but no live Tsuki directory metadata.
+				// A pre-receipt archive then has no verified index hint to recover its physical path.
+				if (EhentaiSourceFamily.isOfficialSource(manga.source.name)) {
+					add(File(downloads, externalSourceDirectoryName("ExHentai", "other").toReadableFileName()))
+				}
+				addAll(legacySourceDirectories(root, manga))
+			}
+			val safeParents = parents.filter { it.canonicalFile.toPath().startsWith(rootPath) }
+			val candidates = if (preferFullTitle && !recoverSuffixes) {
+				names.flatMap { name -> safeParents.flatMap { parent -> listOf(File(parent, name), File(parent, "$name.cbz")) } }
+			} else safeParents.flatMap { parent ->
 				if (recoverSuffixes) {
 					parent.listFiles { child ->
 						val stem = child.name.removeSuffix(".cbz")
@@ -175,7 +190,8 @@ sealed class LocalMangaOutput(
 							stem == "${base}_$suffix"
 					}.orEmpty().toList()
 				} else names.flatMap { name -> listOf(File(parent, name), File(parent, "$name.cbz")) }
-			}.filter { file ->
+			}
+			return candidates.filter { file ->
 				val canonical = file.canonicalFile
 				canonical.parentFile == file.parentFile?.canonicalFile && canonical.toPath() != rootPath &&
 					canonical.toPath().startsWith(rootPath) && file.exists()

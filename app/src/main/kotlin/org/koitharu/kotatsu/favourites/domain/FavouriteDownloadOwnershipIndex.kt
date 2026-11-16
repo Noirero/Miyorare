@@ -79,6 +79,10 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 		}
 	}
 
+	/** Only an exact artifact row is proof; a directory alias cannot authorize a shared-root CBZ. */
+	internal suspend fun ownsExactExhentaiFile(mangaId: Long, space: FavouriteSpace, file: File): Boolean =
+		db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, mangaId)?.path == file.canonicalPath
+
 	internal suspend fun pathsForManga(mangaId: Long): List<File> =
 		db.getFavouriteDownloadIndexDao().findEntries(listOf(mangaId)).map { File(it.path) }
 

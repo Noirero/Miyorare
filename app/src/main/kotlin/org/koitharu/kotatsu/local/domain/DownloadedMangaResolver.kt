@@ -1,5 +1,9 @@
 package org.koitharu.kotatsu.local.domain
 
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.BuildConfig
+import org.koitharu.kotatsu.core.logs.LegacyCbzDiagnosticExport
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.model.isBroken
@@ -15,6 +19,8 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,22 +58,47 @@ class DownloadedMangaResolver @Inject constructor(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
-		// Global callers have no FavouriteSpace ownership boundary, so the repository's deterministic
-		// path is the single source of truth: expected path -> persisted Local index -> bounded
-		// title/chapter-evidence compatibility bridge. It never performs the old broad reconnect scan.
-		if (favouriteSpace == null) {
+		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
+			return resolveSavedManga(manga, favouriteSpace)
+		}
+		val trace = LegacyCbzTrace()
+		return withContext(trace) {
+			val saved = resolveSavedManga(manga, favouriteSpace)
+			val result = when {
+				saved == null && trace.hasCandidate -> "REJECTED"
+				saved == null -> "NOT_FOUND"
+				saved.manga.chapters.isNullOrEmpty() -> "CHAPTER_NOT_MAPPED"
+				else -> "LOCAL_CHAPTER_AVAILABLE"
+			}
+			LegacyCbzTrace.log("LOOKUP_${favouriteSpace?.name ?: "BROWSE"} $result ${trace.summary()}")
+			saved
+		}
+	}
+
+	private suspend fun resolveSavedManga(
+		manga: Manga,
+		favouriteSpace: FavouriteSpace?,
+	): LocalManga? {
+		val officialExhentai = ExhentaiDownloadedCopy.isOfficial(manga)
+		// Browse has no explicit space. For official ExHentai it uses Normal throughout;
+		// a failed destination lookup must not fall through to an unscoped storage lookup.
+		val space = favouriteSpace ?: if (officialExhentai) FavouriteSpace.NORMAL else null
+		if (space == null) {
 			return localMangaRepository.findSavedManga(manga, withDetails = true)
 		}
 
-		val roots = downloadDestinationStore.readableRoots(favouriteSpace)
+		if (officialExhentai) {
+			localMangaRepository.findExhentaiDestinationCopy(manga, space)?.let { return it }
+		}
+		val roots = downloadDestinationStore.readableRoots(space)
 
 		// Space ownership is stronger than the global Local index for sidecar-free downloads.
-		val ownership = database.getFavouriteDownloadIndexDao().findEntry(favouriteSpace.dbValue, manga.id)
+		val ownership = database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id)
 		if (ownership != null) {
 			val ownedFile = File(ownership.path)
 			if (roots.any { ownedFile.isInside(it) }) {
-				val saved = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-					localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = favouriteSpace)?.local
+				val saved = if (officialExhentai) {
+					localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = space)?.local
 				} else {
 					localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)
 				}
@@ -79,8 +110,8 @@ class DownloadedMangaResolver @Inject constructor(
 		// owns an unindexed legacy artifact. Do not let opening Details manufacture ownership for the
 		// active space; the background legacy reconciler is the only compatibility path allowed to
 		// persist ownership after checking favourite membership and chapter evidence.
-		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = favouriteSpace)
+		if (officialExhentai) {
+			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
 		}
 		if (!canInferSpaceFromPath()) return null
 
@@ -94,7 +125,7 @@ class DownloadedMangaResolver @Inject constructor(
 			)
 			?: return null
 
-		rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
+		rememberFavouriteDownloadOwnership(space, manga.id, indexed.file)
 		return indexed
 	}
 
@@ -123,5 +154,29 @@ class DownloadedMangaResolver @Inject constructor(
 			.path.trimEnd(File.separatorChar)
 		val filePath = runCatching { canonicalFile }.getOrDefault(absoluteFile).path
 		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
+	}
+}
+
+/** Debug-only, per lookup, fixed reason codes; never stores gallery or filesystem identifiers. */
+internal class LegacyCbzTrace : AbstractCoroutineContextElement(Key) {
+	enum class Stage {
+		CANDIDATE, ARCHIVE_REJECTED, OWNERSHIP_CONFLICT, UNVERIFIED_ALIAS, SPACE_REJECTED,
+		AMBIGUOUS_RECOVERY,
+		DESTINATION_CHAPTER_UNAVAILABLE, DESTINATION_CANDIDATE, DESTINATION_SHARED_ROOT,
+		DESTINATION_NO_UNIQUE_CBZ, DESTINATION_LAYOUT_UNSUPPORTED, DESTINATION_SELECTED,
+	}
+
+	private val stages = java.util.EnumSet.noneOf(Stage::class.java)
+	val hasCandidate get() = Stage.CANDIDATE in stages || Stage.DESTINATION_CANDIDATE in stages
+	fun summary(): String = stages.joinToString(",")
+
+	companion object Key : CoroutineContext.Key<LegacyCbzTrace> {
+		suspend fun record(stage: Stage) {
+			if (BuildConfig.DEBUG) currentCoroutineContext()[Key]?.stages?.add(stage)
+		}
+
+		fun log(message: String) {
+			if (BuildConfig.DEBUG) LegacyCbzDiagnosticExport.record(message)
+		}
 	}
 }
