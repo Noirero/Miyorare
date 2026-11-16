@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
@@ -29,6 +30,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.list.DownloadSizeResolver
+import org.koitharu.kotatsu.download.ui.list.observeDownloadChapterInvalidations
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
@@ -109,6 +111,32 @@ class DownloadMaintenanceRegressionTest {
 		}
 		root.deleteRecursively()
 		Unit
+	}
+
+	@Test fun globalDeletionRefreshesChapterStatusOnTheSameCollector() = runBlocking {
+		val manga = galleryFixture(812381)
+		val file = writeGalleryFixture(manga, false, byteArrayOf(81, 82))
+		val chapterId = manga.chapters.orEmpty().single().id
+		val initial = CompletableDeferred<Boolean>()
+		val observed = async {
+			val flags = ArrayList<Boolean>()
+			observeDownloadChapterInvalidations(events, manga.id, listOf(root)).take(2).collect {
+				val downloaded = local.findSavedMangaInRoot(manga, root)?.manga?.chapters.orEmpty()
+					.any { it.id == chapterId }
+				flags += downloaded
+				initial.complete(downloaded)
+			}
+			flags
+		}
+		try {
+			kotlinx.coroutines.withTimeout(10_000) {
+				assertTrue(initial.await())
+				assertTrue(local.deleteExhentaiDestinationCopy(LocalManga(manga, file)))
+				assertEquals(listOf(true, false), observed.await())
+			}
+		} finally {
+			observed.cancel()
+		}
 	}
 
 	@Test fun sizeResolverDoesNotCrossSpacesInASharedRoot() = runBlocking {

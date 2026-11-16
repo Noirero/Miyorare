@@ -736,26 +736,14 @@ class DownloadsViewModel @Inject constructor(
 				}
 			}
 		}
-		emit(mapChapters())
-		localStorageChanges.collect { changed ->
-			if (changed?.manga?.id == manga.id) {
-				if (roots.isEmpty() || roots.any { changed.file.isInside(it) }) {
-					emit(mapChapters())
-				}
-			}
+		observeDownloadChapterInvalidations(localStorageChanges, manga.id, roots).collect {
+			emit(mapChapters())
 		}
 	}.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
 		null,
 	)
-
-	private fun java.io.File.isInside(root: java.io.File): Boolean {
-		val normalizedRoot = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile)
-		val normalizedFile = runCatching { canonicalFile }.getOrDefault(absoluteFile)
-		return normalizedFile == normalizedRoot ||
-			normalizedFile.path.startsWith(normalizedRoot.path + java.io.File.separator)
-	}
 
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)
