@@ -166,7 +166,7 @@ class DownloadsSettingsFragment :
 				DownloadDestinationAvailability.UNAVAILABLE -> if (storage == null) {
 					getString(R.string.not_available)
 				} else {
-					getString(R.string.download_destination_unavailable, storage.path)
+					getString(R.string.download_destination_summary_unavailable, storage.path)
 				}
 				DownloadDestinationAvailability.READ_ONLY ->
 					getString(R.string.download_destination_read_only, checkNotNull(storage).path)

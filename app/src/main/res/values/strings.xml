@@ -1501,6 +1501,6 @@
     <string name="chapter_download_renamed_refresh">File renamed. Refresh Details to update the chapter list.</string>
     <string name="chapter_download_rename_conflict">That chapter filename already exists or is being downloaded. Choose a different name.</string>
     <string name="chapter_download_rename_failed">Could not rename the chapter file. Refresh Details and try again.</string>
-    <string name="download_destination_unavailable">%1$s (not available)</string>
+    <string name="download_destination_summary_unavailable">%1$s (not available)</string>
     <string name="download_destination_read_only">%1$s (read-only)</string>
 </resources>
