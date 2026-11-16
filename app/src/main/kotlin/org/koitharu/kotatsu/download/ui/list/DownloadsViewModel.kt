@@ -726,7 +726,12 @@ class DownloadsViewModel @Inject constructor(
 			runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
 		}
 		// Resolve chapter metadata once for the whole manga/source group.
-		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
+		val chapters = resolveDownloadChapterMetadata(
+			manga = manga,
+			requestedIds = chapterIds,
+			findStored = { mangaDataRepository.findMangaById(it, withChapters = true) },
+			loadRemote = ::tryLoad,
+		) ?: return@flow
 		// The existing compatibility matcher needs these chapters before comparing remote ids.
 		val chapterManga = manga.copy(chapters = chapters)
 
