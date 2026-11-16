@@ -7,6 +7,8 @@ import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.runBlocking
@@ -31,7 +33,14 @@ class DownloadDestinationSettingsTest {
 	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var storage: LocalStorageManager
 
-	@Before fun inject() { hilt.inject() }
+	@Before fun setUp() {
+		// HiltTestApplication replaces the production Configuration.Provider.
+		if (!WorkManager.isInitialized()) {
+			val context = InstrumentationRegistry.getInstrumentation().targetContext
+			WorkManager.initialize(context, Configuration.Builder().build())
+		}
+		hilt.inject()
+	}
 
 	@Test fun configuredDestinationRefreshesAndRemainsVisibleAfterReopenWhenUnavailable() {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
