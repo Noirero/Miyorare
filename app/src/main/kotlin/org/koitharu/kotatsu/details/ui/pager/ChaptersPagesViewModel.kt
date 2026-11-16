@@ -813,7 +813,7 @@ abstract class ChaptersPagesViewModel(
 		launchLoadingJob(Dispatchers.Default) {
 			val remote = details?.sourceManga
 			if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
-				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {
+				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file, useDestination = true)) {
 					"Downloaded ExHentai gallery is unavailable"
 				}
 			} else deleteLocalMangaUseCase(m)

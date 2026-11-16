@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
@@ -28,6 +29,9 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.download.ui.list.DownloadSizeResolver
+import org.koitharu.kotatsu.download.ui.list.observeDownloadChapterInvalidations
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
@@ -45,7 +49,9 @@ import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
+import java.util.UUID
 import java.security.MessageDigest
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
@@ -106,6 +112,88 @@ class DownloadMaintenanceRegressionTest {
 		root.deleteRecursively()
 		Unit
 	}
+
+	@Test fun globalDeletionRefreshesChapterStatusOnTheSameCollector() = runBlocking {
+		val manga = galleryFixture(812381)
+		val file = writeGalleryFixture(manga, false, byteArrayOf(81, 82))
+		val chapterId = manga.chapters.orEmpty().single().id
+		val initial = CompletableDeferred<Boolean>()
+		val observed = async {
+			val flags = ArrayList<Boolean>()
+			observeDownloadChapterInvalidations(events, manga.id, listOf(root)).take(2).collect {
+				val downloaded = local.findSavedMangaInRoot(manga, root)?.manga?.chapters.orEmpty()
+					.any { it.id == chapterId }
+				flags += downloaded
+				initial.complete(downloaded)
+			}
+			flags
+		}
+		try {
+			kotlinx.coroutines.withTimeout(10_000) {
+				assertTrue(initial.await())
+				assertTrue(local.deleteExhentaiDestinationCopy(LocalManga(manga, file)))
+				assertEquals(listOf(true, false), observed.await())
+			}
+		} finally {
+			observed.cancel()
+		}
+	}
+
+	@Test fun sizeResolverDoesNotCrossSpacesInASharedRoot() = runBlocking {
+		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
+		val manga = remote()
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		val normalFile = chapterFile(folder("downloads/normal-copy"), "Chapter.cbz")
+		val privateFile = chapterFile(folder("downloads/private-copy"), "Chapter.cbz")
+		val dao = db.getFavouriteDownloadIndexDao()
+		val normal = FavouriteSpace.NORMAL
+		val privateSpace = FavouriteSpace.PRIVATE
+		val sizeResolver = DownloadSizeResolver(db, local)
+		val request = UUID.randomUUID()
+		val normalTask = sizeTask(manga, normal)
+		val privateTask = sizeTask(manga, privateSpace)
+		dao.upsert(FavouriteDownloadIndexEntity(manga.id, normal.dbValue, normalFile.canonicalPath))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, privateTask, null, privateSpace))
+		dao.upsert(FavouriteDownloadIndexEntity(manga.id, privateSpace.dbValue, privateFile.canonicalPath))
+		assertEquals(normalFile.canonicalFile, sizeResolver.findSizeArtifact(request, manga, normalTask, null, normal))
+		assertEquals(privateFile.canonicalFile, sizeResolver.findSizeArtifact(request, manga, privateTask, null, privateSpace))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, normalTask, null, privateSpace))
+		dao.upsert(FavouriteDownloadIndexEntity(manga.id, privateSpace.dbValue, normalFile.canonicalPath))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, normalTask, null, normal))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, privateTask, null, privateSpace))
+	}
+
+	@Test fun sizeResolverRejectsAnotherReceiptForTheSameGallery() = runBlocking {
+		val galleryId = 812380L
+		val manga = offlineExhentaiGallery(galleryId)
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		val space = FavouriteSpace.NORMAL
+		val requestA = UUID.randomUUID()
+		val requestB = UUID.randomUUID()
+		val fileA = writeGalleryFixture(manga, false, byteArrayOf(1), receipt = ExhentaiChapterOwnership.Receipt(space, requestA))
+		val receiptB = ExhentaiChapterOwnership.Receipt(space, requestB)
+		val fileB = writeGalleryFixture(manga, true, byteArrayOf(2, 3), receipt = receiptB)
+		assertNotEquals(fileA.canonicalFile, fileB.canonicalFile)
+		assertEquals(receiptB, (ExhentaiChapterOwnership.inspect(fileB) as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt)
+		// The space index can point to the newer copy; the older job still owns its exact receipt.
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(manga.id, space.dbValue, fileB.canonicalPath),
+		)
+		val sizeResolver = DownloadSizeResolver(db, local)
+		val task = sizeTask(manga, space, separateCopy = true)
+		assertEquals(fileA.canonicalFile, sizeResolver.findSizeArtifact(requestA, manga, task, fileA.path, space))
+		assertEquals(fileB.canonicalFile, sizeResolver.findSizeArtifact(requestB, manga, task, fileB.path, space))
+		assertNull(sizeResolver.findSizeArtifact(requestA, manga, task, fileB.path, space))
+		assertNull(sizeResolver.findSizeArtifact(requestA, manga, task, null, space))
+		assertTrue(fileA.delete())
+		assertNull(sizeResolver.findSizeArtifact(requestA, manga, task, fileA.path, space))
+	}
+
+	private fun sizeTask(manga: Manga, space: FavouriteSpace, separateCopy: Boolean = false) = DownloadTask(
+		mangaId = manga.id, isPaused = false, isSilent = false, chaptersIds = null,
+		destination = root, format = null, allowMeteredNetwork = true, favouriteSpace = space,
+		downloadSeparateCopy = separateCopy,
+	)
 
 	@Test fun currentSourceLayoutRemainsSidecarFreeAndSecondRunDoesNotMutate() = runBlocking {
 		val remote = remote()
@@ -568,6 +656,255 @@ class DownloadMaintenanceRegressionTest {
 			rows.any { it.chapter.id == second.id && it.isDownloaded })
 		assertTrue(chapter2.isFile)
 		assertArrayEquals("A read-only Details lookup must not rewrite the user's index", originalIndex, indexFile.readBytes())
+	}
+
+	@Test fun fullTitleExhentaiDownloadMapsToLocalPages() = runBlocking {
+		val gallery = offlineExhentaiGallery(812301L)
+		// The ownership row references the persisted manga, as it does for a real download.
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
+		val receipt = org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(
+			FavouriteSpace.NORMAL, java.util.UUID.randomUUID(),
+		)
+		val cbz = writeGalleryFixture(gallery, appendId = false, bytes = byteArrayOf(1, 2, 3), receipt = receipt)
+		assertEquals(gallery.title, cbz.parentFile?.name)
+		assertEquals("Chapter.cbz", cbz.name)
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath),
+		)
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+	}
+
+	@Test fun compactOnlyExhentaiDownloadMapsToLocalPages() = runBlocking {
+		val gallery = offlineExhentaiGallery(812302L)
+		// MissingMangaSource has no Tsuki directory metadata; use the historical direct layout.
+		val cbz = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+	}
+
+	@Test fun compactExhentaiDownloadUnderOfficialSourceDirectoryNeedsNoSourceMetadataOrReceipt() = runBlocking {
+		val gallery = offlineExhentaiGallery(812305L)
+		// The on-disk folder comes from the installed source; the lookup seed has only its stored key.
+		val cbz = chapterFile(folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture"), "Chapter.cbz")
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+	}
+
+	@Test fun exhentaiTitleDestinationFollowsTheCurrentArchiveNotItsGalleryId() = runBlocking {
+		val gallery = offlineExhentaiGallery(812309L)
+		for (title in listOf(gallery.title, "Offline gallery × Fixture")) {
+			val directory = folder("downloads/ExHentai (OTHER)/$title")
+			val cbz = File(directory, "Chapter.cbz")
+			for ((otherGallery, pageName) in listOf(812310L to "1.jpg", 812311L to "2.jpg")) {
+				ZipOutputStream(cbz.outputStream()).use { zip ->
+					zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(otherGallery))
+					zip.putNextEntry(ZipEntry(pageName))
+					zip.write(byteArrayOf(1, 2, 3))
+					zip.closeEntry()
+				}
+				val saved = checkNotNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+				assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
+				val readerChapter = MangaDetails(gallery).copy(localManga = saved).allChapters
+					.single { it.id == gallery.chapters!!.single().id }
+				assertEquals(LocalMangaSource, readerChapter.source)
+				assertTrue(local.getPages(readerChapter).single().url.endsWith("#$pageName"))
+				assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+			}
+			val sibling = File(directory, "keep.txt").apply { writeText("keep") }
+			assertTrue(deleteLocal.deleteExhentaiCopy(
+				gallery, FavouriteSpace.NORMAL, expectedFile = cbz, useDestination = true,
+			))
+			assertFalse(cbz.exists())
+			assertTrue(sibling.exists())
+			assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		}
+	}
+
+	@Test fun exhentaiSharedDestinationFollowsReplacementOnlyForExactOwner() = runBlocking {
+		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
+		val gallery = offlineExhentaiGallery(812313L)
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
+		val cbz = File(folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture"), "Chapter.cbz")
+		ZipOutputStream(cbz.outputStream()).use { zip ->
+			zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(812314L))
+			zip.putNextEntry(ZipEntry("replacement.jpg"))
+			zip.write(byteArrayOf(1, 2, 3))
+			zip.closeEntry()
+		}
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath),
+		)
+		val saved = checkNotNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
+		val chapter = MangaDetails(gallery).copy(localManga = saved).allChapters
+			.single { it.id == gallery.chapters!!.single().id }
+		assertEquals(LocalMangaSource, chapter.source)
+		assertTrue(local.getPages(chapter).single().url.endsWith("#replacement.jpg"))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+	}
+
+	@Test fun exhentaiFullTitleWinsAcrossLayoutsWithinTheSameRoot() = runBlocking {
+		val gallery = offlineExhentaiGallery(812312L)
+		val compact = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
+		val full = chapterFile(folder("downloads/ExHentai (OTHER)/${gallery.title}"), "Chapter.cbz")
+		assertExhentaiLocalRead(gallery, full, FavouriteSpace.NORMAL)
+		assertTrue(full.delete())
+		assertExhentaiLocalRead(gallery, compact, FavouriteSpace.NORMAL)
+	}
+
+	@Test fun replacingExhentaiArchiveAtSamePathRechecksCurrentArtifact() = runBlocking {
+		val gallery = offlineExhentaiGallery(812303L)
+		val space = FavouriteSpace.NORMAL
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
+		// The same physical destination can be shared by Normal and Private.
+		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
+		val receipt = org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(
+			space, java.util.UUID.randomUUID(),
+		)
+		val cbz = writeGalleryFixture(gallery, appendId = false, bytes = byteArrayOf(1, 2, 3), receipt = receipt)
+		val ownership = FavouriteDownloadIndexEntity(gallery.id, space.dbValue, cbz.canonicalPath)
+		val dao = db.getFavouriteDownloadIndexDao()
+		dao.upsert(ownership)
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, space)
+
+		// Keep the folder, filename and recorded path. Change only the physical ZIP.
+		val oldBytes = cbz.readBytes()
+		chapterFile(checkNotNull(cbz.parentFile), cbz.name)
+		assertFalse(oldBytes.contentEquals(cbz.readBytes()))
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, space)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
+
+		// Gallery identity is not a read filter for an owned title destination.
+		ZipOutputStream(cbz.outputStream()).use { zip ->
+			zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(812304L))
+			zip.putNextEntry(ZipEntry("other-gallery.jpg"))
+			zip.write(byteArrayOf(4, 5, 6))
+			zip.closeEntry()
+		}
+		for (lookupSpace in listOf(null, space)) {
+			val saved = checkNotNull(resolver.findSavedManga(gallery, lookupSpace))
+			assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
+			val chapter = MangaDetails(gallery).copy(localManga = saved).allChapters
+				.single { it.id == gallery.chapters!!.single().id }
+			assertEquals(LocalMangaSource, chapter.source)
+			assertTrue(local.getPages(chapter).single().url.endsWith("#other-gallery.jpg"))
+		}
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
+	}
+
+	@Test fun unmarkedExhentaiWithSharedActiveRootNeedsSpaceOwnership() = runBlocking {
+		// Private follows Normal, so both lookups can see the same candidate path.
+		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
+		assertOverlappingExhentaiRequiresOwnership(812307L)
+	}
+
+	@Test fun unmarkedExhentaiWithOverlappingHistoricalRootNeedsSpaceOwnership() = runBlocking {
+		// Active destinations are distinct, but this copy is inside a Private historical root.
+		prefs.edit(commit = true) {
+			putStringSet("private_download_legacy_roots", setOf(root.path))
+		}
+		assertOverlappingExhentaiRequiresOwnership(812308L)
+	}
+
+	private suspend fun assertOverlappingExhentaiRequiresOwnership(gid: Long) {
+		val gallery = offlineExhentaiGallery(gid)
+		val directory = folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture")
+		val cbz = chapterFile(directory, "Chapter.cbz")
+		register(gallery, directory)
+		val dao = db.getFavouriteDownloadIndexDao()
+		val parsed = checkNotNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
+		assertFalse(parsed.verified)
+		assertEquals(cbz.canonicalFile, parsed.local.file.canonicalFile)
+		assertEquals(gallery.chapters!!.single().id, parsed.local.manga.chapters?.single()?.id)
+
+		// Browse must not recover the same unowned file via the global Local index.
+		assertNull(resolver.findSavedManga(gallery, null))
+		// A matching Local alias and a readable archive do not establish space ownership.
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertTrue(dao.findEntries(listOf(gallery.id)).isEmpty())
+
+		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.PRIVATE.dbValue, cbz.canonicalPath))
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		assertNull(resolver.findSavedManga(gallery, null))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+
+		dao.delete(FavouriteSpace.PRIVATE.dbValue, gallery.id)
+		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath))
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+	}
+
+	@Test fun compareV1424IndexedFallbackWithCurrentExhentaiResolver() = runBlocking {
+		val gallery = offlineExhentaiGallery(812306L)
+		val chapter = requireNotNull(gallery.chapters).single()
+		// Neither deterministic source paths nor legacy language buckets find this copy.
+		// Both routes get the same bytes and the same persisted remote-to-local alias.
+		val directory = folder("downloads/Archived/Offline gallery × Fixture")
+		val cbz = chapterFile(directory, "Chapter.cbz")
+		val bytes = cbz.readBytes()
+		register(gallery, directory)
+		assertEquals(directory, index.findIndexedPath(gallery.id)?.canonicalFile)
+		assertTrue(db.getFavouriteDownloadIndexDao().findEntries(listOf(gallery.id)).isEmpty())
+		assertEquals(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Evidence.Unmarked,
+			org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.inspect(cbz))
+
+		// Exercise the v1.4.24 index-hit branch using its unchanged chapter compatibility helpers.
+		// This is not execution of the v1.4.24 APK or its complete resolver.
+		val indexed = checkNotNull(index.get(gallery.id, withDetails = true))
+		val migrated = index.linkMigratedDownloadChapters(gallery.id, indexed)
+		val old = org.koitharu.kotatsu.local.data.LegacySplitChapterCompat.linkToRemote(gallery, migrated)
+			?: LegacyChapterDownloadCompat.linkToRemote(gallery, migrated)
+		val details = MangaDetails(gallery).copy(localManga = old)
+		assertTrue(details.mapChapters(-1L, 0, chapter.branch, emptyList(), false, false)
+			.any { it.chapter.id == chapter.id && it.isDownloaded })
+		val offline = details.allChapters.single { it.id == chapter.id }
+		assertEquals(LocalMangaSource, offline.source)
+		assertTrue(local.getPages(offline).isNotEmpty())
+
+		// The current parser can map this exact archive. The lookup rejects the alias
+		// because a hint outside the deterministic layouts must have verified provenance.
+		val candidate = checkNotNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
+		assertFalse(candidate.verified)
+		assertEquals(chapter.id, candidate.local.manga.chapters?.single()?.id)
+		assertNull(resolver.findSavedManga(gallery, null))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertArrayEquals(bytes, cbz.readBytes())
+	}
+
+	private fun offlineExhentaiGallery(gid: Long): Manga = galleryFixture(gid).let { gallery ->
+		gallery.copy(
+			title = "[Circle (Artist)] Offline gallery × Fixture [Chinese] [Translation Group] [Digital]",
+			chapters = listOf(requireNotNull(gallery.chapters).single().copy(branch = "Chinese", scanlator = null)),
+		)
+	}
+
+	private suspend fun assertExhentaiLocalRead(gallery: Manga, cbz: File, space: FavouriteSpace?) {
+		val bytes = cbz.readBytes()
+		val directory = checkNotNull(cbz.parentFile)
+		val entries = directory.list().orEmpty().toSet()
+		val chapter = requireNotNull(gallery.chapters).single()
+		val saved = checkNotNull(resolver.findSavedManga(gallery, space)) {
+			"Resolver returned no local artifact for ${cbz.name} in $space"
+		}
+		assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
+		val details = MangaDetails(gallery).copy(localManga = saved)
+		val rows = details.mapChapters(-1L, 0, chapter.branch, emptyList(), false, false)
+		assertTrue("Details did not mark the gallery chapter as downloaded in $space",
+			rows.any { it.chapter.id == chapter.id && it.isDownloaded })
+		val readerChapter = details.allChapters.single { it.id == chapter.id }
+		assertEquals(LocalMangaSource, readerChapter.source)
+		assertEquals(cbz.canonicalFile, File(java.net.URI(readerChapter.url)).canonicalFile)
+		assertTrue("Local CBZ must provide pages without calling the extension", local.getPages(readerChapter).isNotEmpty())
+		assertArrayEquals(bytes, cbz.readBytes())
+		assertEquals(entries, directory.list().orEmpty().toSet())
 	}
 
 	@Test fun fullExhentaiTitleFindsLegacyFileOnlyWithinRequestedRoot() = runBlocking {
