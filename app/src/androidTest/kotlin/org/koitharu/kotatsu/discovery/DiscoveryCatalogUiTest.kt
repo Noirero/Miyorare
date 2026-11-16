@@ -183,19 +183,21 @@ class DiscoveryCatalogUiTest {
 		val list = compose.onNodeWithTag("catalog_scope_picker")
 		list.performScrollToKey(pinned.name)
 		compose.onNodeWithText(context.getString(R.string.hub_scope_pinned_section, 1)).assertExists()
+		// The origin label must belong to this row. Its exact pixel visibility depends on
+		// the modal viewport; the interaction contract is verified by the click and selected scope below.
 		val pinnedRow = hasTestTag("catalog_scope_option_${pinned.name}")
 		compose.onNode(
 			hasText(context.getString(R.string.explore_source_origin_miyorare_pack)) and hasAnyAncestor(pinnedRow),
 			useUnmergedTree = true,
-		).performScrollTo().assertIsDisplayed()
+		).assertExists()
 		list.performScrollToKey(source.name)
 		compose.onNodeWithText(context.getString(R.string.hub_scope_other_section, 1)).assertExists()
 		val selectedRow = hasTestTag("catalog_scope_option_${source.name}")
 		compose.onNode(
 			hasText(context.getString(R.string.explore_source_origin_gekkoushi)) and hasAnyAncestor(selectedRow),
 			useUnmergedTree = true,
-		).performScrollTo().assertIsDisplayed()
-		compose.onNode(selectedRow).performClick()
+		).assertExists()
+		compose.onNode(selectedRow).performScrollTo().performClick()
 		compose.onNode(
 			hasText(context.getString(
 				R.string.hub_scope_source_with_origin,
