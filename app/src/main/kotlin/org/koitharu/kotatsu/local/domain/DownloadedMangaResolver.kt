@@ -79,26 +79,26 @@ class DownloadedMangaResolver @Inject constructor(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
-		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-			localMangaRepository.findExhentaiDestinationCopy(manga, favouriteSpace ?: FavouriteSpace.NORMAL)
-				?.let { return it }
-		}
-		// Global callers have no FavouriteSpace ownership boundary, so the repository's deterministic
-		// path is the single source of truth: expected path -> persisted Local index -> bounded
-		// title/chapter-evidence compatibility bridge. It never performs the old broad reconnect scan.
-		if (favouriteSpace == null) {
+		val officialExhentai = ExhentaiDownloadedCopy.isOfficial(manga)
+		// Browse has no explicit space. For official ExHentai it uses Normal throughout;
+		// a failed destination lookup must not fall through to an unscoped storage lookup.
+		val space = favouriteSpace ?: if (officialExhentai) FavouriteSpace.NORMAL else null
+		if (space == null) {
 			return localMangaRepository.findSavedManga(manga, withDetails = true)
 		}
 
-		val roots = downloadDestinationStore.readableRoots(favouriteSpace)
+		if (officialExhentai) {
+			localMangaRepository.findExhentaiDestinationCopy(manga, space)?.let { return it }
+		}
+		val roots = downloadDestinationStore.readableRoots(space)
 
 		// Space ownership is stronger than the global Local index for sidecar-free downloads.
-		val ownership = database.getFavouriteDownloadIndexDao().findEntry(favouriteSpace.dbValue, manga.id)
+		val ownership = database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id)
 		if (ownership != null) {
 			val ownedFile = File(ownership.path)
 			if (roots.any { ownedFile.isInside(it) }) {
-				val saved = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-					localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = favouriteSpace)?.local
+				val saved = if (officialExhentai) {
+					localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = space)?.local
 				} else {
 					localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)
 				}
@@ -110,8 +110,8 @@ class DownloadedMangaResolver @Inject constructor(
 		// owns an unindexed legacy artifact. Do not let opening Details manufacture ownership for the
 		// active space; the background legacy reconciler is the only compatibility path allowed to
 		// persist ownership after checking favourite membership and chapter evidence.
-		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = favouriteSpace)
+		if (officialExhentai) {
+			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
 		}
 		if (!canInferSpaceFromPath()) return null
 
@@ -125,7 +125,7 @@ class DownloadedMangaResolver @Inject constructor(
 			)
 			?: return null
 
-		rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
+		rememberFavouriteDownloadOwnership(space, manga.id, indexed.file)
 		return indexed
 	}
 
@@ -167,7 +167,7 @@ internal class LegacyCbzTrace : AbstractCoroutineContextElement(Key) {
 	}
 
 	private val stages = java.util.EnumSet.noneOf(Stage::class.java)
-	val hasCandidate get() = Stage.CANDIDATE in stages
+	val hasCandidate get() = Stage.CANDIDATE in stages || Stage.DESTINATION_CANDIDATE in stages
 	fun summary(): String = stages.joinToString(",")
 
 	companion object Key : CoroutineContext.Key<LegacyCbzTrace> {

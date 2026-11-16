@@ -316,8 +316,8 @@ class LocalMangaRepository @Inject constructor(
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 	/**
-	 * Only deterministic title destinations participate. In shared roots, leave selection to the
-	 * existing ownership-aware resolver; a title folder does not establish a library space.
+	 * Only deterministic title destinations participate. A shared-root CBZ needs a matching
+	 * space receipt or exact ownership row; a title folder alone does not prove space.
 	 */
 	internal suspend fun findExhentaiDestinationCopy(remote: Manga, space: FavouriteSpace): LocalManga? =
 		withContext(Dispatchers.IO) {

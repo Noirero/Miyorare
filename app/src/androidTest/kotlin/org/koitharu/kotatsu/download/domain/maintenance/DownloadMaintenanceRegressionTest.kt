@@ -624,7 +624,12 @@ class DownloadMaintenanceRegressionTest {
 				assertTrue(local.getPages(readerChapter).single().url.endsWith("#$pageName"))
 				assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 			}
-			assertTrue(cbz.delete())
+			val sibling = File(directory, "keep.txt").apply { writeText("keep") }
+			assertTrue(deleteLocal.deleteExhentaiCopy(
+				gallery, FavouriteSpace.NORMAL, expectedFile = cbz, useDestination = true,
+			))
+			assertFalse(cbz.exists())
+			assertTrue(sibling.exists())
 			assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		}
 	}
@@ -731,6 +736,8 @@ class DownloadMaintenanceRegressionTest {
 		assertEquals(cbz.canonicalFile, parsed.local.file.canonicalFile)
 		assertEquals(gallery.chapters!!.single().id, parsed.local.manga.chapters?.single()?.id)
 
+		// Browse must not recover the same unowned file via the global Local index.
+		assertNull(resolver.findSavedManga(gallery, null))
 		// A matching Local alias and a readable archive do not establish space ownership.
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
@@ -738,6 +745,7 @@ class DownloadMaintenanceRegressionTest {
 
 		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.PRIVATE.dbValue, cbz.canonicalPath))
 		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		assertNull(resolver.findSavedManga(gallery, null))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 
 		dao.delete(FavouriteSpace.PRIVATE.dbValue, gallery.id)
