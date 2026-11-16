@@ -33,6 +33,7 @@ import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaNovelSection
 import org.koitharu.kotatsu.core.model.matchesMangaNovelSection
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -83,6 +84,7 @@ class DownloadsViewModel @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val deleteLocalManga: DeleteLocalMangaUseCase,
 	private val favouritesRepository: FavouritesRepository,
+	private val database: MangaDatabase,
 ) : BaseViewModel() {
 
 	private val favouriteSpace = FavouriteSpace.fromArgument(
@@ -629,6 +631,7 @@ class DownloadsViewModel @Inject constructor(
 			workId = id,
 			manga = manga,
 			task = task,
+			committedPath = outputData.getString(EXHENTAI_COMMITTED_PATH),
 			shouldHydrate = state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused),
 		)
 		val downloadSizeBytes = hydratedDownloadSizes.value[id] ?: 0L
@@ -661,6 +664,7 @@ class DownloadsViewModel @Inject constructor(
 		workId: UUID,
 		manga: Manga,
 		task: DownloadTask?,
+		committedPath: String?,
 		shouldHydrate: Boolean,
 	) {
 		if (!shouldHydrate) return
@@ -670,15 +674,44 @@ class DownloadsViewModel @Inject constructor(
 		if (!shouldLaunch) return
 		viewModelScope.launch(Dispatchers.IO) {
 			val size = runCatchingCancellable {
-				val local = task?.destination?.let { root ->
-					localMangaRepository.findSavedMangaInRoot(manga, root)
-				} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
-				local?.file?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
+				findSizeArtifact(workId, manga, task, committedPath)
+					?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
 			}.getOrDefault(0L)
 			hydratedDownloadSizes.update { current ->
 				if (current[workId] == size) current else current + (workId to size)
 			}
 		}
+	}
+
+	private suspend fun findSizeArtifact(
+		workId: UUID,
+		manga: Manga,
+		task: DownloadTask?,
+		committedPath: String?,
+	): File? {
+		// Missing legacy destination is not evidence that today's configured root was used.
+		val root = task?.destination ?: return null
+		if (task.mangaId != manga.id || task.favouriteSpace != favouriteSpace) return null
+		val official = ExhentaiDownloadedCopy.isOfficial(manga)
+		if (official && (task.downloadSeparateCopy || committedPath != null)) {
+			val file = downloadSizeArtifactInRoot(root, committedPath?.let(::File)) ?: return null
+			val match = localMangaRepository.findExhentaiAtPath(
+				manga, file, withDetails = false, space = task.favouriteSpace, request = workId,
+			)
+			return file.takeIf { it.isFile && match?.verified == true && match.local.file.canonicalFile == it }
+		}
+		val dao = database.getFavouriteDownloadIndexDao()
+		val entry = dao.findEntry(task.favouriteSpace.dbValue, manga.id) ?: return null
+		val file = downloadSizeArtifactInRoot(root, File(entry.path)) ?: return null
+		if (dao.findEntriesByPaths(listOf(entry.path, file.path).distinct()).any {
+				it.mangaId != manga.id || it.space != task.favouriteSpace.dbValue
+			}
+		) return null
+		if (!official) return file
+		val match = localMangaRepository.findExhentaiAtPath(
+			manga, file, withDetails = false, space = task.favouriteSpace,
+		)
+		return file.takeIf { match?.verified == true && match.local.file.canonicalFile == it }
 	}
 
 	private fun emptyStateList() = listOf(
