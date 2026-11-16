@@ -143,15 +143,10 @@ class DownloadMaintenanceRegressionTest {
 		val requestA = UUID.randomUUID()
 		val requestB = UUID.randomUUID()
 		val fileA = writeGalleryFixture(manga, false, byteArrayOf(1), receipt = ExhentaiChapterOwnership.Receipt(space, requestA))
-		val fileB = File(fileA.parentFile, "Other copy.cbz")
-		ZipOutputStream(fileB.outputStream()).use { zip ->
-			zip.setComment(ExhentaiChapterOwnership.scopedComment(
-				galleryId, ExhentaiChapterOwnership.Receipt(space, requestB), single = false,
-			))
-			zip.putNextEntry(ZipEntry("1.jpg"))
-			zip.write(byteArrayOf(2, 3))
-			zip.closeEntry()
-		}
+		val receiptB = ExhentaiChapterOwnership.Receipt(space, requestB)
+		val fileB = writeGalleryFixture(manga, true, byteArrayOf(2, 3), receipt = receiptB)
+		assertNotEquals(fileA.canonicalFile, fileB.canonicalFile)
+		assertEquals(receiptB, (ExhentaiChapterOwnership.inspect(fileB) as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt)
 		// The space index can point to the newer copy; the older job still owns its exact receipt.
 		db.getFavouriteDownloadIndexDao().upsert(
 			FavouriteDownloadIndexEntity(manga.id, space.dbValue, fileB.canonicalPath),
