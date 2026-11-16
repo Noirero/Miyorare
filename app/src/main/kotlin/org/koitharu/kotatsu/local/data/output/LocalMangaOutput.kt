@@ -159,7 +159,12 @@ sealed class LocalMangaOutput(
 		}
 
 		/** Bounded title candidates. Suffixed paths are recovery-only, never legacy identity. */
-		internal fun exhentaiReadCandidates(root: File, manga: Manga, recoverSuffixes: Boolean = false): List<File> {
+		internal fun exhentaiReadCandidates(
+			root: File,
+			manga: Manga,
+			recoverSuffixes: Boolean = false,
+			preferFullTitle: Boolean = false,
+		): List<File> {
 			val rootPath = root.canonicalFile.toPath()
 			val downloads = File(root, DOWNLOADS_DIR_NAME)
 			val source = getSourceDirectory(downloads, manga)
@@ -172,8 +177,10 @@ sealed class LocalMangaOutput(
 				}
 				addAll(legacySourceDirectories(root, manga))
 			}
-			return parents.flatMap { parent ->
-				if (!parent.canonicalFile.toPath().startsWith(rootPath)) return@flatMap emptyList()
+			val safeParents = parents.filter { it.canonicalFile.toPath().startsWith(rootPath) }
+			val candidates = if (preferFullTitle && !recoverSuffixes) {
+				names.flatMap { name -> safeParents.flatMap { parent -> listOf(File(parent, name), File(parent, "$name.cbz")) } }
+			} else safeParents.flatMap { parent ->
 				if (recoverSuffixes) {
 					parent.listFiles { child ->
 						val stem = child.name.removeSuffix(".cbz")
@@ -183,7 +190,8 @@ sealed class LocalMangaOutput(
 							stem == "${base}_$suffix"
 					}.orEmpty().toList()
 				} else names.flatMap { name -> listOf(File(parent, name), File(parent, "$name.cbz")) }
-			}.filter { file ->
+			}
+			return candidates.filter { file ->
 				val canonical = file.canonicalFile
 				canonical.parentFile == file.parentFile?.canonicalFile && canonical.toPath() != rootPath &&
 					canonical.toPath().startsWith(rootPath) && file.exists()

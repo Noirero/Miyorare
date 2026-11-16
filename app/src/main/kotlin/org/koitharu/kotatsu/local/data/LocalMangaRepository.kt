@@ -329,7 +329,7 @@ class LocalMangaRepository @Inject constructor(
 			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
 			val otherRoots = downloadDestinationStore.readableRoots(otherSpace)
 			for (root in downloadDestinationStore.readableRoots(space)) {
-				for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
+				for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote, preferFullTitle = true)) {
 					LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_CANDIDATE)
 					if (path.isInsideAny(otherRoots)) {
 						LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_SHARED_ROOT)

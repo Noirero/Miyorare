@@ -629,6 +629,15 @@ class DownloadMaintenanceRegressionTest {
 		}
 	}
 
+	@Test fun exhentaiFullTitleWinsAcrossLayoutsWithinTheSameRoot() = runBlocking {
+		val gallery = offlineExhentaiGallery(812312L)
+		val compact = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
+		val full = chapterFile(folder("downloads/ExHentai (OTHER)/${gallery.title}"), "Chapter.cbz")
+		assertExhentaiLocalRead(gallery, full, FavouriteSpace.NORMAL)
+		assertTrue(full.delete())
+		assertExhentaiLocalRead(gallery, compact, FavouriteSpace.NORMAL)
+	}
+
 	@Test fun replacingExhentaiArchiveAtSamePathRechecksCurrentArtifact() = runBlocking {
 		val gallery = offlineExhentaiGallery(812303L)
 		val space = FavouriteSpace.NORMAL
