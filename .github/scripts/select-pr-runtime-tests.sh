@@ -601,46 +601,7 @@ self_test() {
 
   # This test may not exist on branches predating DL-05.
   out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt')"
-  grep -q '^mode=targeted
-  grep -q '^mode=full$' <<<"$out"
-  grep -q 'CategorySetsUiTest' <<<"$out"
-  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
-    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
-  fi
-  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
-    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
-  fi
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
-
-  classify_self_test
-  policy_self_test
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
-  input="$(cat)"
-  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
-  full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
-  exit 0
-fi
-mapfile -t PATHS
-if [[ "$CLASSIFY" == true ]]; then
-  classify_paths "${PATHS[@]}"
-  exit 0
-fi
-plan_from_paths "$FULL" "${PATHS[@]}"
- <<<"$out"
+  grep -q '^mode=targeted$' <<<"$out"
   grep -q 'DownloadMaintenanceSettingsTest' <<<"$out"
   for out in "$out" "$(plan_from_paths true 'README.md')"; do
     if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
