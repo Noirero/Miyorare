@@ -58,6 +58,10 @@ class DownloadedMangaResolver @Inject constructor(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
+		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+			localMangaRepository.findExhentaiDestinationCopy(manga, favouriteSpace ?: FavouriteSpace.NORMAL)
+				?.let { return it }
+		}
 		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
 			return resolveSavedManga(manga, favouriteSpace)
 		}

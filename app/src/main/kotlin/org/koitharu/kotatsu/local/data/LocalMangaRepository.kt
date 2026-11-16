@@ -52,6 +52,7 @@ import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
 import java.util.EnumSet
 import java.util.Locale
@@ -313,6 +314,49 @@ class LocalMangaRepository @Inject constructor(
 	suspend fun getRemoteManga(localManga: Manga): Manga? = runCatchingCancellable {
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+
+	/**
+	 * Only deterministic title destinations participate. In shared roots, leave selection to the
+	 * existing ownership-aware resolver; a title folder does not establish a library space.
+	 */
+	internal suspend fun findExhentaiDestinationCopy(remote: Manga, space: FavouriteSpace): LocalManga? =
+		withContext(Dispatchers.IO) {
+			if (!ExhentaiDownloadedCopy.isOfficial(remote) || remote.chapters?.size != 1) return@withContext null
+			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+			val otherRoots = downloadDestinationStore.readableRoots(otherSpace)
+			for (root in downloadDestinationStore.readableRoots(space)) {
+				for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
+					if (path.isInsideAny(otherRoots)) continue
+					val target = if (path.isDirectory) {
+						path.listFiles { f -> f.isFile && f.extension.equals("cbz", ignoreCase = true) }
+							?.singleOrNull() ?: continue
+					} else path
+					val file = target.canonicalFile
+					if (file != target.absoluteFile || !file.isInsideAny(listOf(root)) || file.isInsideAny(otherRoots)) continue
+					val evidence = ExhentaiChapterOwnership.inspectDestination(file)
+					if (evidence == ExhentaiChapterOwnership.Evidence.Unusable ||
+						(evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt?.space == otherSpace) continue
+					if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, file, verified = true) ||
+						file.parentFile?.let {
+							favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, it, verified = true)
+						} == true) continue
+					ExhentaiDownloadedCopy.fromDestination(remote, file)?.let { return@withContext it }
+				}
+			}
+			null
+		}
+
+	/** Delete the physical artifact, not the archive's embedded manga identity. */
+	internal suspend fun deleteExhentaiDestinationCopy(local: LocalManga): Boolean {
+		val file = local.file
+		if (!file.deleteAwait()) return false
+		if (localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile == file.canonicalFile) {
+			localMangaIndex.delete(local.manga.id)
+		}
+		favouriteDownloadOwnershipIndex.removePath(file)
+		localStorageChanges.emit(null)
+		return true
+	}
 
 	internal suspend fun findExhentaiAtPath(
 		remote: Manga,

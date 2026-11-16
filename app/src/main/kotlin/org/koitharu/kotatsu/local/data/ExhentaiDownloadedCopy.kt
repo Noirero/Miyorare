@@ -16,6 +16,8 @@ import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
+import java.util.zip.ZipFile
+import org.koitharu.kotatsu.core.util.MimeTypes
 import java.util.UUID
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 
@@ -24,6 +26,18 @@ internal object ExhentaiDownloadedCopy {
 	data class Match(val local: LocalManga, val verified: Boolean, val receipt: ExhentaiChapterOwnership.Receipt? = null)
 
 	fun isOfficial(manga: Manga): Boolean = EhentaiSourceFamily.isOfficialSource(manga.source.name)
+
+	/** Flat chapter CBZs use their current root pages; indexed and split copies keep their own resolver. */
+	suspend fun fromDestination(remote: Manga, file: File): LocalManga? = runCatchingCancellable {
+		if (remote.chapters?.size != 1) return@runCatchingCancellable null
+		val hasPages = ZipFile(file).use { zip ->
+			zip.getEntry("index.json") == null && zip.entries().asSequence().any { entry ->
+				!entry.isDirectory && '/' !in entry.name &&
+					MimeTypes.getMimeTypeFromExtension(entry.name)?.isImage == true
+			}
+		}
+		if (hasPages) chapterCopy(remote, file, withDetails = true, verified = false)?.local else null
+	}.getOrNull()
 
 	private fun Manga.galleryId(): Long? = EhentaiSourceFamily.galleryId(publicUrl, url)?.takeIf { it > 0 }
 
