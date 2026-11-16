@@ -79,6 +79,7 @@ add_migration_suite() {
 }
 
 add_local_download_suite() {
+  add_class org.koitharu.kotatsu.download.DownloadFixRegressionTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest

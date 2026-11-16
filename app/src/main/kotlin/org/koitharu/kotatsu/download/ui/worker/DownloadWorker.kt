@@ -95,7 +95,6 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.PageCache
-import org.koitharu.kotatsu.local.data.TempFileFilter
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
@@ -149,6 +148,7 @@ class DownloadWorker @AssistedInject constructor(
 	private val etaEstimator = RealtimeEtaEstimator()
 	private val notificationThrottler = Throttler(150)
 	private val statePublishMutex = Mutex()
+	private val tempFiles = DownloadTempFiles()
 
 	private var committedExhentaiPath: String? = null
 
@@ -608,7 +608,11 @@ class DownloadWorker @AssistedInject constructor(
 							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
-					if (!isExhentai) destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }
+					// The destination can be shared by active workers, including their archive staging.
+					// Cover transfer failures/cancellation must clean only this worker's scratch files.
+					withContext(Dispatchers.IO) {
+						runCatchingCancellable { tempFiles.close() }.onFailure(Throwable::printStackTraceDebug)
+					}
 				}
 			}
 		}
@@ -773,7 +777,7 @@ class DownloadWorker @AssistedInject constructor(
 			val cr = applicationContext.contentResolver
 			val ext = uri.toFileOrNull()?.let { MimeTypes.getNormalizedExtension(it.name) }
 				?: cr.getType(uri)?.toMimeTypeOrNull()?.let { MimeTypes.getExtension(it) }
-			val file = partialFile ?: destination.createTempFile(ext)
+			val file = partialFile ?: tempFiles.create(destination, ext)
 			try {
 				cr.openSource(uri).use { input ->
 					file.sink(append = false).buffer().use { sink ->
@@ -815,8 +819,9 @@ class DownloadWorker @AssistedInject constructor(
 
 		return response.ensureSuccess().use { r ->
 			val body = r.body
-			val file = partialFile ?: destination.createTempFile(
-				ext = MimeTypes.getExtension(body.contentType()?.toMimeType()),
+			val file = partialFile ?: tempFiles.create(
+				destination = destination,
+				extension = MimeTypes.getExtension(body.contentType()?.toMimeType()),
 			)
 			try {
 				val append = existingSize > 0L && r.code == HTTP_PARTIAL_CONTENT
@@ -872,18 +877,6 @@ class DownloadWorker @AssistedInject constructor(
 			}
 		}
 	}
-
-	private fun File.createTempFile(ext: String?) = File(
-		this,
-		buildString {
-			append(UUID.randomUUID().toString())
-			if (!ext.isNullOrEmpty()) {
-				append('.')
-				append(ext)
-			}
-			append(".tmp")
-		},
-	)
 
 	private suspend fun refreshNotificationForPrivacy() = statePublishMutex.withLock {
 		val state = lastPublishedState ?: return@withLock
