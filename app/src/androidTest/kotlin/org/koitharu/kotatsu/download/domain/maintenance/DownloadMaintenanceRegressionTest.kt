@@ -28,6 +28,8 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.download.ui.list.DownloadSizeResolver
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
@@ -45,7 +47,9 @@ import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
+import java.util.UUID
 import java.security.MessageDigest
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
@@ -106,6 +110,62 @@ class DownloadMaintenanceRegressionTest {
 		root.deleteRecursively()
 		Unit
 	}
+
+	@Test fun sizeResolverDoesNotCrossSpacesInASharedRoot() = runBlocking {
+		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
+		val manga = remote()
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		val normalFile = chapterFile(folder("downloads/normal-copy"), "Chapter.cbz")
+		val privateFile = chapterFile(folder("downloads/private-copy"), "Chapter.cbz")
+		val dao = db.getFavouriteDownloadIndexDao()
+		val normal = FavouriteSpace.NORMAL
+		val privateSpace = FavouriteSpace.PRIVATE
+		val sizeResolver = DownloadSizeResolver(db, local)
+		val request = UUID.randomUUID()
+		val normalTask = sizeTask(manga, normal)
+		val privateTask = sizeTask(manga, privateSpace)
+		dao.upsert(FavouriteDownloadIndexEntity(manga.id, normal.dbValue, normalFile.canonicalPath))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, privateTask, null, privateSpace))
+		dao.upsert(FavouriteDownloadIndexEntity(manga.id, privateSpace.dbValue, privateFile.canonicalPath))
+		assertEquals(normalFile.canonicalFile, sizeResolver.findSizeArtifact(request, manga, normalTask, null, normal))
+		assertEquals(privateFile.canonicalFile, sizeResolver.findSizeArtifact(request, manga, privateTask, null, privateSpace))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, normalTask, null, privateSpace))
+		dao.upsert(FavouriteDownloadIndexEntity(manga.id, privateSpace.dbValue, normalFile.canonicalPath))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, normalTask, null, normal))
+		assertNull(sizeResolver.findSizeArtifact(request, manga, privateTask, null, privateSpace))
+	}
+
+	@Test fun sizeResolverRejectsAnotherReceiptForTheSameGallery() = runBlocking {
+		val galleryId = 812380L
+		val manga = offlineExhentaiGallery(galleryId)
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		val space = FavouriteSpace.NORMAL
+		val requestA = UUID.randomUUID()
+		val requestB = UUID.randomUUID()
+		val fileA = writeGalleryFixture(manga, false, byteArrayOf(1), receipt = ExhentaiChapterOwnership.Receipt(space, requestA))
+		val receiptB = ExhentaiChapterOwnership.Receipt(space, requestB)
+		val fileB = writeGalleryFixture(manga, true, byteArrayOf(2, 3), receipt = receiptB)
+		assertNotEquals(fileA.canonicalFile, fileB.canonicalFile)
+		assertEquals(receiptB, (ExhentaiChapterOwnership.inspect(fileB) as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt)
+		// The space index can point to the newer copy; the older job still owns its exact receipt.
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(manga.id, space.dbValue, fileB.canonicalPath),
+		)
+		val sizeResolver = DownloadSizeResolver(db, local)
+		val task = sizeTask(manga, space, separateCopy = true)
+		assertEquals(fileA.canonicalFile, sizeResolver.findSizeArtifact(requestA, manga, task, fileA.path, space))
+		assertEquals(fileB.canonicalFile, sizeResolver.findSizeArtifact(requestB, manga, task, fileB.path, space))
+		assertNull(sizeResolver.findSizeArtifact(requestA, manga, task, fileB.path, space))
+		assertNull(sizeResolver.findSizeArtifact(requestA, manga, task, null, space))
+		assertTrue(fileA.delete())
+		assertNull(sizeResolver.findSizeArtifact(requestA, manga, task, fileA.path, space))
+	}
+
+	private fun sizeTask(manga: Manga, space: FavouriteSpace, separateCopy: Boolean = false) = DownloadTask(
+		mangaId = manga.id, isPaused = false, isSilent = false, chaptersIds = null,
+		destination = root, format = null, allowMeteredNetwork = true, favouriteSpace = space,
+		downloadSeparateCopy = separateCopy,
+	)
 
 	@Test fun currentSourceLayoutRemainsSidecarFreeAndSecondRunDoesNotMutate() = runBlocking {
 		val remote = remote()

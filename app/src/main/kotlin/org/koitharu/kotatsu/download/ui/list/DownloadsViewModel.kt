@@ -83,6 +83,7 @@ class DownloadsViewModel @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val deleteLocalManga: DeleteLocalMangaUseCase,
 	private val favouritesRepository: FavouritesRepository,
+	private val downloadSizeResolver: DownloadSizeResolver,
 ) : BaseViewModel() {
 
 	private val favouriteSpace = FavouriteSpace.fromArgument(
@@ -629,6 +630,7 @@ class DownloadsViewModel @Inject constructor(
 			workId = id,
 			manga = manga,
 			task = task,
+			committedPath = outputData.getString(EXHENTAI_COMMITTED_PATH),
 			shouldHydrate = state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused),
 		)
 		val downloadSizeBytes = hydratedDownloadSizes.value[id] ?: 0L
@@ -661,6 +663,7 @@ class DownloadsViewModel @Inject constructor(
 		workId: UUID,
 		manga: Manga,
 		task: DownloadTask?,
+		committedPath: String?,
 		shouldHydrate: Boolean,
 	) {
 		if (!shouldHydrate) return
@@ -670,10 +673,8 @@ class DownloadsViewModel @Inject constructor(
 		if (!shouldLaunch) return
 		viewModelScope.launch(Dispatchers.IO) {
 			val size = runCatchingCancellable {
-				val local = task?.destination?.let { root ->
-					localMangaRepository.findSavedMangaInRoot(manga, root)
-				} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
-				local?.file?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
+				downloadSizeResolver.findSizeArtifact(workId, manga, task, committedPath, favouriteSpace)
+					?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
 			}.getOrDefault(0L)
 			hydratedDownloadSizes.update { current ->
 				if (current[workId] == size) current else current + (workId to size)
