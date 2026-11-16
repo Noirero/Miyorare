@@ -84,6 +84,9 @@ add_local_download_suite() {
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
   add_class org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
+    add_class org.koitharu.kotatsu.settings.DownloadDestinationSettingsTest
+  fi
   add_class org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
   add_class org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest
   add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
@@ -184,6 +187,9 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
   add_class org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
+    add_class org.koitharu.kotatsu.settings.DownloadDestinationSettingsTest
+  fi
   add_class org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
   add_class org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest
   add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
@@ -275,7 +281,7 @@ plan_path() {
     app/src/main/kotlin/org/koitharu/kotatsu/alternatives/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/alternatives/*|app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/migration/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/migration/*)
       add_migration_suite ;;
 
-    app/src/main/kotlin/org/koitharu/kotatsu/download/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/download/*|app/src/main/kotlin/org/koitharu/kotatsu/local/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/local/*|app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadMaintenanceSettings*|app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadMaintenanceSettings*)
+    app/src/main/kotlin/org/koitharu/kotatsu/download/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/download/*|app/src/main/kotlin/org/koitharu/kotatsu/local/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/local/*|app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadMaintenanceSettings*|app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadMaintenanceSettings*|app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationAvailability.kt|app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadsSettingsFragment.kt|app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt)
       add_local_download_suite ;;
 
     app/src/main/kotlin/org/koitharu/kotatsu/discovery/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/discovery/*)
@@ -592,6 +598,57 @@ self_test() {
     echo 'Expected an unmapped runtime request to fail closed.' >&2
     return 1
   fi
+
+  # This test may not exist on branches predating DL-05.
+  out="$(plan_from_paths false 'app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt')"
+  grep -q '^mode=targeted
+  grep -q '^mode=full$' <<<"$out"
+  grep -q 'CategorySetsUiTest' <<<"$out"
+  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
+  fi
+  grep -q '^run_runtime_isolation=true$' <<<"$out"
+  grep -q '^run_migration_persistence=true$' <<<"$out"
+  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
+
+  classify_self_test
+  policy_self_test
+  echo 'Runtime selector self-test: PASS'
+}
+
+if [[ "$SELF_TEST" == true ]]; then
+  self_test
+  exit 0
+fi
+
+if [[ "$POLICY" == true ]]; then
+  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
+  input="$(cat)"
+  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
+  full="$(sed -n 's/^full=//p' <<< "$input")"
+  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
+  exit 0
+fi
+mapfile -t PATHS
+if [[ "$CLASSIFY" == true ]]; then
+  classify_paths "${PATHS[@]}"
+  exit 0
+fi
+plan_from_paths "$FULL" "${PATHS[@]}"
+ <<<"$out"
+  grep -q 'DownloadMaintenanceSettingsTest' <<<"$out"
+  for out in "$out" "$(plan_from_paths true 'README.md')"; do
+    if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
+      grep -q 'org.koitharu.kotatsu.settings.DownloadDestinationSettingsTest' <<<"$out"
+    else
+      ! grep -q 'org.koitharu.kotatsu.settings.DownloadDestinationSettingsTest' <<<"$out"
+    fi
+  done
 
   out="$(plan_from_paths true 'README.md')"
   grep -q '^mode=full$' <<<"$out"
