@@ -629,6 +629,29 @@ class DownloadMaintenanceRegressionTest {
 		}
 	}
 
+	@Test fun exhentaiSharedDestinationFollowsReplacementOnlyForExactOwner() = runBlocking {
+		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
+		val gallery = offlineExhentaiGallery(812313L)
+		val cbz = File(folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture"), "Chapter.cbz")
+		ZipOutputStream(cbz.outputStream()).use { zip ->
+			zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(812314L))
+			zip.putNextEntry(ZipEntry("replacement.jpg"))
+			zip.write(byteArrayOf(1, 2, 3))
+			zip.closeEntry()
+		}
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath),
+		)
+		val saved = checkNotNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
+		val chapter = MangaDetails(gallery).copy(localManga = saved).allChapters
+			.single { it.id == gallery.chapters!!.single().id }
+		assertEquals(LocalMangaSource, chapter.source)
+		assertTrue(local.getPages(chapter).single().url.endsWith("#replacement.jpg"))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+	}
+
 	@Test fun exhentaiFullTitleWinsAcrossLayoutsWithinTheSameRoot() = runBlocking {
 		val gallery = offlineExhentaiGallery(812312L)
 		val compact = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
