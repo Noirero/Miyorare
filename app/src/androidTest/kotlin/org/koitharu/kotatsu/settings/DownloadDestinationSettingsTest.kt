@@ -11,19 +11,24 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import java.io.File
 import javax.inject.Inject
+import javax.inject.Provider
 
 @HiltAndroidTest
 class DownloadDestinationSettingsTest {
@@ -32,6 +37,7 @@ class DownloadDestinationSettingsTest {
 	@get:Rule(order = 1) val compose = createEmptyComposeRule()
 	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var storage: LocalStorageManager
+	@Inject @BaseHttpClient lateinit var baseHttpClient: Provider<OkHttpClient>
 
 	@Before fun setUp() {
 		// HiltTestApplication replaces the production Configuration.Provider.
@@ -40,6 +46,8 @@ class DownloadDestinationSettingsTest {
 			WorkManager.initialize(context, Configuration.Builder().build())
 		}
 		hilt.inject()
+		// Production warms the network singleton off-main; HiltTestApplication does not.
+		runBlocking { withContext(Dispatchers.IO) { baseHttpClient.get() } }
 	}
 
 	@Test fun configuredDestinationRefreshesAndRemainsVisibleAfterReopenWhenUnavailable() {
