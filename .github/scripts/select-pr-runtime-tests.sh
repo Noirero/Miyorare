@@ -79,6 +79,7 @@ add_migration_suite() {
 }
 
 add_local_download_suite() {
+  add_class org.koitharu.kotatsu.download.DownloadFixRegressionTest
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
@@ -227,6 +228,11 @@ add_full_suite() {
   # Enforce launcher widget palette compatibility on Android 15 when the test exists.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/widget/common/ModernWidgetThemeRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.widget.common.ModernWidgetThemeRuntimeTest
+  fi
+
+  # Full runs must also execute the download ownership/offline boundary regressions.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
+    add_class org.koitharu.kotatsu.download.DownloadFixRegressionTest
   fi
 
   RUN_RUNTIME_ISOLATION=true
@@ -545,6 +551,11 @@ self_test() {
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalStorageCache.kt')"
   grep -q 'FastDownloadedNovelResolutionTest' <<<"$out"
   ! grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  for path in app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt \
+              app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt; do
+    out="$(plan_from_paths false "$path")"
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
+  done
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
 
@@ -587,6 +598,9 @@ self_test() {
   grep -q 'CategorySetsUiTest' <<<"$out"
   grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
+  fi
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
     grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
   fi
