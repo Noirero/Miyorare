@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.Configuration
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.OneTimeWorkRequest
@@ -78,12 +79,13 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
+import javax.inject.Provider
 
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
 class DownloadMaintenanceRegressionTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
-	@Inject lateinit var scheduler: DownloadWorker.Scheduler
+	@Inject lateinit var schedulerProvider: Provider<DownloadWorker.Scheduler>
 	@Inject lateinit var mangaRepositories: MangaRepository.Factory
 	@Inject lateinit var sizeResolver: DownloadSizeResolver
 	@Inject lateinit var maintenance: DownloadMaintenanceUseCase
@@ -118,6 +120,10 @@ class DownloadMaintenanceRegressionTest {
 	}
 
 	@After fun tearDown() = runBlocking {
+		if (!::savedPrefs.isInitialized) {
+			if (::root.isInitialized) root.deleteRecursively()
+			return@runBlocking
+		}
 		for (id in ids) index.delete(id)
 		prefs.edit(commit = true) {
 			clear()
@@ -143,6 +149,11 @@ class DownloadMaintenanceRegressionTest {
 	}
 
 	private suspend fun verifyBulkRemoval(deleteFiles: Boolean) {
+		// Only the bulk-removal fixture needs real WorkManager under HiltTestApplication.
+		if (!WorkManager.isInitialized()) {
+			WorkManager.initialize(context, Configuration.Builder().build())
+		}
+		val scheduler = schedulerProvider.get()
 		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
 		val manga = galleryFixture(812391)
 		val activeManga = galleryFixture(812392)
