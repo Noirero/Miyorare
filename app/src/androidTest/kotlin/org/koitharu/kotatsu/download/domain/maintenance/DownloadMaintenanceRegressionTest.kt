@@ -632,6 +632,7 @@ class DownloadMaintenanceRegressionTest {
 	@Test fun exhentaiSharedDestinationFollowsReplacementOnlyForExactOwner() = runBlocking {
 		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
 		val gallery = offlineExhentaiGallery(812313L)
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
 		val cbz = File(folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture"), "Chapter.cbz")
 		ZipOutputStream(cbz.outputStream()).use { zip ->
 			zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(812314L))
@@ -686,15 +687,22 @@ class DownloadMaintenanceRegressionTest {
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
 
-		// A stale path must not override explicit evidence that the replacement is another gallery.
+		// Gallery identity is not a read filter for an owned title destination.
 		ZipOutputStream(cbz.outputStream()).use { zip ->
 			zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(812304L))
-			zip.putNextEntry(ZipEntry("1.jpg"))
+			zip.putNextEntry(ZipEntry("other-gallery.jpg"))
 			zip.write(byteArrayOf(4, 5, 6))
 			zip.closeEntry()
 		}
-		assertNull(resolver.findSavedManga(gallery, null))
-		assertNull(resolver.findSavedManga(gallery, space))
+		for (lookupSpace in listOf(null, space)) {
+			val saved = checkNotNull(resolver.findSavedManga(gallery, lookupSpace))
+			assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
+			val chapter = MangaDetails(gallery).copy(localManga = saved).allChapters
+				.single { it.id == gallery.chapters!!.single().id }
+			assertEquals(LocalMangaSource, chapter.source)
+			assertTrue(local.getPages(chapter).single().url.endsWith("#other-gallery.jpg"))
+		}
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
 	}
 
