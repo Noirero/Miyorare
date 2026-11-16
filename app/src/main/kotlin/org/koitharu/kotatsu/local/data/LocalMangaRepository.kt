@@ -321,15 +321,26 @@ class LocalMangaRepository @Inject constructor(
 	 */
 	internal suspend fun findExhentaiDestinationCopy(remote: Manga, space: FavouriteSpace): LocalManga? =
 		withContext(Dispatchers.IO) {
-			if (!ExhentaiDownloadedCopy.isOfficial(remote) || remote.chapters?.size != 1) return@withContext null
+			if (!ExhentaiDownloadedCopy.isOfficial(remote)) return@withContext null
+			if (remote.chapters?.size != 1) {
+				LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_CHAPTER_UNAVAILABLE)
+				return@withContext null
+			}
 			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
 			val otherRoots = downloadDestinationStore.readableRoots(otherSpace)
 			for (root in downloadDestinationStore.readableRoots(space)) {
 				for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
-					if (path.isInsideAny(otherRoots)) continue
+					LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_CANDIDATE)
+					if (path.isInsideAny(otherRoots)) {
+						LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_SHARED_ROOT)
+						continue
+					}
 					val target = if (path.isDirectory) {
 						path.listFiles { f -> f.isFile && f.extension.equals("cbz", ignoreCase = true) }
-							?.singleOrNull() ?: continue
+							?.singleOrNull() ?: run {
+							LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_NO_UNIQUE_CBZ)
+							null
+						} ?: continue
 					} else path
 					val file = target.canonicalFile
 					if (file != target.absoluteFile || !file.isInsideAny(listOf(root)) || file.isInsideAny(otherRoots)) continue
@@ -340,7 +351,11 @@ class LocalMangaRepository @Inject constructor(
 						file.parentFile?.let {
 							favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, it, verified = true)
 						} == true) continue
-					ExhentaiDownloadedCopy.fromDestination(remote, file)?.let { return@withContext it }
+					ExhentaiDownloadedCopy.fromDestination(remote, file)?.let {
+						LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_SELECTED)
+						return@withContext it
+					}
+					LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_LAYOUT_UNSUPPORTED)
 				}
 			}
 			null

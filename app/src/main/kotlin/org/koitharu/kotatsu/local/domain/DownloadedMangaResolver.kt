@@ -58,10 +58,6 @@ class DownloadedMangaResolver @Inject constructor(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
-		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-			localMangaRepository.findExhentaiDestinationCopy(manga, favouriteSpace ?: FavouriteSpace.NORMAL)
-				?.let { return it }
-		}
 		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
 			return resolveSavedManga(manga, favouriteSpace)
 		}
@@ -83,6 +79,10 @@ class DownloadedMangaResolver @Inject constructor(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
+		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+			localMangaRepository.findExhentaiDestinationCopy(manga, favouriteSpace ?: FavouriteSpace.NORMAL)
+				?.let { return it }
+		}
 		// Global callers have no FavouriteSpace ownership boundary, so the repository's deterministic
 		// path is the single source of truth: expected path -> persisted Local index -> bounded
 		// title/chapter-evidence compatibility bridge. It never performs the old broad reconnect scan.
@@ -162,6 +162,8 @@ internal class LegacyCbzTrace : AbstractCoroutineContextElement(Key) {
 	enum class Stage {
 		CANDIDATE, ARCHIVE_REJECTED, OWNERSHIP_CONFLICT, UNVERIFIED_ALIAS, SPACE_REJECTED,
 		AMBIGUOUS_RECOVERY,
+		DESTINATION_CHAPTER_UNAVAILABLE, DESTINATION_CANDIDATE, DESTINATION_SHARED_ROOT,
+		DESTINATION_NO_UNIQUE_CBZ, DESTINATION_LAYOUT_UNSUPPORTED, DESTINATION_SELECTED,
 	}
 
 	private val stages = java.util.EnumSet.noneOf(Stage::class.java)
