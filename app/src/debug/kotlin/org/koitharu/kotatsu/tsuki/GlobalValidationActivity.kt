@@ -55,6 +55,7 @@ class GlobalValidationActivity : FragmentActivity() {
 						val source = plugins.getAvailableSources().single { EhentaiSourceFamily.isOfficialSource(it.name) }
 						verifyTitleFixture(source)
 					}
+					if (intent.getBooleanExtra("verify_voratoon", false)) verifyVoraToonRouting()
 					identityProof
 				}
 				Log.i(TAG, proof)
@@ -107,6 +108,50 @@ class GlobalValidationActivity : FragmentActivity() {
 		} finally {
 			jar.delete()
 		}
+	}
+
+
+	private fun verifyVoraToonRouting() = synchronized(installLock) {
+		val routing = VoraToonPackRouting
+		val storedName = routing.legacy.storedName
+		fun install(asset: String, id: String) {
+			val dir = "global-validation/voratoon"
+			val expected = assets.open("$dir/$asset.sha256").bufferedReader().use { it.readText().trim() }
+			val bytes = assets.open("$dir/$asset").use { it.readBytes() }
+			check(MiyorareSourcePackReleasePolicy.sha256Hex(bytes) == expected) { "Fixture JAR checksum mismatch" }
+			val jar = File.createTempFile("voratoon-validation-", ".jar", cacheDir)
+			try {
+				jar.writeBytes(bytes)
+				plugins.installLocalJar(jar, TsukiPluginManager.InstallRequest(
+					pluginId = id,
+					displayName = id,
+					provider = TsukiPluginProvider.MIYORARE,
+					origin = "debug://bundled-voratoon",
+				))
+			} finally {
+				jar.delete()
+			}
+		}
+
+		install("legacy.jar", routing.legacy.pluginId)
+		val old = checkNotNull(plugins.resolveSource(storedName))
+		check(old.identity == routing.legacy && old.name == storedName)
+		plugins.setSourceEnabled(old.identity, true)
+		install(VoraToonPackRouting.GLOBAL_ASSET_NAME, routing.global.pluginId)
+		val moved = checkNotNull(plugins.resolveSource(storedName))
+		check(moved.identity == routing.global && moved.name == storedName)
+		check(plugins.getAvailableSources().single { it.name == storedName }.identity == routing.global)
+		plugins.setSourceEnabled(moved.identity, true)
+		check(plugins.getEnabledSources().single { it.name == storedName }.identity == routing.global)
+		plugins.setEnabled(TsukiPluginProvider.MIYORARE, routing.global.pluginId, false)
+		try {
+			check(plugins.resolveSource(storedName)?.identity == routing.legacy)
+			check(plugins.getEnabledSources().single { it.name == storedName }.identity == routing.legacy)
+		} finally {
+			plugins.setEnabled(TsukiPluginProvider.MIYORARE, routing.global.pluginId, true)
+		}
+		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
+		Log.i(TAG, "VORATOON_ROUTING_OK revision=$revision")
 	}
 
 
