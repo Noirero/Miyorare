@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.tsuki.model
 
+import org.koitharu.kotatsu.tsuki.VoraToonPackRouting
+
 import android.net.Uri
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
@@ -121,7 +123,7 @@ data class TsukiMangaSource(
 	val identity = TsukiSourceIdentity(plugin.provider, plugin.pluginId, descriptor.name)
 
 	override val name: String
-		get() = identity.storedName
+		get() = VoraToonPackRouting.persisted(identity).storedName
 
 	val displayName: String
 		get() = descriptor.title.ifBlank { descriptor.name }
