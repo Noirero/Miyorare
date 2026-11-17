@@ -125,8 +125,11 @@ class GlobalValidationActivity : FragmentActivity() {
 
 
 	private suspend fun verifyVoraToonRouting() {
-		Room.inMemoryDatabaseBuilder(applicationContext, MangaDatabase::class.java).build().use { database ->
+		val database = Room.inMemoryDatabaseBuilder(applicationContext, MangaDatabase::class.java).build()
+		try {
 			verifyVoraToonRouting(database)
+		} finally {
+			database.close()
 		}
 	}
 
