@@ -97,6 +97,22 @@ jobs:
             --upstream _upstream/uma \
             --pack '${{ matrix.pack }}'
 
+      - name: Checkout deterministic VoraToon fixture
+        if: matrix.pack == 'id'
+        uses: actions/checkout@v5
+        with:
+          repository: Noirero/Miyorare-Source-Packs
+          ref: a88f541a3e486dd5e7660ad2c9b1d00c971a4b56
+          path: _voratoon-fixtures
+          persist-credentials: false
+
+      - name: Test VoraToon in prepared Miyorare-ID sources
+        if: matrix.pack == 'id'
+        run: |
+          mkdir -p _upstream/uma/src/test/kotlin/compatibilityfarm
+          cp _voratoon-fixtures/compatibility/harness/candidates/voratoon/*.kt _upstream/uma/src/test/kotlin/compatibilityfarm/
+          (cd _upstream/uma && bash ./gradlew test --no-daemon --tests compatibilityfarm.VoraToonCandidateContractTest)
+
       - name: Build UMA shard with UMA build system
         working-directory: _upstream/uma
         run: |
@@ -164,6 +180,8 @@ jobs:
           names = set(data['sourceNames'])
           if pack == 'id':
               assert 'HOLOTOON' in names, sorted(names)
+              owners = [shard for shard in data['shards'] if 'VORATOON' in shard['sourceNames']]
+              assert len(owners) == 1 and owners[0]['pluginId'] == 'miyorare-id', owners
           else:
               assert 'HOLOTOON' not in names, sorted(names)
           PY
@@ -182,5 +200,64 @@ jobs:
         with:
           name: miyorare-${{ matrix.pack }}-staging
           path: build/miyorare-source-packs/${{ matrix.pack }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-id-upgrade:
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/voratoon-id-first-party'
+    needs: build-pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: miyorare-id-staging
+          path: candidate-id
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44069004111
+          name: miyorare-id-staging
+          path: old-id
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: android-actions/setup-android@v4
+      - name: Build isolated validation APK
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          dir=app/src/debug/assets/global-validation
+          mkdir -p "$dir/old"
+          for asset in miyorare-id-uma.jar miyorare-id-gekkoushi.jar; do
+            (cd candidate-id && sha256sum -c "$asset.sha256")
+            (cd old-id && sha256sum -c "$asset.sha256")
+            cp "candidate-id/$asset" "$dir/"
+            cp "old-id/$asset" "$dir/old/"
+          done
+          git rev-parse HEAD > "$dir/revision"
+          bash gradlew :app:assembleDebug -PMIYORARE_GLOBAL_VALIDATION=true --max-workers=2 --no-daemon
+      - run: sudo chmod 666 /dev/kvm
+      - name: Exercise official ID updater on Android 15
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: bash .github/scripts/verify-voratoon-id-update.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-id-update-validation
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            build/voratoon-id-update-proof.txt
           if-no-files-found: error
           retention-days: 7
