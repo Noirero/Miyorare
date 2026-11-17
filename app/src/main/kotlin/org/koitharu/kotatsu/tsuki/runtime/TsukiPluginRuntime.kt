@@ -88,11 +88,11 @@ class TsukiPluginRuntime @Inject constructor(
 			return null
 		}
 		return synchronized(lock) {
-			val cached = parserCache[source.name] ?: return@synchronized null
+			val cached = parserCache[source.identity.storedName] ?: return@synchronized null
 			if (sameRuntimeArtifact(cached.source.plugin, current)) {
 				cached
 			} else {
-				parserCache.remove(source.name)
+				parserCache.remove(source.identity.storedName)
 				null
 			}
 		}
@@ -105,7 +105,7 @@ class TsukiPluginRuntime @Inject constructor(
 		val freshSource = TsukiMangaSource(current, descriptor)
 		val parser = createParser(current, descriptor.name)
 		return synchronized(lock) {
-			parserCache[freshSource.name] ?: error("Tsuki parser cache lost ${freshSource.name}")
+			parserCache[freshSource.identity.storedName] ?: error("Tsuki parser cache lost ${freshSource.name}")
 		}.also { check(it.parser === parser) }
 	}
 
