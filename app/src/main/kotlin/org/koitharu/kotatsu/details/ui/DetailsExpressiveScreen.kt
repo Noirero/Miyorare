@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -405,7 +406,17 @@ fun DetailsExpressiveScreen(
 					}
 
 					note?.trim()?.takeIf { it.isNotEmpty() }?.let { noteText ->
-						item(contentType = "note") { NoteCard(noteText) }
+						item(key = "manga-note:${manga.id}", contentType = "note") {
+							NoteCard(noteText, accentColor) {
+								val index = listState.firstVisibleItemIndex
+								if (listState.firstVisibleItemScrollOffset > 0 &&
+									listState.layoutInfo.visibleItemsInfo.any { it.index == index && it.key == "manga-note:${manga.id}" }
+								) {
+									// Keep the preview in view when collapsing from the bottom of a long note.
+									listState.requestScrollToItem(index)
+								}
+							}
+						}
 					}
 
 					item(contentType = "description") {
@@ -791,9 +802,34 @@ private fun ChapterListItem.detailsLazyListKey(): String = with(chapter) {
 }
 
 @Composable
-private fun NoteCard(note: String) {
+internal fun NoteCard(note: String, accent: Color, onCollapse: () -> Unit = {}) {
+	var expanded by rememberSaveable(note) { mutableStateOf(false) }
+	var canExpand by remember(note) { mutableStateOf(false) }
+
 	SectionCard {
-		ReadOnlyNoteText(note)
+		Text(
+			text = stringResource(R.string.details_notes),
+			style = MaterialTheme.typography.titleMedium,
+			fontWeight = FontWeight.Bold,
+			color = MaterialTheme.colorScheme.onSurface,
+		)
+		Spacer(Modifier.height(10.dp))
+		ReadOnlyNoteText(
+			note = note,
+			maxLines = if (expanded) Int.MAX_VALUE else 4,
+			onTextLayout = { if (!expanded) canExpand = it.hasVisualOverflow },
+		)
+		if (canExpand || expanded) {
+			Spacer(Modifier.height(6.dp))
+			TagToggleChip(
+				text = stringResource(if (expanded) R.string.collapse else R.string.expand),
+				accent = accent,
+				expanded = expanded,
+			) {
+				if (expanded) onCollapse()
+				expanded = !expanded
+			}
+		}
 	}
 }
 

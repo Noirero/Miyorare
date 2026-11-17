@@ -39,12 +39,12 @@ class ChapterPersonalNoteViewerRegressionTest {
 		for (editorOnly in listOf("OutlinedTextField", "onSave", "R.string.save", "clear_note", "ChapterPersonalEditor", "maxLines", "substring", "take(")) {
 			assertFalse("Read-only viewer must not contain $editorOnly", viewer.contains(editorOnly))
 		}
-		val mangaCard = source("DetailsExpressiveScreen.kt").substringAfter("private fun NoteCard(").substringBefore("private fun ExpressiveBackdrop")
-		assertTrue(mangaCard.contains("ReadOnlyNoteText(note)"))
+		val mangaCard = source("DetailsExpressiveScreen.kt").substringAfter("internal fun NoteCard(").substringBefore("private fun ExpressiveBackdrop")
+		assertTrue(mangaCard.contains("ReadOnlyNoteText("))
 		val renderer = source("ReadOnlyNoteText.kt")
 		assertTrue(renderer.contains("SelectionContainer {"))
 		assertTrue(renderer.contains("text = annotatedNote"))
-		assertFalse(renderer.contains("maxLines"))
+		assertTrue(renderer.contains("maxLines: Int = Int.MAX_VALUE"))
 		assertFalse(source("DetailsExpressiveScreen.kt").contains("NOTE_URL_REGEX"))
 		assertFalse(viewer.contains("Regex("))
 	}

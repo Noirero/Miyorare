@@ -46,6 +46,7 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.list.DownloadSizeResolver
 import org.koitharu.kotatsu.download.ui.list.observeDownloadChapterInvalidations
 import org.koitharu.kotatsu.download.ui.list.DownloadItemModel
+import org.koitharu.kotatsu.download.ui.list.DownloadRemovalFeedback
 import org.koitharu.kotatsu.download.ui.list.DownloadsViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
@@ -223,11 +224,18 @@ class DownloadMaintenanceRegressionTest {
 						(!withDuplicate || rows.any { it.workIds == duplicateIds && it.workState.isFinished })
 				}
 				val feedback = kotlinx.coroutines.coroutineScope {
-					val observed = async(start = CoroutineStart.UNDISPATCHED) { vm.onRemovalDone.first() }
+					val observed = CompletableDeferred<DownloadRemovalFeedback>()
+					val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+						checkNotNull(vm.onRemovalDone.first { it != null }).consume { observed.complete(it) }
+					}
 					val selectedIds = setOf(manga.id, activeManga.id) +
 						(if (withDuplicate) setOf(duplicateManga.id) else emptySet())
-					vm.remove(selectedIds, deleteFiles = deleteFiles)
-					observed.await()
+					try {
+						vm.remove(selectedIds, deleteFiles = deleteFiles)
+						observed.await()
+					} finally {
+						collector.cancel()
+					}
 				}
 				assertEquals(1, feedback.removed)
 				assertEquals(1, feedback.active)
