@@ -4,6 +4,7 @@ on:
     branches: [Amain2]
     paths:
       - 'extensions/miyorare-sources/first-party/voratoon/**'
+      - 'extensions/miyorare-sources/tools/finalize_voratoon_candidate.py'
       - '.github/workflows/voratoon-first-party-candidate.yml'
 permissions:
   contents: read
@@ -43,3 +44,32 @@ jobs:
       - name: Test local parser on existing Tsuki build baseline
         working-directory: _baseline
         run: bash ./gradlew test --no-daemon --tests compatibilityfarm.VoraToonCandidateContractTest
+      - name: Set up Android SDK for D8
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools build-tools;35.0.0 platforms;android-35'
+      - name: Stage only the local VoraToon parser
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          src = Path('extensions/miyorare-sources/packs.json')
+          data = json.loads(src.read_text(encoding='utf-8'))
+          data['packs']['id']['sources'] = ['VoraToon.kt']
+          Path('_baseline-candidate.json').write_text(json.dumps(data), encoding='utf-8')
+          PY
+          python3 extensions/miyorare-sources/tools/prepare_pack.py \
+            --manifest _baseline-candidate.json --upstream _baseline --pack id
+      - name: Build single-source dex JAR
+        working-directory: _baseline
+        run: bash ./gradlew buildJar --rerun-tasks --no-daemon
+      - name: Verify generated key, dex, and checksum
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_voratoon_candidate.py \
+            --upstream _baseline --output build/voratoon-candidate
+      - name: Upload build-only candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: voratoon-dex-candidate-not-for-install
+          path: build/voratoon-candidate/
+          if-no-files-found: error
