@@ -256,6 +256,15 @@ class DetailsViewModel @Inject constructor(
 		sourceReleasePredictionItem(details, branch, scanlator, System.currentTimeMillis(), ZoneId.systemDefault())
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), null)
 
+	internal suspend fun checkLatestChaptersForCalendar(): Int? {
+		val seed = mangaDetails.value?.sourceManga?.takeIf { !it.isLocal && it.chapters != null } ?: return null
+		val branch = selectedBranch.value
+		val scanlator = selectedScanlator.value
+		return withContext(Dispatchers.IO) {
+			runCatchingCancellable { detailsLoadUseCase.countNewSourceChapters(seed, branch, scanlator) }.getOrNull()
+		}
+	}
+
 	fun refreshChapterReleasePrediction() {
 		releasePredictionRefreshTime.value = System.currentTimeMillis()
 	}

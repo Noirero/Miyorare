@@ -29,6 +29,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.details.domain.countNewChaptersForReleaseCalendar
 import org.koitharu.kotatsu.details.domain.ChapterReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.domain.NextChapterReleaseState
@@ -66,6 +67,87 @@ class ChapterReleasePredictionSheetTest {
 		compose.onNodeWithTag("release-prediction-active-title").assertTextEquals("Updated alternate")
 		compose.runOnIdle { visible.value = false }
 		compose.onNodeWithText("Parent: ${original.manga.title}").assertExists()
+	}
+
+	@Test fun missingOriginPredictionShowsNavigableCalendarWithoutPredictionActions() {
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(
+				1, null, UpcomingPredictions(loading = false), loader, originTitle = original.manga.title,
+			) {}
+		} }
+		compose.onNodeWithText(original.manga.title).assertIsDisplayed()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_no_prediction)).assertIsDisplayed()
+		compose.onNodeWithTag("release-prediction-calendar").assertIsDisplayed()
+		compose.onNodeWithTag("release-prediction-date").assertDoesNotExist()
+		compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_predicted), substring = true)
+			.assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_add)).assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_details)).assertDoesNotExist()
+		val formatter = java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")
+		val currentMonth = java.time.YearMonth.now()
+		compose.onNodeWithText(currentMonth.format(formatter)).assertIsDisplayed()
+		compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_next_month)).performClick()
+		compose.onNodeWithText(currentMonth.plusMonths(1).format(formatter)).assertIsDisplayed()
+	}
+
+	@Test fun manualCheckShowsNewNoNewAndFailureResultsInTheSameSheet() {
+		val results = listOf(1, 0, null, 1)
+		var checks = 0
+		var reloads = 0
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(
+				1, null, UpcomingPredictions(loading = false), loader,
+				onCheckLatestChapters = { results[checks++] },
+				onReloadChapterList = { reloads++ },
+			) {}
+		} }
+		val button = compose.onNodeWithText(context.getString(R.string.release_calendar_check_latest))
+		val reload = compose.onNodeWithText(context.getString(R.string.release_calendar_reload_chapters))
+		reload.assertDoesNotExist()
+		button.performScrollTo().performClick()
+		compose.onNodeWithText(context.resources.getQuantityString(R.plurals.release_calendar_new_chapters, 1, 1)).assertExists()
+		reload.assertExists()
+		button.performClick()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_no_new_chapters)).assertExists()
+		reload.assertDoesNotExist()
+		button.performClick()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_check_failed)).assertExists()
+		compose.onNodeWithTag("release-prediction-sheet").assertExists()
+		reload.assertDoesNotExist()
+		compose.runOnIdle { assertEquals(0, reloads) }
+		button.performClick()
+		reload.performScrollTo().performClick()
+		compose.runOnIdle {
+			assertEquals(4, checks)
+			assertEquals(1, reloads)
+		}
+	}
+
+	@Test fun chapterComparisonIgnoresDuplicatesAndOtherBranchesOrGroups() {
+		val seed = SampleData.mangaDetails
+		val existing = SampleData.chapter.copy(source = seed.source, branch = "English", scanlator = "Group A")
+		val added = existing.copy(id = existing.id + 1)
+		val baseline = seed.copy(chapters = listOf(existing))
+		val remote = seed.copy(chapters = listOf(existing, added, added,
+			existing.copy(id = existing.id + 2, branch = "Spanish"),
+			existing.copy(id = existing.id + 3, scanlator = "Group B"),
+		))
+		assertEquals(1, countNewChaptersForReleaseCalendar(baseline, remote, "English", "Group A"))
+		assertEquals(0, countNewChaptersForReleaseCalendar(baseline, baseline, "English", "Group A"))
+		assertThrows(IllegalStateException::class.java) {
+			countNewChaptersForReleaseCalendar(baseline, remote.copy(chapters = emptyList()), "English", "Group A")
+		}
+	}
+
+	@Test fun lockedSheetDoesNotShowOriginTitleOrCalendar() {
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(
+				1, null, UpcomingPredictions(loading = false, locked = true), loader, originTitle = original.manga.title,
+			) {}
+		} }
+		compose.onNodeWithText(context.getString(R.string.release_calendar_locked)).assertExists()
+		compose.onNodeWithText(original.manga.title).assertDoesNotExist()
+		compose.onNodeWithTag("release-prediction-calendar").assertDoesNotExist()
 	}
 
 	@Test fun invalidatedSelectionCannotKeepUsingAnOldPrediction() {
