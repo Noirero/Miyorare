@@ -148,7 +148,11 @@ class DownloadMaintenanceRegressionTest {
 		verifyBulkRemoval(deleteFiles = true)
 	}
 
-	private suspend fun verifyBulkRemoval(deleteFiles: Boolean) {
+	@Test fun bulkWithFilesKeepsAmbiguousDuplicateExhentaiJobs() = runBlocking {
+		verifyBulkRemoval(deleteFiles = true, withDuplicate = true)
+	}
+
+	private suspend fun verifyBulkRemoval(deleteFiles: Boolean, withDuplicate: Boolean = false) {
 		// Only the bulk-removal fixture needs real WorkManager under HiltTestApplication.
 		if (!WorkManager.isInitialized()) {
 			WorkManager.initialize(context, Configuration.Builder().build())
@@ -162,7 +166,13 @@ class DownloadMaintenanceRegressionTest {
 		val normal = newRemovalWork(manga, FavouriteSpace.NORMAL)
 		val privateCopy = newRemovalWork(manga, FavouriteSpace.PRIVATE)
 		val active = newRemovalWork(activeManga, FavouriteSpace.NORMAL)
-		val ids = setOf(normal.id, privateCopy.id, active.id)
+		val duplicateManga = galleryFixture(812393)
+		val duplicate = if (withDuplicate) List(2) {
+			newRemovalWork(duplicateManga, FavouriteSpace.NORMAL)
+		} else emptyList()
+		if (withDuplicate) data.storeManga(duplicateManga, replaceExisting = true, detailsFetched = true)
+		val duplicateIds = duplicate.mapTo(HashSet()) { it.id }
+		val ids = setOf(normal.id, privateCopy.id, active.id) + duplicateIds
 		val owner = db.getFavouriteDownloadIndexDao()
 		val vm = DownloadsViewModel(SavedStateHandle(), scheduler, data, mangaRepositories,
 			events, local, deleteLocal, favourites, sizeResolver)
@@ -176,8 +186,17 @@ class DownloadMaintenanceRegressionTest {
 			val retainedBefore = retained.readBytes()
 			owner.upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, selected.canonicalPath))
 			owner.upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.PRIVATE.dbValue, retained.canonicalPath))
+			val duplicateFile = duplicate.firstOrNull()?.let { request ->
+				writeGalleryFixture(duplicateManga, false, byteArrayOf(31, 32),
+					receipt = ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, request.id))
+					.also {
+						owner.upsert(FavouriteDownloadIndexEntity(duplicateManga.id, FavouriteSpace.NORMAL.dbValue, it.canonicalPath))
+					}
+			}
+			val duplicateBefore = duplicateFile?.readBytes()
 			val wm = WorkManager.getInstance(context)
-			for ((request, file) in listOf(normal to selected, privateCopy to retained, active to null)) {
+			for ((request, file) in listOf(normal to selected, privateCopy to retained, active to null) +
+				duplicate.map { it to duplicateFile }) {
 				// The synthetic worker returns the persisted input plus the real committed path.
 				// It performs no download and has no network or filesystem side effects.
 				val work = OneTimeWorkRequest.Builder(RemovalHistoryFixtureWorker::class.java)
@@ -194,16 +213,27 @@ class DownloadMaintenanceRegressionTest {
 				scheduler.observeWorks().first {
 					it.state(normal.id) == WorkInfo.State.SUCCEEDED &&
 						it.state(privateCopy.id) == WorkInfo.State.SUCCEEDED &&
-						it.state(active.id) == WorkInfo.State.ENQUEUED
+						it.state(active.id) == WorkInfo.State.ENQUEUED &&
+						duplicateIds.all { id -> it.state(id) == WorkInfo.State.SUCCEEDED }
 				}
 				vm.items.first { items ->
 					val rows = items.filterIsInstance<DownloadItemModel>()
 					rows.any { it.workIds == setOf(normal.id) && it.workState == WorkInfo.State.SUCCEEDED } &&
-						rows.any { it.workIds == setOf(active.id) && !it.workState.isFinished }
+						rows.any { it.workIds == setOf(active.id) && !it.workState.isFinished } &&
+						(!withDuplicate || rows.any { it.workIds == duplicateIds && it.workState.isFinished })
 				}
-				vm.remove(setOf(manga.id, activeManga.id), deleteFiles = deleteFiles)
+				val feedback = kotlinx.coroutines.coroutineScope {
+					val observed = async(start = CoroutineStart.UNDISPATCHED) { vm.onRemovalDone.first() }
+					val selectedIds = setOf(manga.id, activeManga.id) +
+						(if (withDuplicate) setOf(duplicateManga.id) else emptySet())
+					vm.remove(selectedIds, deleteFiles = deleteFiles)
+					observed.await()
+				}
+				assertEquals(1, feedback.removed)
+				assertEquals(1, feedback.active)
+				assertEquals(if (withDuplicate) 1 else 0, feedback.ambiguous)
 				val after = scheduler.observeWorks().first { it.state(normal.id) == null }
-				assertEquals(setOf(privateCopy.id, active.id), after.map { it.id }.toSet().intersect(ids))
+				assertEquals(setOf(privateCopy.id, active.id) + duplicateIds, after.map { it.id }.toSet().intersect(ids))
 				assertEquals(WorkInfo.State.SUCCEEDED, after.state(privateCopy.id))
 				assertEquals(WorkInfo.State.ENQUEUED, after.state(active.id))
 			}
@@ -213,6 +243,10 @@ class DownloadMaintenanceRegressionTest {
 			} else {
 				assertArrayEquals(selectedBefore, selected.readBytes())
 				assertEquals(selected.canonicalPath, owner.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id)?.path)
+			}
+			if (duplicateFile != null) {
+				assertArrayEquals(checkNotNull(duplicateBefore), duplicateFile.readBytes())
+				assertEquals(duplicateFile.canonicalPath, owner.findEntry(FavouriteSpace.NORMAL.dbValue, duplicateManga.id)?.path)
 			}
 			assertArrayEquals(retainedBefore, retained.readBytes())
 			assertEquals(retained.canonicalPath, owner.findEntry(FavouriteSpace.PRIVATE.dbValue, manga.id)?.path)

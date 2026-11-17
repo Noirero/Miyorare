@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.UnverifiedDownloadRemovalException
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.mapToSet
@@ -350,75 +351,58 @@ class DownloadsViewModel @Inject constructor(
 		val selection = planDownloadRemoval(ids, currentSectionRows())
 		val selected = selection.eligible
 		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
-		val feedback = DownloadRemovalFeedback(selected.size, selection.active, selection.unavailable, deleteFiles)
+		val feedback = DownloadRemovalFeedback(0, selection.active, selection.unavailable, deleteFiles)
 		if (workIds.isEmpty()) {
 			onRemovalDone.call(feedback.copy(removed = 0))
 			return
 		}
 		launchJob(Dispatchers.IO) {
-			if (deleteFiles) {
-				val selectedMangaIds = selected.mapNotNullTo(HashSet()) { it.manga?.id }
-				check(rawWorks.value.orEmpty().none {
-					it.manga?.id in selectedMangaIds && !it.workState.isFinished
-				}) { "A selected manga is currently downloading. Files were kept." }
-				// Recheck WorkManager itself, not just the UI's potentially delayed StateFlow.
-				// This also sees jobs in the other favourite space.
-				val works = workScheduler.observeWorks().first()
-				for (work in works) {
-					if (work.state.isFinished) continue
-					val task = checkNotNull(workScheduler.getTask(work.id)) {
-						"Cannot inspect an active download task. Files were kept."
-					}
-					check(task.mangaId !in selectedMangaIds) {
-						"A selected manga has a new active download. Files were kept."
-					}
-				}
-				// Resolve every selection before deleting anything: a group can contain multiple
-				// chapter jobs, but physical deletion must not guess between different roots.
-				val targets = selected.map { row ->
-					val manga = checkNotNull(row.manga) { "Cannot verify selected manga. Files were kept." }
-					val tasks = row.workIds.map { workId ->
-						checkNotNull(workScheduler.getTask(workId)) {
-							"Cannot verify the original download task. Files were kept."
-						}
-					}
-					check(tasks.all { it.mangaId == manga.id && it.favouriteSpace == favouriteSpace }) {
-						"Selected jobs do not match this manga and library space. Files were kept."
-					}
-					val roots = tasks.map { task ->
-						checkNotNull(task.destination) {
-							"Original download destination is unknown. Files were kept."
-						}.canonicalFile
-					}.distinctBy { it.path }
-					check(roots.size == 1) {
-						"This manga has downloads in multiple folders. Files were kept."
-					}
-					val committed = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-						val archives = row.workIds.map { id ->
-							val completed = works.firstOrNull { it.id == id && it.state == WorkInfo.State.SUCCEEDED }
-							val path = checkNotNull(completed?.outputData?.getString(EXHENTAI_COMMITTED_PATH)) {
-								"Cannot verify the exact ExHentai archive from this download. Files were kept."
-							}
-							File(path) to id
-						}
-						check(archives.size == 1) { "Cannot verify a single ExHentai archive for the selected jobs. Files were kept." }
-						archives.single()
-					} else null
-					Triple(row.workIds, manga, roots.single() to committed)
-				}
-				for ((groupWorkIds, manga, destination) in targets) {
-					val (root, committed) = destination
-					if (committed == null) deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
-					else deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace, committed.first, committed.second)
-					// Keep each completed group's history consistent even if a later
-					// selected manga fails its own filesystem deletion.
-					workScheduler.delete(groupWorkIds)
-				}
-			} else {
+			if (!deleteFiles) {
 				// List-only removal never touches downloaded physical containers.
 				workScheduler.delete(workIds)
+				onRemovalDone.call(feedback.copy(removed = selected.size))
+				return@launchJob
 			}
-			onRemovalDone.call(feedback)
+			// WorkManager also sees active jobs outside the current tab and space.
+			val works = workScheduler.observeWorks().first()
+			val activeMangaIds = HashSet<Long>()
+			for (work in works) {
+				if (work.state.isFinished) continue
+				val task = workScheduler.getTask(work.id)
+				if (task == null) {
+					// Unknown active work could belong to any of the selected groups.
+					onRemovalDone.call(feedback.copy(ambiguous = selected.size))
+					return@launchJob
+				}
+				activeMangaIds += task.mangaId
+			}
+			val completed = works.filter { it.state == WorkInfo.State.SUCCEEDED }.associateBy { it.id }
+			val result = processDownloadRemoval(selected, feedback) { row ->
+				val manga = verifiedRemovalValue(row.manga)
+				if (manga.id in activeMangaIds || rawWorks.value.orEmpty().any {
+						it.manga?.id == manga.id && !it.workState.isFinished
+					}) {
+					return@processDownloadRemoval DownloadRemovalOutcome.ACTIVE
+				}
+				val groupWorkIds = row.workIds
+				val tasks = groupWorkIds.map { workId -> verifiedRemovalValue(workScheduler.getTask(workId)) }
+				if (!tasks.all { it.mangaId == manga.id && it.favouriteSpace == favouriteSpace }) {
+					throw UnverifiedDownloadRemovalException()
+				}
+				val roots = tasks.map { verifiedRemovalValue(it.destination).canonicalFile }.distinct()
+				val root = verifiedRemovalValue(roots.singleOrNull())
+				if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+					val id = verifiedRemovalValue(groupWorkIds.singleOrNull())
+					val path = verifiedRemovalValue(completed[id]?.outputData?.getString(EXHENTAI_COMMITTED_PATH))
+					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace, File(path), id)
+				} else {
+					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
+				}
+				// Prune only this group's history, and only after the file/index operation.
+				workScheduler.delete(groupWorkIds)
+				DownloadRemovalOutcome.REMOVED
+			}
+			onRemovalDone.call(result)
 		}
 	}
 

@@ -116,6 +116,10 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 				}
 				if (result.active > 0) add(getString(R.string.downloads_remove_skipped_active, result.active))
 				if (result.unavailable > 0) add(getString(R.string.downloads_remove_skipped_unavailable, result.unavailable))
+				if (result.ambiguous > 0) add(getString(R.string.downloads_remove_unverified, result.ambiguous))
+				if (result.missing > 0) add(getString(R.string.downloads_remove_missing_file, result.missing))
+				if (result.failed > 0) add(getString(R.string.downloads_remove_failed, result.failed))
+				if (result.notAttempted > 0) add(getString(R.string.downloads_remove_not_attempted, result.notAttempted))
 			}.joinToString("\n")
 			Snackbar.make(viewBinding.recyclerView, message, Snackbar.LENGTH_LONG).show()
 		}
