@@ -91,29 +91,28 @@ class TsukiPluginManager @Inject constructor(
 	}
 
 	/** All usable sources from enabled plugins, including sources hidden from Explore/global search. */
-	fun getAvailableSources(): List<TsukiMangaSource> = getPlugins()
-		.asSequence()
-		.filter(::isUsablePlugin)
-		.flatMap { plugin ->
-			plugin.sources.asSequence().filterNot { it.isBroken }.map { TsukiMangaSource(plugin, it) }
-		}
-		.toList()
+	fun getAvailableSources(): List<TsukiMangaSource> = catalogSources(onlyEnabled = false)
 
 	/**
 	 * Only explicitly enabled sources participate in source catalogs and global search. Avoid
 	 * constructing lightweight source wrappers for every source in a 1k+ plugin just to discard
 	 * almost all of them afterward.
 	 */
-	fun getEnabledSources(): List<TsukiMangaSource> = getPlugins()
-		.asSequence()
-		.filter(::isUsablePlugin)
-		.flatMap { plugin ->
-			val enabled = plugin.enabledSourceNames
-			plugin.sources.asSequence()
-				.filter { source -> !source.isBroken && source.name in enabled }
-				.map { source -> TsukiMangaSource(plugin, source) }
-		}
-		.toList()
+	fun getEnabledSources(): List<TsukiMangaSource> = catalogSources(onlyEnabled = true)
+
+	private fun catalogSources(onlyEnabled: Boolean): List<TsukiMangaSource> {
+		val plugins = getPlugins()
+		val hasUsableGlobal = lookupSource(plugins, VoraToonPackRouting.global) != null
+		return plugins.asSequence()
+			.filter(::isUsablePlugin)
+			.flatMap { plugin ->
+				plugin.sources.asSequence()
+					.filter { !it.isBroken && (!onlyEnabled || it.name in plugin.enabledSourceNames) }
+					.map { TsukiMangaSource(plugin, it) }
+					.filterNot { VoraToonPackRouting.isShadowed(it.identity, hasUsableGlobal) }
+			}
+			.toList()
+	}
 
 	/**
 	 * Resolve persisted content independently from catalog participation. Disabling a source hides it
@@ -121,7 +120,14 @@ class TsukiPluginManager @Inject constructor(
 	 */
 	fun resolveSource(storedName: String): TsukiMangaSource? {
 		val identity = TsukiSourceIdentity.parse(storedName) ?: return null
-		val plugin = findPlugin(identity.provider, identity.pluginId)?.takeIf(::isUsablePlugin) ?: return null
+		val plugins = getPlugins()
+		return VoraToonPackRouting.resolve(identity) { lookupSource(plugins, it) }
+	}
+
+	private fun lookupSource(plugins: List<TsukiPluginDescriptor>, identity: TsukiSourceIdentity): TsukiMangaSource? {
+		val plugin = plugins.firstOrNull {
+			it.provider == identity.provider && it.pluginId == identity.pluginId && isUsablePlugin(it)
+		} ?: return null
 		val source = sourceIndexFor(plugin)[identity.sourceName]?.takeUnless { it.isBroken } ?: return null
 		return TsukiMangaSource(plugin, source)
 	}
