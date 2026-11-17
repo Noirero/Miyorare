@@ -10,6 +10,7 @@ on:
       - 'extensions/miyorare-sources/tools/finalize_voratoon_candidate.py'
       - 'extensions/miyorare-sources/tools/assemble_voratoon_global_staging.py'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
+      - '.github/workflows/miyorare-source-pack-check.yml'
       - '.github/workflows/voratoon-first-party-candidate.yml'
       - '.github/scripts/verify-voratoon-staging-apk.sh'
 permissions:
@@ -110,8 +111,13 @@ jobs:
     with:
       staging-only: true
 
+  id-without-voratoon-staging:
+    uses: ./.github/workflows/miyorare-source-pack-check.yml
+    with:
+      voratoon-id-staging: true
+
   assemble-global-staging:
-    needs: [contract, gekkoushi-staging, app-routing-contract]
+    needs: [contract, gekkoushi-staging, id-without-voratoon-staging, app-routing-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -127,6 +133,24 @@ jobs:
         with:
           name: voratoon-dex-candidate-not-for-install
           path: _artifacts/voratoon
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: miyorare-id-without-voratoon-staging
+          path: _artifacts/id
+      - name: Verify staged ID shards do not own VoraToon
+        run: |
+          (cd _artifacts/id && sha256sum -c miyorare-id-uma.jar.sha256 miyorare-id-gekkoushi.jar.sha256)
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("_artifacts/id/miyorare-id-pack.json").read_text(encoding="utf-8"))
+          shards = data["shards"]
+          expected = {"miyorare-id-uma.jar", "miyorare-id-gekkoushi.jar"}
+          assert data["packId"] == "miyorare-id" and len(shards) == 2
+          assert {shard["assetName"] for shard in shards} == expected
+          assert all("VORATOON" not in shard["sourceNames"] for shard in shards)
+          assert "VORATOON" not in data["sourceNames"]
+          PY
       - name: Verify and assemble both Global shards
         run: |
           python3 extensions/miyorare-sources/tools/assemble_voratoon_global_staging.py \

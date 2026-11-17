@@ -9,12 +9,17 @@ on:
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-source-pack-check.yml'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      voratoon-id-staging:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: miyorare-source-packs-${{ github.ref }}
+  group: miyorare-source-packs-${{ github.ref }}-${{ inputs.voratoon-id-staging && 'voratoon-staging' || 'regular' }}
   cancel-in-progress: true
 
 jobs:
@@ -26,11 +31,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pack: [id, en]
+        pack: ${{ fromJSON(inputs.voratoon-id-staging && '["id"]' || '["id","en"]') }}
 
     steps:
       - name: Checkout Miyorare
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.voratoon-id-staging && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Resolve provider pins from pack manifest
         id: pins
@@ -89,6 +97,21 @@ jobs:
           install -Dm644 \
             extensions/miyorare-sources/overlays/gekkoushi/id/Holotoon.kt \
             _upstream/gekkoushi/src/main/kotlin/tsuki/site/id/Holotoon.kt
+
+      - name: Exclude VoraToon from the staging ID input only
+        if: inputs.voratoon-id-staging
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = Path("extensions/miyorare-sources/packs.json")
+          data = json.loads(manifest.read_text(encoding="utf-8"))
+          sources = data["packs"]["id"]["sources"]
+          if sources.count("VoraToon.kt") != 1:
+              raise SystemExit("Expected one legacy VoraToon in the ID input")
+          sources.remove("VoraToon.kt")
+          manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
 
       - name: Prepare curated UMA shard
         run: |
@@ -151,6 +174,7 @@ jobs:
       - name: Verify HoloToon placement
         env:
           PACK: ${{ matrix.pack }}
+          VORATOON_ID_STAGING: ${{ inputs.voratoon-id-staging }}
         run: |
           python3 - <<'PY'
           import json
@@ -164,6 +188,8 @@ jobs:
           names = set(data['sourceNames'])
           if pack == 'id':
               assert 'HOLOTOON' in names, sorted(names)
+              if os.environ['VORATOON_ID_STAGING'] == 'true':
+                  assert 'VORATOON' not in names, sorted(names)
           else:
               assert 'HOLOTOON' not in names, sorted(names)
           PY
@@ -180,7 +206,7 @@ jobs:
       - name: Upload staging pack
         uses: actions/upload-artifact@v4
         with:
-          name: miyorare-${{ matrix.pack }}-staging
+          name: miyorare-${{ matrix.pack }}-${{ inputs.voratoon-id-staging && 'without-voratoon-staging' || 'staging' }}
           path: build/miyorare-source-packs/${{ matrix.pack }}/
           if-no-files-found: error
           retention-days: 7
