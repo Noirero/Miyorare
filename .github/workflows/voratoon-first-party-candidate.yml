@@ -5,6 +5,8 @@ on:
     paths:
       - 'extensions/miyorare-sources/first-party/voratoon/**'
       - 'extensions/miyorare-sources/tools/finalize_voratoon_candidate.py'
+      - 'extensions/miyorare-sources/tools/assemble_voratoon_global_staging.py'
+      - '.github/workflows/miyorare-global-source-pack-check.yml'
       - '.github/workflows/voratoon-first-party-candidate.yml'
 permissions:
   contents: read
@@ -15,6 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -84,4 +87,36 @@ jobs:
         with:
           name: voratoon-dex-candidate-not-for-install
           path: build/voratoon-candidate/
+          if-no-files-found: error
+  gekkoushi-staging:
+    uses: ./.github/workflows/miyorare-global-source-pack-check.yml
+    with:
+      staging-only: true
+
+  assemble-global-staging:
+    needs: [contract, gekkoushi-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: miyorare-global-staging
+          path: _artifacts/global
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: voratoon-dex-candidate-not-for-install
+          path: _artifacts/voratoon
+      - name: Verify and assemble both Global shards
+        run: |
+          python3 extensions/miyorare-sources/tools/assemble_voratoon_global_staging.py \
+            --global _artifacts/global --voratoon _artifacts/voratoon \
+            --output build/global-voratoon-staging --revision "$(git rev-parse HEAD)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: miyorare-global-voratoon-staging
+          path: build/global-voratoon-staging/
           if-no-files-found: error
