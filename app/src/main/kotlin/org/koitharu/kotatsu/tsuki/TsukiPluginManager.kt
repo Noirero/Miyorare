@@ -197,6 +197,17 @@ class TsukiPluginManager @Inject constructor(
 				"Legacy Kotatsu plugin ABI is not supported by the Miyorare runtime; use a Tsuki 1.x plugin"
 			}
 			val sourceNames = probed.sources.asSequence().map { it.name }.toSet()
+			// Seed only the first Global install, while the legacy ID descriptor is still present.
+			// Later Global updates must keep the explicit choice made in Global.
+			val migratedEnabled = previous == null &&
+				request.provider == TsukiPluginProvider.MIYORARE &&
+				pluginId == VoraToonPackRouting.global.pluginId &&
+				lookupSource(state.value, VoraToonPackRouting.legacy)?.isEnabled == true
+			val enabledSourceNames = if (migratedEnabled) {
+				setOf(VoraToonPackRouting.global.sourceName).intersect(sourceNames)
+			} else {
+				previous?.enabledSourceNames.orEmpty().intersect(sourceNames)
+			}
 			val descriptor = TsukiPluginDescriptor(
 				pluginId = pluginId,
 				displayName = request.displayName.ifBlank { pluginId },
@@ -210,8 +221,8 @@ class TsukiPluginManager @Inject constructor(
 				compatibility = compatibility.status,
 				state = previous?.state?.takeUnless { it == TsukiPluginState.BROKEN } ?: TsukiPluginState.ENABLED,
 				sources = probed.sources,
-				// Preserve explicit user choices across updates. New sources remain disabled.
-				enabledSourceNames = previous?.enabledSourceNames.orEmpty().intersect(sourceNames),
+				// New sources stay disabled except the one-time VoraToon preference transfer.
+				enabledSourceNames = enabledSourceNames,
 				compatibilitySnapshotId = compatibilitySnapshotId,
 				compatibilityFarmCommit = compatibilityFarmCommit,
 			)
