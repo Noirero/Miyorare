@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
@@ -17,10 +18,12 @@ import androidx.work.WorkerParameters
 import androidx.work.await
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -37,6 +40,7 @@ import org.koitharu.kotatsu.core.model.matchesMangaNovelSection
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
+import org.koitharu.kotatsu.core.util.ext.getWorkSpec
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
@@ -51,6 +55,7 @@ import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Provider
@@ -78,6 +83,7 @@ class DownloadScaleDiagnosticTest {
 	@Test fun fourHundredGroups() = measure(400)
 	@Test fun fourHundredSeventyNineGroups() = measure(479)
 
+	@SuppressLint("RestrictedApi")
 	private fun measure(groups: Int) = runBlocking {
 		check(BuildConfig.DEBUG)
 		val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -134,43 +140,79 @@ class DownloadScaleDiagnosticTest {
 				.entries.joinToString(",") { "${it.key}:${it.value}" }
 			report("fixture groups=$groups workspecs=${raw.size} states=$mix")
 			var nextProgress = 0
-			repeat(4) { sample ->
-				val vmStarted = SystemClock.elapsedRealtimeNanos()
-				val vm = DownloadsViewModel(SavedStateHandle(), scheduler, data, repositories,
-					changes, local, deleteLocal, favourites, sizeResolver)
-				try {
-					withTimeout(60_000) {
-						val first = vm.items.first { rows ->
-							rows.any { it is DownloadItemModel && activeId in it.workIds }
+			var baselineRows: List<RowSignature>? = null
+			// Two counterbalanced pairs in one fixture; these are not independent emulator sessions.
+			val arms = if (groups == 1 || groups == 400) listOf("A", "B", "B", "A") else listOf("A")
+			for ((block, arm) in arms.withIndex()) {
+				val snapshot = ids.keys.associateWith { id ->
+					val spec = checkNotNull(wm.getWorkSpec(id))
+					DownloadScaleProbe.Input(spec.input, Data.Builder().putAll(spec.input)
+						.putLong(DownloadState.DATA_TIMESTAMP, spec.scheduleRequestedAt).build())
+				}
+				repeat(4) { sample ->
+					val handle = SavedStateHandle()
+					val events = ConcurrentLinkedQueue<String>()
+					fun trace(message: String) { events.add(message) }
+					val ticks = ArrayList<Int>(5)
+					DownloadScaleProbe.install(handle, DownloadScaleProbe(snapshot.takeIf { arm == "B" }, activeId, ::trace))
+					val vmStarted = SystemClock.elapsedRealtimeNanos()
+					val vm = DownloadsViewModel(handle, scheduler, data, repositories,
+						changes, local, deleteLocal, favourites, sizeResolver)
+					try {
+						withTimeout(60_000) {
+							val first = vm.items.first { rows ->
+								rows.any { it is DownloadItemModel && activeId in it.workIds }
+							}
+							val firstNs = SystemClock.elapsedRealtimeNanos() - vmStarted
+							val full = vm.items.first { rows -> rows.count { it is DownloadItemModel } == groups }
+							val fullNs = SystemClock.elapsedRealtimeNanos() - vmStarted
+							check(full.filterIsInstance<DownloadItemModel>().flatMap { it.workIds }.toSet() == ids.keys)
+							val signature = full.filterIsInstance<DownloadItemModel>().map {
+								RowSignature(it.workIds, it.workState)
+							}
+							if (baselineRows == null) baselineRows = signature else check(signature.toSet() == baselineRows?.toSet())
+							val startup = "first_groups=${first.count { it is DownloadItemModel }} first_ns=$firstNs all_ns=$fullNs"
+							trace("stage=startup $startup")
+							if (block == 0) report("startup groups=$groups sample=$sample $startup")
+							repeat(5) {
+								val tick = ++nextProgress
+								ticks += tick
+								val workObserved = async(start = CoroutineStart.UNDISPATCHED) {
+									scheduler.observeWorks().first { works ->
+										works.any { it.id == activeId && DownloadState.getProgress(it.progress) == tick }
+									}
+									SystemClock.elapsedRealtimeNanos()
+								}
+								val modelObserved = async(start = CoroutineStart.UNDISPATCHED) {
+									vm.items.first { rows ->
+										rows.any { it is DownloadItemModel && activeId in it.workIds && it.progress == tick }
+									}
+									SystemClock.elapsedRealtimeNanos()
+								}
+								val pulse = ScalePulse(tick)
+								pulses.send(pulse)
+								val workNs = workObserved.await()
+								val modelNs = modelObserved.await()
+								val returned = pulse.returnedNs.await()
+								trace("stage=progress tick=$tick publish_ns=${pulse.publishedNs} return_ns=$returned work_ns=$workNs model_ns=$modelNs")
+								if (block == 0) report("progress groups=$groups sample=$sample tick=$tick publish_to_work_ns=${workNs - pulse.publishedNs} publish_to_model_ns=${modelNs - pulse.publishedNs}")
+							}
 						}
-						val firstNs = SystemClock.elapsedRealtimeNanos() - vmStarted
-						val full = vm.items.first { rows -> rows.count { it is DownloadItemModel } == groups }
-						val fullNs = SystemClock.elapsedRealtimeNanos() - vmStarted
-						check(full.filterIsInstance<DownloadItemModel>().flatMap { it.workIds }.toSet() == ids.keys)
-						report("startup groups=$groups sample=$sample first_groups=${first.count { it is DownloadItemModel }} first_ns=$firstNs all_ns=$fullNs")
-						repeat(5) {
-							val tick = ++nextProgress
-							val workObserved = async(start = CoroutineStart.UNDISPATCHED) {
-								scheduler.observeWorks().first { works ->
-									works.any { it.id == activeId && DownloadState.getProgress(it.progress) == tick }
-								}
-								SystemClock.elapsedRealtimeNanos()
-							}
-							val modelObserved = async(start = CoroutineStart.UNDISPATCHED) {
-								vm.items.first { rows ->
-									rows.any { it is DownloadItemModel && activeId in it.workIds && it.progress == tick }
-								}
-								SystemClock.elapsedRealtimeNanos()
-							}
-							val pulse = ScalePulse(tick)
-							pulses.send(pulse)
-							val workNs = workObserved.await()
-							val modelNs = modelObserved.await()
-							report("progress groups=$groups sample=$sample tick=$tick publish_to_work_ns=${workNs - pulse.publishedNs} publish_to_model_ns=${modelNs - pulse.publishedNs}")
+					} finally {
+						withContext(NonCancellable) {
+							vm.viewModelScope.coroutineContext[Job]?.cancelAndJoin()
+						}
+						for (event in events) {
+							report("ab groups=$groups block=$block arm=$arm sample=$sample work=$activeId $event")
 						}
 					}
-				} finally {
-					vm.viewModelScope.cancel()
+					for (tick in ticks) {
+						for (stage in listOf("vm_work", "convert", "group", "list", "progress")) {
+							check(events.any { it.startsWith("stage=$stage tick=$tick ") }) {
+								"Missing SCALE-01 stage=$stage block=$block sample=$sample tick=$tick"
+							}
+						}
+					}
 				}
 			}
 		} finally {
@@ -185,6 +227,8 @@ class DownloadScaleDiagnosticTest {
 			}
 		}
 	}
+
+	private data class RowSignature(val ids: Set<UUID>, val state: WorkInfo.State)
 
 	private fun request(id: UUID, manga: Manga, root: File, state: WorkInfo.State, chapter: Long): OneTimeWorkRequest {
 		val input = DownloadTask(
@@ -208,6 +252,7 @@ class DownloadScaleDiagnosticTest {
 
 private class ScalePulse(val progress: Int) {
 	@Volatile var publishedNs: Long = 0
+	val returnedNs = CompletableDeferred<Long>()
 }
 
 private val scalePulses = ConcurrentHashMap<UUID, Channel<ScalePulse>>()
@@ -220,9 +265,10 @@ class DownloadScaleFixtureWorker(context: Context, params: WorkerParameters) : C
 		"RUNNING" -> {
 			for (pulse in checkNotNull(scalePulses[id])) {
 				val progress = Data.Builder().putAll(inputData)
-					.putInt("max", 20).putInt("progress", pulse.progress).build()
+					.putInt("max", 80).putInt("progress", pulse.progress).build()
 				pulse.publishedNs = SystemClock.elapsedRealtimeNanos()
 				setProgress(progress)
+				pulse.returnedNs.complete(SystemClock.elapsedRealtimeNanos())
 			}
 			Result.success(inputData)
 		}

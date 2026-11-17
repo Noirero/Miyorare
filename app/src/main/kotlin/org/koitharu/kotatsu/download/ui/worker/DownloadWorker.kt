@@ -986,16 +986,16 @@ class DownloadWorker @AssistedInject constructor(
 		fun observeWorks(): Flow<List<WorkInfo>> = workManager.getWorkInfosByTagFlow(TAG)
 
 		@SuppressLint("RestrictedApi")
-		suspend fun getInputData(id: UUID): Data? {
-			val spec = workManager.getWorkSpec(id) ?: return null
+		suspend fun getInputData(id: UUID, trace: ((Long, Long) -> Unit)? = null): Data? {
+			val spec = workManager.getWorkSpec(id, trace) ?: return null
 			return Data.Builder()
 				.putAll(spec.input)
 				.putLong(DownloadState.DATA_TIMESTAMP, spec.scheduleRequestedAt)
 				.build()
 		}
 
-		suspend fun getTask(workId: UUID): DownloadTask? =
-			workManager.getWorkInputData(workId)?.let { DownloadTask(it) }
+		suspend fun getTask(workId: UUID, trace: ((Long, Long) -> Unit)? = null): DownloadTask? =
+			workManager.getWorkSpec(workId, trace)?.input?.let { DownloadTask(it) }
 
 		suspend fun cancel(id: UUID) {
 			DownloadPauseStore.clear(context, id)

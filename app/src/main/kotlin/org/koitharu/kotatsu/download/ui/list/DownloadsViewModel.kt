@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import android.os.SystemClock
 import androidx.collection.ArrayMap
 import androidx.collection.LongSet
 import androidx.collection.LongSparseArray
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
@@ -87,6 +89,8 @@ class DownloadsViewModel @Inject constructor(
 	private val favouritesRepository: FavouritesRepository,
 	private val downloadSizeResolver: DownloadSizeResolver,
 ) : BaseViewModel() {
+
+	private val scaleProbe = DownloadScaleProbe.take(savedStateHandle)
 
 	private val favouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
@@ -154,8 +158,13 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
+	private fun observedWorks() = workScheduler.observeWorks().let { works ->
+		val probe = scaleProbe
+		if (probe == null) works else works.onEach { probe.received(it) }
+	}
+
 	private val baseWorks = combine(
-		workScheduler.observeWorks(),
+		observedWorks(),
 		membershipVisibility,
 	) { list, visibility ->
 		if (DownloadObservation.enabled) {
@@ -166,7 +175,14 @@ class DownloadsViewModel @Inject constructor(
 					"work_observed state=${work.state} phase=${DownloadState.getPhase(payload)} progress=${DownloadState.getProgress(payload)}/${DownloadState.getMax(payload)}")
 			}
 		}
-		list.toDownloadsList(visibility)
+		val probe = scaleProbe
+		if (probe == null) list.toDownloadsList(visibility) else {
+			val started = SystemClock.elapsedRealtimeNanos()
+			val reads = DownloadScaleProbe.Reads()
+			list.toDownloadsList(visibility, reads).also {
+				probe.converted(list, started, reads)
+			}
+		}
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
@@ -195,7 +211,11 @@ class DownloadsViewModel @Inject constructor(
 	 * workIds so controls and history remain exact while duplicate cards collapse into one group.
 	 */
 	private val works = combine(rawWorks, expanded) { list, expandedIds ->
-		list?.groupForDisplay(expandedIds)
+		val probe = scaleProbe
+		if (probe == null || list == null) list?.groupForDisplay(expandedIds) else {
+			val started = SystemClock.elapsedRealtimeNanos()
+			list.groupForDisplay(expandedIds).also { probe.modelStage("group", it, started) }
+		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	private val visibleWorks = combine(works, selectedSectionState) { rows, section ->
@@ -225,7 +245,13 @@ class DownloadsViewModel @Inject constructor(
 			}
 			else -> {
 				traceDownloadRows("model_emit", current)
-				emit(current.toUiList())
+				val probe = scaleProbe
+				if (probe == null) emit(current.toUiList()) else {
+					val started = SystemClock.elapsedRealtimeNanos()
+					val rows = current.toUiList()
+					probe.modelStage("list", current, started)
+					emit(rows)
+				}
 			}
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
@@ -488,10 +514,11 @@ class DownloadsViewModel @Inject constructor(
 
 	private suspend fun List<WorkInfo>.toDownloadsList(
 		visibility: DownloadMembershipVisibility,
+		reads: DownloadScaleProbe.Reads? = null,
 	): List<DownloadItemModel> {
 		val rows = coroutineScope {
 			map { work ->
-				async { work.toUiModel(visibility) }
+				async { work.toUiModel(visibility, reads) }
 			}.awaitAll().filterNotNull()
 		}
 		downloadSizes.replaceRequests(buildMap {
@@ -618,12 +645,15 @@ class DownloadsViewModel @Inject constructor(
 
 	private suspend fun WorkInfo.toUiModel(
 		visibility: DownloadMembershipVisibility,
+		reads: DownloadScaleProbe.Reads?,
 	): Pair<DownloadItemModel, SizeRequest?>? {
+		val snapshot = scaleProbe?.snapshot?.getValue(id)
 		val workData = outputData.takeUnless { it.isEmpty }
 			?: progress.takeUnless { it.isEmpty }
-			?: workScheduler.getInputData(id)
+			?: snapshot?.fallback
+			?: workScheduler.getInputData(id, reads?.record)
 			?: return null
-		val task = workScheduler.getTask(id)
+		val task = if (snapshot != null) DownloadTask(snapshot.input) else workScheduler.getTask(id, reads?.record)
 		if (task != null && task.favouriteSpace != favouriteSpace) return null
 		val mangaId = DownloadState.getMangaId(workData)
 		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null

@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.util.ext
 
 import android.annotation.SuppressLint
+import android.os.SystemClock
 import androidx.work.Data
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -67,16 +68,20 @@ suspend fun WorkManager.awaitUpdateWork(request: WorkRequest): WorkManager.Updat
 }
 
 @SuppressLint("RestrictedApi")
-suspend fun WorkManager.getWorkSpec(id: UUID): WorkSpec? = suspendCoroutine { cont ->
-	workManagerImpl.workTaskExecutor.executeOnTaskThread {
-		try {
-			val spec = workManagerImpl.workDatabase.workSpecDao().getWorkSpec(id.toString())
-			cont.resume(spec)
-		} catch (e: Exception) {
-			cont.resumeWithException(e)
+suspend fun WorkManager.getWorkSpec(id: UUID, trace: ((Long, Long) -> Unit)? = null): WorkSpec? =
+	suspendCoroutine { cont ->
+		val queued = if (trace != null) SystemClock.elapsedRealtimeNanos() else 0L
+		workManagerImpl.workTaskExecutor.executeOnTaskThread {
+			try {
+				val started = if (trace != null) SystemClock.elapsedRealtimeNanos() else 0L
+				val spec = workManagerImpl.workDatabase.workSpecDao().getWorkSpec(id.toString())
+				if (trace != null) trace(started - queued, SystemClock.elapsedRealtimeNanos() - started)
+				cont.resume(spec)
+			} catch (e: Exception) {
+				cont.resumeWithException(e)
+			}
 		}
 	}
-}
 
 @SuppressLint("RestrictedApi")
 suspend fun WorkManager.getWorkInputData(id: UUID): Data? = getWorkSpec(id)?.input
