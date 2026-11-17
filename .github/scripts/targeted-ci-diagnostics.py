@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Sequence
@@ -131,6 +132,54 @@ def missing_targets(targets: Sequence[str], observed: set[tuple[str, str]]) -> l
 
 
 
+SCALE_CLASS = "org.koitharu.kotatsu.download.ui.list.DownloadScaleDiagnosticTest"
+SCALE_GROUPS = {"oneGroup": 1, "fiftyGroups": 50, "fourHundredGroups": 400, "fourHundredSeventyNineGroups": 479}
+SCALE_TAG = "DownloadScale01"
+
+
+def scale_groups(platform: str, targets: Sequence[str]) -> set[int]:
+    if platform != "android":
+        return set()
+    groups = set()
+    for target in targets:
+        classname, _, method = target.partition("#")
+        if classname == SCALE_CLASS:
+            if not method:
+                groups.update(SCALE_GROUPS.values())
+            elif method in SCALE_GROUPS:
+                groups.add(SCALE_GROUPS[method])
+    return groups
+
+
+def scale_capture_start() -> str:
+    marker = "scale_capture_" + uuid.uuid4().hex
+    subprocess.run(["adb", "shell", "log", "-p", "i", "-t", SCALE_TAG, marker],
+                   check=True, capture_output=True, text=True, timeout=25)
+    return marker
+
+
+def scale_capture_finish(directory: Path, marker: str, groups: set[int]) -> list[str]:
+    result = subprocess.run(["adb", "logcat", "-d", "-v", "raw", "-s", SCALE_TAG + ":I", "*:S"],
+                            check=True, capture_output=True, text=True, timeout=25)
+    lines = result.stdout.splitlines()
+    if marker not in lines:
+        return ["SCALE-01 logcat marker missing; cannot isolate this invocation"]
+    lines = lines[lines.index(marker) + 1:]
+    (directory / "scale01-logcat.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    errors = []
+    for group in sorted(groups):
+        fixture = [line for line in lines if line.startswith(f"fixture groups={group} workspecs=")]
+        startup = [int(m[1]) for line in lines if (m := re.fullmatch(
+            rf"startup groups={group} sample=(\d+) first_groups=\d+ first_ns=\d+ all_ns=\d+", line))]
+        progress = [(int(m[1]), int(m[2])) for line in lines if (m := re.fullmatch(
+            rf"progress groups={group} sample=(\d+) tick=(\d+) publish_to_work_ns=\d+ publish_to_model_ns=\d+", line))]
+        expected = [(sample, sample * 5 + offset) for sample in range(4) for offset in range(1, 6)]
+        if len(fixture) != 1 or sorted(startup) != list(range(4)) or sorted(progress) != expected:
+            errors.append(f"SCALE-01 {group} groups: incomplete or duplicate metrics "
+                          f"(fixture={len(fixture)}, startup={len(startup)}, progress={len(progress)})")
+    return errors
+
+
 def android_failure_evidence(directory: Path) -> None:
     # Best-effort only; failure to capture must not mask the real test result.
     capture = {
@@ -205,9 +254,24 @@ def main() -> int:
             for root in roots:
                 if root.exists():
                     shutil.rmtree(root)
+            expected_scale_groups = scale_groups(args.platform, group)
+            marker = None
+            scale_errors = []
+            if expected_scale_groups:
+                try:
+                    marker = scale_capture_start()
+                except (OSError, subprocess.SubprocessError) as exc:
+                    scale_errors.append(f"SCALE-01 could not start log capture: {exc}")
             started = time.monotonic()
             code = run_command(build_command(args.platform, group), directory / "gradle.log")
+            duration = round(time.monotonic() - started, 1)
+            if marker is not None:
+                try:
+                    scale_errors.extend(scale_capture_finish(directory, marker, expected_scale_groups))
+                except (OSError, subprocess.SubprocessError) as exc:
+                    scale_errors.append(f"SCALE-01 could not save log capture: {exc}")
             count, failures, observed = collect_results(args.platform, directory)
+            failures.extend(scale_errors)
             missing = missing_targets(group, observed)
             if missing:
                 failures.append("Missing requested test results: " + ", ".join(missing))
@@ -221,7 +285,7 @@ def main() -> int:
                 android_failure_evidence(directory)
             runs.append({
                 "index": index, "repeat": repeat, "targets": group,
-                "exit_code": code, "duration_seconds": round(time.monotonic() - started, 1),
+                "exit_code": code, "duration_seconds": duration,
                 "reported_tests": count, "failure_details": failures,
             })
             print(f"Diagnostic invocation {index}: {'PASS' if code == 0 else 'FAIL'}", flush=True)
