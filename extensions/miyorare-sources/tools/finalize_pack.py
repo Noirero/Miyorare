@@ -134,6 +134,10 @@ def main() -> None:
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", build_name).strip("-") or "UPSTREAM"
     with zipfile.ZipFile(built, "a", compression=zipfile.ZIP_DEFLATED) as archive:
         add_license(archive, args.upstream, f"{safe_name}-GPL-3.0.txt")
+        if "VoraToon.kt" in provenance.get("miyorareOverlayFiles", []):
+            voratoon = Path(__file__).resolve().parents[1] / "first-party" / "voratoon"
+            add_license(archive, voratoon, "VoraToon-GPL-3.0.txt")
+            archive.write(voratoon / "README.md", "META-INF/licenses/VoraToon-NOTICE.md")
         archive.writestr(
             "META-INF/miyorare-pack.json",
             provenance_file.read_text(encoding="utf-8"),

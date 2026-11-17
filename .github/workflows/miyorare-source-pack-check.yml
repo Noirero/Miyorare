@@ -97,6 +97,22 @@ jobs:
             --upstream _upstream/uma \
             --pack '${{ matrix.pack }}'
 
+      - name: Checkout deterministic VoraToon fixture
+        if: matrix.pack == 'id'
+        uses: actions/checkout@v5
+        with:
+          repository: Noirero/Miyorare-Source-Packs
+          ref: a88f541a3e486dd5e7660ad2c9b1d00c971a4b56
+          path: _voratoon-fixtures
+          persist-credentials: false
+
+      - name: Test VoraToon in prepared Miyorare-ID sources
+        if: matrix.pack == 'id'
+        run: |
+          mkdir -p _upstream/uma/src/test/kotlin/compatibilityfarm
+          cp _voratoon-fixtures/compatibility/harness/candidates/voratoon/*.kt _upstream/uma/src/test/kotlin/compatibilityfarm/
+          (cd _upstream/uma && bash ./gradlew test --no-daemon --tests compatibilityfarm.VoraToonCandidateContractTest)
+
       - name: Build UMA shard with UMA build system
         working-directory: _upstream/uma
         run: |
@@ -164,6 +180,8 @@ jobs:
           names = set(data['sourceNames'])
           if pack == 'id':
               assert 'HOLOTOON' in names, sorted(names)
+              owners = [shard for shard in data['shards'] if 'VORATOON' in shard['sourceNames']]
+              assert len(owners) == 1 and owners[0]['pluginId'] == 'miyorare-id', owners
           else:
               assert 'HOLOTOON' not in names, sorted(names)
           PY

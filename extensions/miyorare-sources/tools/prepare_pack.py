@@ -104,6 +104,14 @@ def apply_miyorare_overlays(
             fail(f"UMA overlay target does not exist at pinned upstream: {relative}")
         shutil.copy2(source, target)
         copied.append(relative)
+    if pack_name == "id" and "VoraToon.kt" in requested_set:
+        first_party = Path(__file__).resolve().parents[1] / "first-party" / "voratoon" / "src" / "tsuki" / "site" / "id"
+        for relative in ("VoraToon.kt", "voratoon/NextJsData.kt", "voratoon/TurnstileHelper.kt"):
+            source = first_party / relative
+            target = language_dir / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            copied.append(relative)
     return copied
 
 
