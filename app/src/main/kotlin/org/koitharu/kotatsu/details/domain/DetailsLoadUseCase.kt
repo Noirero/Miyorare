@@ -390,6 +390,17 @@ class DetailsLoadUseCase @Inject constructor(
 	}
 
 
+	/** A manual check only reads the original source; do not migrate, persist or sync tracking. */
+	internal suspend fun countNewSourceChapters(seed: Manga, branch: String?, scanlator: String?): Int {
+		val remote = try {
+			loadDetails(seed, fresh = true, refreshExtensions = false, requireFresh = true)
+		} catch (error: UnsupportedSourceException) {
+			if (!seed.source.isExternalSource()) throw error
+			loadDetails(seed, fresh = true, refreshExtensions = true, requireFresh = true)
+		}
+		return countNewChaptersForReleaseCalendar(seed, remote, branch, scanlator)
+	}
+
 	private suspend fun getDetails(seed: Manga, fresh: Boolean) = runCatchingCancellable {
 		loadDetails(seed, fresh, refreshExtensions = false)
 	}.recoverCatching { error ->
@@ -402,7 +413,12 @@ class DetailsLoadUseCase @Inject constructor(
 		if (e is NotFoundException) recoverUseCase(seed) else null
 	}
 
-	private suspend fun loadDetails(seed: Manga, fresh: Boolean, refreshExtensions: Boolean): Manga {
+	private suspend fun loadDetails(
+		seed: Manga,
+		fresh: Boolean,
+		refreshExtensions: Boolean,
+		requireFresh: Boolean = false,
+	): Manga {
 		val resolvedSeed = if (seed.source.name.startsWith("MIHON_")) {
 			// Opening a title must not rescan every installed extension just because the Parcelable/DB
 			// seed was reconstructed as a MissingMangaSource. ensureReady() resolves the normal startup
@@ -414,6 +430,7 @@ class DetailsLoadUseCase @Inject constructor(
 			seed
 		}
 		val repository = mangaRepositoryFactory.create(resolvedSeed.source)
+		check(!requireFresh || repository is FreshMangaDetailsRepository)
 		return when {
 			fresh && repository is FreshMangaDetailsRepository -> repository.getFreshDetails(resolvedSeed)
 			repository is CachingMangaRepository -> repository.getDetails(resolvedSeed, CachePolicy.ENABLED)

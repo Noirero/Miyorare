@@ -65,6 +65,7 @@ import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.ActivityDetailsExpressiveBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.details.domain.FavouriteReleasePredictionsUseCase
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionRoute
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsSheet
@@ -511,6 +512,14 @@ class DetailsExpressiveActivity :
 					ChapterReleasePredictionRoute(
 						originMangaId = details?.id ?: viewModel.mangaId,
 						origin = chapterReleaseOrigin,
+						originTitle = details?.displayTitle(full = false),
+						onCheckLatestChapters = details?.sourceManga
+							?.takeIf { !it.isLocal && it.chapters != null }
+							?.let { viewModel::checkLatestChaptersForCalendar },
+						onReloadChapterList = {
+							predictionCalendarVisible.value = false
+							viewModel.reload()
+						},
 						space = predictionSpace,
 						canReadFavourites = predictionSpace == FavouriteSpace.NORMAL || privateUnlocked,
 						useCase = favouriteReleasePredictions,
