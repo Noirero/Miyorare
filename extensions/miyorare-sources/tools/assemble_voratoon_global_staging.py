@@ -7,6 +7,8 @@ import json
 import shutil
 from pathlib import Path
 
+from bind_voratoon_global import bind_voratoon_global
+
 
 def binding(root, asset):
     jar = root / asset
@@ -32,29 +34,16 @@ def main():
             or len(names) != len(set(names)) or "VORATOON" in names):
         raise SystemExit("Unexpected or duplicate Global source ownership")
     existing = binding(args.global_dir, gekkoushi["assetName"])
-    candidate = binding(args.voratoon_dir, "miyorare-global-voratoon-candidate.jar")
-    first_party_asset = "miyorare-global-first-party.jar"
-    first_party = {
-        **candidate, "assetName": first_party_asset,
-        "provider": "MIYORARE", "pluginId": "miyorare-global-first-party",
-        "sourceNames": ["VORATOON"], "sourceCount": 1,
-    }
     output = args.output_dir
     output.mkdir(parents=True, exist_ok=False)
-    for root, source, asset in [
-        (args.global_dir, existing, existing["assetName"]),
-        (args.voratoon_dir, candidate, first_party_asset),
-    ]:
-        shutil.copyfile(root / source["assetName"], output / asset)
-        (output / (asset + ".sha256")).write_text(
-            f'{source["sha256"]}  {asset}\n', encoding="utf-8"
-        )
+    asset = existing["assetName"]
+    shutil.copyfile(args.global_dir / asset, output / asset)
+    shutil.copyfile(args.global_dir / (asset + ".sha256"), output / (asset + ".sha256"))
     manifest = {
-        "schema": 1, "stagingOnly": True, "revision": args.revision,
-        "packId": logical["packId"], "tsukiApi": logical["tsukiApi"],
-        "sourceNames": sorted([*names, "VORATOON"]), "sourceCount": len(names) + 1,
-        "shards": [{**gekkoushi, **existing}, first_party],
+        **logical, "stagingOnly": True, "revision": args.revision,
+        "shards": [{**gekkoushi, **existing}],
     }
+    bind_voratoon_global(manifest, args.voratoon_dir, output)
     (output / "miyorare-global-staging.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )

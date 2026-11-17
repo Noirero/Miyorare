@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Create the logical Miyorare Global manifest from its single Gekkoushi shard."""
+"""Create the logical Global manifest; first-party ownership requires an explicit input."""
 
 from __future__ import annotations
 
 import argparse
 import json
+
+from bind_voratoon_global import bind_voratoon_global
 from pathlib import Path
 
 
@@ -17,6 +19,8 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--pack", choices=("global",), default="global")
     parser.add_argument("--gekkoushi-metadata", type=Path, required=True)
+    parser.add_argument("--voratoon-candidate", type=Path,
+                        help="Directory containing the verified first-party candidate and checksum")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -60,9 +64,11 @@ def main() -> None:
     }
 
     args.output.mkdir(parents=True, exist_ok=True)
+    if args.voratoon_candidate is not None:
+        bind_voratoon_global(logical, args.voratoon_candidate, args.output)
     output = args.output / "miyorare-global-pack.json"
     output.write_text(json.dumps(logical, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"Finalized {pack['displayName']}: {len(names)} unique global source(s)")
+    print(f"Finalized {pack['displayName']}: {logical['sourceCount']} unique global source(s)")
 
 
 if __name__ == "__main__":
