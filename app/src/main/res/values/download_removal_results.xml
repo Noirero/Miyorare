@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="downloads_remove_unverified">Could not verify safe removal: %1$d. Use list-only to clear history without deleting files.</string>
+    <string name="downloads_remove_missing_file">File missing or unavailable: %1$d. Check the original download folder.</string>
+    <string name="downloads_remove_failed">Removal failed: %1$d. Check storage access and remaining history before retrying.</string>
+    <string name="downloads_remove_not_attempted">Not attempted after the failure: %1$d.</string>
+</resources>
