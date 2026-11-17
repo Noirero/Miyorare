@@ -130,6 +130,15 @@ class DownloadScaleDiagnosticTest {
 					works.size == ids.size && works.all { ids[it.id] == it.state }
 				}
 			}
+			// Validate the bounded reader before starting any timers, including a missing ID.
+			val missingId = UUID.randomUUID()
+			val inputs = scheduler.readModelInputs(ids.keys.toList() + missingId)
+			check(inputs.keys == ids.keys) { "Batched reads changed fixture membership" }
+			for ((id, input) in inputs) {
+				val fallback = Data.Builder().putAll(input.data)
+					.putLong(DownloadState.DATA_TIMESTAMP, input.scheduleRequestedAt).build()
+				check(fallback == scheduler.getInputData(id)) { "Batched fallback differs for $id" }
+			}
 			val mix = raw.groupingBy { it.state.name }.eachCount().toSortedMap()
 				.entries.joinToString(",") { "${it.key}:${it.value}" }
 			report("fixture groups=$groups workspecs=${raw.size} states=$mix")
