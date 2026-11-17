@@ -1,6 +1,6 @@
 ## Miyorare v1.4.26
 
-This release focuses on Downloads and Details: the release calendar is now always within reach, large download libraries open faster, bulk removal reports exactly what happened, and older ExHentai downloads open offline again.
+This release focuses on Downloads and Details: the release calendar is now always within reach, large download libraries open faster, and bulk removal reports exactly what happened.
 
 ### ✨ What's New
 
@@ -14,14 +14,13 @@ This release focuses on Downloads and Details: the release calendar is now alway
 
 ### 🐞 Fixes
 
-- **ExHentai downloads open offline again** — Downloaded ExHentai chapters, including older (legacy) CBZ archives, are now resolved and opened offline reliably, in both full-title and compact-title download folders.
 - **Bulk removal reports its results** — Removing many downloads at once now tells you which groups were removed and which were skipped. One problematic item no longer cancels the whole batch silently — the rest still finish, and partial results are reported.
 - **Downloaded sizes and chapter status stay correct** — Chapter sizes are now tied to the storage destination where the download was recorded, and sizes and expanded chapter status refresh properly when the download storage changes, instead of showing stale or mismatched information.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Rilis ini berfokus pada Unduhan dan Details: kalender rilis kini selalu bisa dibuka, pustaka unduhan besar terbuka lebih cepat, penghapusan massal melaporkan hasilnya dengan jelas, dan unduhan ExHentai lama bisa dibuka offline lagi.
+Rilis ini berfokus pada Unduhan dan Details: kalender rilis kini selalu bisa dibuka, pustaka unduhan besar terbuka lebih cepat, dan penghapusan massal melaporkan hasilnya dengan jelas.
 
 ### ✨ Yang Baru
 
@@ -35,7 +34,6 @@ Rilis ini berfokus pada Unduhan dan Details: kalender rilis kini selalu bisa dib
 
 ### 🐞 Perbaikan
 
-- **Unduhan ExHentai bisa dibuka offline lagi** — Chapter ExHentai yang sudah diunduh, termasuk arsip CBZ lama (legacy), kini ditemukan dan dibuka secara offline dengan andal, baik di folder unduhan judul lengkap maupun judul ringkas.
 - **Penghapusan massal melaporkan hasilnya** — Menghapus banyak unduhan sekaligus kini memberi tahu grup mana yang terhapus dan mana yang dilewati. Satu item bermasalah tidak lagi membatalkan seluruh batch secara diam-diam — sisanya tetap selesai, dan hasil parsial tetap dilaporkan.
 - **Ukuran unduhan dan status chapter tetap benar** — Ukuran chapter kini terikat pada tujuan penyimpanan tempat unduhan dicatat, dan ukuran serta status chapter yang diperluas diperbarui dengan benar ketika penyimpanan unduhan berubah, bukan lagi menampilkan informasi lama atau tertukar.
 
