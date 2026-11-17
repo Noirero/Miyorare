@@ -1,11 +1,22 @@
 package org.koitharu.kotatsu.download.domain.maintenance
 
 import android.content.SharedPreferences
+import android.content.Context
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.Configuration
+import androidx.work.CoroutineWorker
+import androidx.work.Data
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.await
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.CompletableDeferred
@@ -16,6 +27,8 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -27,11 +40,16 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.list.DownloadSizeResolver
 import org.koitharu.kotatsu.download.ui.list.observeDownloadChapterInvalidations
+import org.koitharu.kotatsu.download.ui.list.DownloadItemModel
+import org.koitharu.kotatsu.download.ui.list.DownloadsViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
+import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.download.ui.worker.EXHENTAI_COMMITTED_PATH
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
@@ -53,6 +71,7 @@ import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
 import java.util.UUID
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
@@ -60,11 +79,15 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
+import javax.inject.Provider
 
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
 class DownloadMaintenanceRegressionTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
+	@Inject lateinit var schedulerProvider: Provider<DownloadWorker.Scheduler>
+	@Inject lateinit var mangaRepositories: MangaRepository.Factory
+	@Inject lateinit var sizeResolver: DownloadSizeResolver
 	@Inject lateinit var maintenance: DownloadMaintenanceUseCase
 	@Inject lateinit var db: MangaDatabase
 	@Inject lateinit var data: MangaDataRepository
@@ -97,6 +120,10 @@ class DownloadMaintenanceRegressionTest {
 	}
 
 	@After fun tearDown() = runBlocking {
+		if (!::savedPrefs.isInitialized) {
+			if (::root.isInitialized) root.deleteRecursively()
+			return@runBlocking
+		}
 		for (id in ids) index.delete(id)
 		prefs.edit(commit = true) {
 			clear()
@@ -112,6 +139,102 @@ class DownloadMaintenanceRegressionTest {
 		root.deleteRecursively()
 		Unit
 	}
+
+	@Test fun bulkListOnlyKeepsFilesOwnershipAndActiveWork() = runBlocking {
+		verifyBulkRemoval(deleteFiles = false)
+	}
+
+	@Test fun bulkWithFilesRemovesOnlyTheSelectedReceiptOnASharedRoot() = runBlocking {
+		verifyBulkRemoval(deleteFiles = true)
+	}
+
+	private suspend fun verifyBulkRemoval(deleteFiles: Boolean) {
+		// Only the bulk-removal fixture needs real WorkManager under HiltTestApplication.
+		if (!WorkManager.isInitialized()) {
+			WorkManager.initialize(context, Configuration.Builder().build())
+		}
+		val scheduler = schedulerProvider.get()
+		prefs.edit(commit = true) { putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path) }
+		val manga = galleryFixture(812391)
+		val activeManga = galleryFixture(812392)
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		data.storeManga(activeManga, replaceExisting = true, detailsFetched = true)
+		val normal = newRemovalWork(manga, FavouriteSpace.NORMAL)
+		val privateCopy = newRemovalWork(manga, FavouriteSpace.PRIVATE)
+		val active = newRemovalWork(activeManga, FavouriteSpace.NORMAL)
+		val ids = setOf(normal.id, privateCopy.id, active.id)
+		val owner = db.getFavouriteDownloadIndexDao()
+		val vm = DownloadsViewModel(SavedStateHandle(), scheduler, data, mangaRepositories,
+			events, local, deleteLocal, favourites, sizeResolver)
+		try {
+			val selected = writeGalleryFixture(manga, false, byteArrayOf(11, 12),
+				receipt = ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, normal.id))
+			val retained = writeGalleryFixture(manga, true, byteArrayOf(21, 22),
+				receipt = ExhentaiChapterOwnership.Receipt(FavouriteSpace.PRIVATE, privateCopy.id))
+			assertNotEquals(selected.canonicalPath, retained.canonicalPath)
+			val selectedBefore = selected.readBytes()
+			val retainedBefore = retained.readBytes()
+			owner.upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, selected.canonicalPath))
+			owner.upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.PRIVATE.dbValue, retained.canonicalPath))
+			val wm = WorkManager.getInstance(context)
+			for ((request, file) in listOf(normal to selected, privateCopy to retained, active to null)) {
+				// The synthetic worker returns the persisted input plus the real committed path.
+				// It performs no download and has no network or filesystem side effects.
+				val work = OneTimeWorkRequest.Builder(RemovalHistoryFixtureWorker::class.java)
+					.setId(request.id)
+					.addTag("download") // Same queue tag used by Scheduler.observeWorks().
+					.setInputData(Data.Builder().putAll(request.input)
+						.putString(EXHENTAI_COMMITTED_PATH, file?.canonicalPath).build())
+					.apply { if (file == null) setInitialDelay(1, TimeUnit.DAYS) }
+					.build()
+				wm.enqueue(work).await()
+			}
+			fun List<WorkInfo>.state(id: UUID) = firstOrNull { it.id == id }?.state
+			withTimeout(30_000) {
+				scheduler.observeWorks().first {
+					it.state(normal.id) == WorkInfo.State.SUCCEEDED &&
+						it.state(privateCopy.id) == WorkInfo.State.SUCCEEDED &&
+						it.state(active.id) == WorkInfo.State.ENQUEUED
+				}
+				vm.items.first { items ->
+					val rows = items.filterIsInstance<DownloadItemModel>()
+					rows.any { it.workIds == setOf(normal.id) && it.workState == WorkInfo.State.SUCCEEDED } &&
+						rows.any { it.workIds == setOf(active.id) && !it.workState.isFinished }
+				}
+				vm.remove(setOf(manga.id, activeManga.id), deleteFiles = deleteFiles)
+				val after = scheduler.observeWorks().first { it.state(normal.id) == null }
+				assertEquals(setOf(privateCopy.id, active.id), after.map { it.id }.toSet().intersect(ids))
+				assertEquals(WorkInfo.State.SUCCEEDED, after.state(privateCopy.id))
+				assertEquals(WorkInfo.State.ENQUEUED, after.state(active.id))
+			}
+			if (deleteFiles) {
+				assertFalse(selected.exists())
+				assertNull(owner.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+			} else {
+				assertArrayEquals(selectedBefore, selected.readBytes())
+				assertEquals(selected.canonicalPath, owner.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id)?.path)
+			}
+			assertArrayEquals(retainedBefore, retained.readBytes())
+			assertEquals(retained.canonicalPath, owner.findEntry(FavouriteSpace.PRIVATE.dbValue, manga.id)?.path)
+			val opened = local.findExhentaiAtPath(manga, retained, withDetails = true,
+				space = FavouriteSpace.PRIVATE, request = privateCopy.id)
+			assertEquals(retained.canonicalFile, opened?.local?.file?.canonicalFile)
+			assertTrue(opened?.local?.manga?.chapters.orEmpty().any { it.id == manga.chapters.orEmpty().single().id })
+		} finally {
+			vm.viewModelScope.cancel()
+			scheduler.delete(ids)
+		}
+	}
+
+	private fun newRemovalWork(manga: Manga, space: FavouriteSpace): RemovalWork =
+		RemovalWork(UUID.randomUUID(), DownloadTask(
+			mangaId = manga.id, isPaused = false, isSilent = true,
+			chaptersIds = manga.chapters.orEmpty().map { it.id }.toLongArray(),
+			destination = root, format = DownloadFormat.MULTIPLE_CBZ,
+			allowMeteredNetwork = true, favouriteSpace = space,
+		).toData())
+
+	private data class RemovalWork(val id: UUID, val input: Data)
 
 	@Test fun globalDeletionRefreshesChapterStatusOnTheSameCollector() = runBlocking {
 		val manga = galleryFixture(812381)
@@ -1133,4 +1256,9 @@ class DownloadMaintenanceRegressionTest {
 		index.registerDownloadAlias(remote.id, physical.manga.id, folder)
 	}
 	private fun result(file: File) = maintenance.state.value.result!!.items.single { it.path == file.canonicalPath }
+}
+
+/** Only populates WorkManager terminal history; never runs a real download. */
+class RemovalHistoryFixtureWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+	override suspend fun doWork(): Result = Result.success(inputData)
 }
