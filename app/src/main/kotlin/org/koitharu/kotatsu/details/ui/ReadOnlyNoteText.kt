@@ -7,8 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 
 private val NOTE_URL_REGEX = Regex("""https?://[^\s<>]+""", RegexOption.IGNORE_CASE)
@@ -35,7 +37,11 @@ internal fun noteWithLinks(note: String, linkStyle: SpanStyle) = buildAnnotatedS
 
 /** Shared Manga/Chapter note rendering; Compose handles URL taps through LocalUriHandler. */
 @Composable
-internal fun ReadOnlyNoteText(note: String) {
+internal fun ReadOnlyNoteText(
+	note: String,
+	maxLines: Int = Int.MAX_VALUE,
+	onTextLayout: (TextLayoutResult) -> Unit = {},
+) {
 	val linkStyle = SpanStyle(
 		color = MaterialTheme.colorScheme.primary,
 		textDecoration = TextDecoration.Underline,
@@ -46,6 +52,9 @@ internal fun ReadOnlyNoteText(note: String) {
 			text = annotatedNote,
 			style = MaterialTheme.typography.bodyLarge,
 			color = MaterialTheme.colorScheme.onSurface,
+			maxLines = maxLines,
+			overflow = if (maxLines == Int.MAX_VALUE) TextOverflow.Clip else TextOverflow.Ellipsis,
+			onTextLayout = onTextLayout,
 		)
 	}
 }
