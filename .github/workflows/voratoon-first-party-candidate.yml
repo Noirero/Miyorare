@@ -6,10 +6,12 @@ on:
       - 'extensions/miyorare-sources/first-party/voratoon/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/tsuki/VoraToonPackRoutingTest.kt'
+      - 'app/src/debug/kotlin/org/koitharu/kotatsu/tsuki/GlobalValidationActivity.kt'
       - 'extensions/miyorare-sources/tools/finalize_voratoon_candidate.py'
       - 'extensions/miyorare-sources/tools/assemble_voratoon_global_staging.py'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
       - '.github/workflows/voratoon-first-party-candidate.yml'
+      - '.github/scripts/verify-voratoon-staging-apk.sh'
 permissions:
   contents: read
 jobs:
@@ -90,6 +92,19 @@ jobs:
           name: voratoon-dex-candidate-not-for-install
           path: build/voratoon-candidate/
           if-no-files-found: error
+      - name: Build legacy ID parser fixture from pinned baseline
+        run: |
+          git -C _baseline restore -- src/main/kotlin/tsuki/site/id/VoraToon.kt
+          rm -r _baseline/src/main/kotlin/tsuki/site/id/voratoon
+          (cd _baseline && bash ./gradlew buildJar --rerun-tasks --no-daemon)
+          mkdir -p build/voratoon-legacy
+          cp _baseline/build/libs/uma.jar build/voratoon-legacy/legacy.jar
+          sha256sum build/voratoon-legacy/legacy.jar | cut -d ' ' -f 1 > build/voratoon-legacy/legacy.jar.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: voratoon-legacy-id-fixture
+          path: build/voratoon-legacy/
+          if-no-files-found: error
   gekkoushi-staging:
     uses: ./.github/workflows/miyorare-global-source-pack-check.yml
     with:
@@ -139,3 +154,47 @@ jobs:
         run: |
           bash ./gradlew :app:testDebugUnitTest --max-workers=4 --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.tsuki.VoraToonPackRoutingTest
+
+  android-voratoon-staging:
+    needs: [assemble-global-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: miyorare-global-voratoon-staging
+          path: _android-staging
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: voratoon-legacy-id-fixture
+          path: _legacy-staging
+      - name: Build isolated debug validation APK
+        run: |
+          (cd _android-staging && sha256sum -c ./*.sha256)
+          dir=app/src/debug/assets/global-validation
+          mkdir -p "$dir/voratoon"
+          cp _android-staging/miyorare-global-gekkoushi.jar "$dir/"
+          cut -d ' ' -f 1 _android-staging/miyorare-global-gekkoushi.jar.sha256 > "$dir/sha256"
+          cp _android-staging/miyorare-global-first-party.jar "$dir/voratoon/"
+          cut -d ' ' -f 1 _android-staging/miyorare-global-first-party.jar.sha256 > "$dir/voratoon/miyorare-global-first-party.jar.sha256"
+          cp _legacy-staging/legacy.jar* "$dir/voratoon/"
+          git rev-parse HEAD > "$dir/revision"
+          bash gradlew :app:assembleDebug -PMIYORARE_GLOBAL_VALIDATION=true --max-workers=2 --no-daemon --stacktrace
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Verify VoraToon migration routing on Android 15
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: bash .github/scripts/verify-voratoon-staging-apk.sh
