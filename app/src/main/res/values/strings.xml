@@ -1156,6 +1156,7 @@
     <string name="changelog_summary">Changes history for recently released versions</string>
     <string name="collapse">Collapse</string>
     <string name="expand">Expand</string>
+    <string name="details_notes">Notes</string>
     <string name="adblock">Block ads in browser</string>
     <string name="adblock_summary">Block advertisement in the built-in browser (beta)</string>
     <string name="collapse_long_description">Collapse long description</string>
