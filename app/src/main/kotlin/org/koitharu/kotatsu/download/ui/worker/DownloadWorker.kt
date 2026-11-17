@@ -87,6 +87,7 @@ import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.domain.DownloadProgress
+import org.koitharu.kotatsu.download.domain.DownloadObservation
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -153,7 +154,9 @@ class DownloadWorker @AssistedInject constructor(
 	private var committedExhentaiPath: String? = null
 
 	override suspend fun doWork(): Result {
+		DownloadObservation.start(id, runAttemptCount)
 		setForeground(getForegroundInfo())
+		observeDownload { "foreground_ready" }
 		// Register pause controls immediately after the foreground card becomes visible. Previously the
 		// receiver was installed only after a chapter-bearing DB lookup and privacy setup, leaving a
 		// startup window where tapping Pause in the notification could be lost.
@@ -168,11 +171,14 @@ class DownloadWorker @AssistedInject constructor(
 			PausingReceiver.createIntentFilter(id),
 			ContextCompat.RECEIVER_NOT_EXPORTED,
 		)
+		observeDownload { "metadata_begin" }
 		val manga = mangaDataRepository.findMangaById(task.mangaId, withChapters = true) ?: run {
+			observeDownload { "worker_result=missing_metadata" }
 			DownloadPauseStore.clear(applicationContext, id)
 			runCatching { applicationContext.unregisterReceiver(pausingReceiver) }
 			return Result.failure()
 		}
+		observeDownload { "metadata_end" }
 		val privacyRefreshJob = CoroutineScope(currentCoroutineContext()).launch {
 			launch {
 				database.getPrivateFavouritesDao()
@@ -201,7 +207,9 @@ class DownloadWorker @AssistedInject constructor(
 					}
 				}
 				try {
+					observeDownload { "permit_wait" }
 					concurrencyController.withPermit(performanceSettings.parallelSourceLimit) {
+						observeDownload { "permit_acquired" }
 						checkIsPaused()
 						downloadMangaImpl(manga, task)
 					}
@@ -215,16 +223,19 @@ class DownloadWorker @AssistedInject constructor(
 			pruneResumeCache()
 			DownloadPauseStore.clear(applicationContext, id)
 			val state = currentState.toWorkData()
+			observeDownload { "worker_result=success" }
 			val receipt = committedExhentaiPath
 			Result.success(if (receipt == null) state else androidx.work.Data.Builder()
 				.putAll(state).putString(EXHENTAI_COMMITTED_PATH, receipt).build())
 		} catch (_: CancellationException) {
+			observeDownload { "worker_result=cancelled" }
 			withContext(NonCancellable) {
 				val notification = notificationFactory.create(currentState.copy(isStopped = true))
 				notificationManager.notify(id.hashCode(), notification)
 			}
 			Result.failure(currentState.copy(eta = -1L, isStuck = false).toWorkData())
 		} catch (e: Exception) {
+			observeDownload { "worker_result=failure" }
 			e.printStackTraceDebug()
 			DownloadPauseStore.clear(applicationContext, id)
 			Result.failure(
@@ -266,12 +277,15 @@ class DownloadWorker @AssistedInject constructor(
 
 	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask) {
 		var manga = subject
+		observeDownload { "manga_lock_wait" }
 		mangaLock.withLock(manga) {
+			observeDownload { "root_begin" }
 			val requestedRoot = task.destination ?: if (ExhentaiDownloadedCopy.isOfficial(manga)) {
 				destinationStore.effectiveRoot(task.favouriteSpace)
 			} else null
 			val destination = localMangaRepository.getOutputDir(manga, requestedRoot)
 			checkNotNull(destination) { applicationContext.getString(R.string.cannot_find_available_storage) }
+			observeDownload { "root_end" }
 			var output: LocalMangaOutput? = null
 			var isCompleted = false
 			var isExhentai = false
@@ -303,7 +317,13 @@ class DownloadWorker @AssistedInject constructor(
 					return@withLock
 				}
 				val repo = mangaRepositoryFactory.create(manga.source)
-				val mangaDetails = if (manga.chapters.isNullOrEmpty() || manga.description.isNullOrEmpty()) repo.getDetails(manga) else manga
+				val mangaDetails = if (manga.chapters.isNullOrEmpty() || manga.description.isNullOrEmpty()) {
+					observeDownload { "details_begin" }
+					repo.getDetails(manga).also { observeDownload { "details_end" } }
+				} else {
+					observeDownload { "details_cached" }
+					manga
+				}
 				val format = task.format ?: settings.preferredDownloadFormat
 				if (isExhentai && task.downloadSeparateCopy) {
 					check(org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.galleryId(mangaDetails.publicUrl, mangaDetails.url)?.let { it > 0 } == true) {
@@ -329,10 +349,12 @@ class DownloadWorker @AssistedInject constructor(
 				if (isExhentai) currentCoroutineContext().ensureActive()
 				val coverUrl = mangaDetails.largeCoverUrl.ifNullOrEmpty { mangaDetails.coverUrl }
 				if (!coverUrl.isNullOrEmpty()) {
+					observeDownload { "cover_begin" }
 					downloadFile(coverUrl, destination, repo).let { file ->
 						output.addCover(file, getMediaType(coverUrl, file))
 						file.deleteAwait()
 					}
+					observeDownload { "cover_end" }
 				}
 				val chapters = getChapters(mangaDetails, task)
 				// Resolve page lists before transferring images so the progress denominator is stable.
@@ -366,7 +388,10 @@ class DownloadWorker @AssistedInject constructor(
 							isStuck = false,
 						),
 					)
-					val resolvedPages = runFailsafe { repo.getPages(chapter.value) } ?: continue
+					observeDownload { "pages_begin chapter=${chapterIndex + 1}" }
+					val resolvedPages = runFailsafe { repo.getPages(chapter.value) }
+					observeDownload { "pages_end chapter=${chapterIndex + 1} count=${resolvedPages?.size ?: -1}" }
+					if (resolvedPages == null) continue
 					if (resolvedPages.isEmpty()) {
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						continue
@@ -419,7 +444,10 @@ class DownloadWorker @AssistedInject constructor(
 								isStuck = false,
 							),
 						)
-						pages = runFailsafe { repo.getPages(chapter.value) } ?: continue
+						observeDownload { "pages_begin chapter=${chapterIndex + 1}" }
+						pages = runFailsafe { repo.getPages(chapter.value) }
+						observeDownload { "pages_end chapter=${chapterIndex + 1} count=${pages?.size ?: -1}" }
+						if (pages == null) continue
 						if (pages.isEmpty()) {
 							clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 							continue
@@ -450,6 +478,7 @@ class DownloadWorker @AssistedInject constructor(
 							isStuck = false,
 						),
 					)
+					observeDownload { "transfer_begin chapter=${chapterIndex + 1} pages=${pages.size}" }
 					channelFlow {
 						val semaphore = Semaphore(performanceSettings.parallelPageLimit)
 						for ((pageIndex, page) in pages.withIndex()) {
@@ -516,6 +545,7 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 
+					observeDownload { "transfer_end chapter=${chapterIndex + 1} written=${pageCounter.get()}" }
 					if (downloadedPages.any { it == null }) {
 						// Successful pages may already be inside a temporary archive. Explicitly discard
 						// the chapter so finish() can never publish a partial CBZ as complete.
@@ -559,8 +589,10 @@ class DownloadWorker @AssistedInject constructor(
 					"No requested chapter produced a downloadable artifact"
 				}
 				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, phase = DownloadPhase.FINALIZING, retryAttempt = 0, eta = -1L, isStuck = false))
+				observeDownload { "finalize_begin" }
 				output.mergeWithExisting()
 				output.finish()
+				observeDownload { "output_finish_return" }
 				val localManga = if (isExhentai) {
 					withContext(NonCancellable) {
 						registerExhentaiArtifact(mangaDetails, task, checkNotNull(output.committedFile)).also {
@@ -574,6 +606,7 @@ class DownloadWorker @AssistedInject constructor(
 					localStorageChanges.emit(localManga)
 					localManga
 				}
+				observeDownload { "artifact_indexed chapters=$completedRequestedChapters" }
 				publishState(
 					currentState.copy(
 						localManga = localManga,
@@ -907,7 +940,13 @@ class DownloadWorker @AssistedInject constructor(
 		} else if (notificationThrottler.throttle()) {
 			notificationManager.notify(id.hashCode(), notification)
 		}
+		observeDownload { "progress_begin phase=${state.phase} chapter=${state.phaseChapter} progress=${state.progress}/${state.max}" }
 		setProgress(state.toWorkData())
+		observeDownload { "progress_end phase=${state.phase} chapter=${state.phaseChapter} progress=${state.progress}/${state.max}" }
+	}
+
+	private inline fun observeDownload(message: () -> String) {
+		if (DownloadObservation.tracks(id)) DownloadObservation.record(id, message())
 	}
 
 	private suspend fun getDoneChapters(manga: Manga, destination: File) = runCatchingCancellable {

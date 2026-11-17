@@ -42,6 +42,7 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isEmpty
+import org.koitharu.kotatsu.download.domain.DownloadObservation
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.download.ui.worker.EXHENTAI_COMMITTED_PATH
@@ -156,6 +157,14 @@ class DownloadsViewModel @Inject constructor(
 		workScheduler.observeWorks(),
 		membershipVisibility,
 	) { list, visibility ->
+		if (DownloadObservation.enabled) {
+			for (work in list) {
+				if (!DownloadObservation.tracks(work.id)) continue
+				val payload = if (work.state.isFinished) work.outputData else work.progress
+				DownloadObservation.record(work.id,
+					"work_observed state=${work.state} phase=${DownloadState.getPhase(payload)} progress=${DownloadState.getProgress(payload)}/${DownloadState.getMax(payload)}")
+			}
+		}
 		list.toDownloadsList(visibility)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
@@ -213,7 +222,10 @@ class DownloadsViewModel @Inject constructor(
 				delay(EMPTY_STATE_GRACE_MS)
 				emit(emptyStateList())
 			}
-			else -> emit(current.toUiList())
+			else -> {
+				traceDownloadRows("model_emit", current)
+				emit(current.toUiList())
+			}
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
@@ -776,3 +788,17 @@ class DownloadsViewModel @Inject constructor(
 }
 
 private const val KEY_DOWNLOADS_SECTION = "downloads_manga_novel_section"
+
+/** A grouped row reports both the traced request and the representative WorkSpec. */
+internal fun traceDownloadRows(stage: String, rows: List<ListModel>) {
+	if (!DownloadObservation.enabled) return
+	for (row in rows) {
+		if (row !is DownloadItemModel) continue
+		for (id in row.workIds) {
+			if (DownloadObservation.tracks(id)) {
+				DownloadObservation.record(id,
+					"$stage representative=${row.id} state=${row.workState} phase=${row.phase} progress=${row.progress}/${row.max}")
+			}
+		}
+	}
+}
