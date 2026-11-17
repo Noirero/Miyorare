@@ -76,6 +76,7 @@ import org.koitharu.kotatsu.core.util.ext.ensureSuccess
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.getWorkInputData
 import org.koitharu.kotatsu.core.util.ext.getWorkSpec
+import org.koitharu.kotatsu.core.util.ext.readWorkSpecInputs
 import org.koitharu.kotatsu.core.util.ext.openSource
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
@@ -984,6 +985,8 @@ class DownloadWorker @AssistedInject constructor(
 	) {
 
 		fun observeWorks(): Flow<List<WorkInfo>> = workManager.getWorkInfosByTagFlow(TAG)
+
+		internal suspend fun readModelInputs(ids: List<UUID>) = workManager.readWorkSpecInputs(ids)
 
 		@SuppressLint("RestrictedApi")
 		suspend fun getInputData(id: UUID): Data? {

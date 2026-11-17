@@ -7,6 +7,7 @@ import androidx.collection.getOrElse
 import androidx.collection.set
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.work.Data
 import androidx.work.WorkInfo
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +43,7 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isEmpty
+import org.koitharu.kotatsu.core.util.ext.WorkSpecInput
 import org.koitharu.kotatsu.download.domain.DownloadObservation
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
@@ -489,9 +491,10 @@ class DownloadsViewModel @Inject constructor(
 	private suspend fun List<WorkInfo>.toDownloadsList(
 		visibility: DownloadMembershipVisibility,
 	): List<DownloadItemModel> {
+		val inputs = workScheduler.readModelInputs(map { it.id })
 		val rows = coroutineScope {
 			map { work ->
-				async { work.toUiModel(visibility) }
+				async { work.toUiModel(visibility, inputs[work.id]) }
 			}.awaitAll().filterNotNull()
 		}
 		downloadSizes.replaceRequests(buildMap {
@@ -618,12 +621,16 @@ class DownloadsViewModel @Inject constructor(
 
 	private suspend fun WorkInfo.toUiModel(
 		visibility: DownloadMembershipVisibility,
+		input: WorkSpecInput?,
 	): Pair<DownloadItemModel, SizeRequest?>? {
 		val workData = outputData.takeUnless { it.isEmpty }
 			?: progress.takeUnless { it.isEmpty }
-			?: workScheduler.getInputData(id)
+			?: input?.let {
+				Data.Builder().putAll(it.data)
+					.putLong(DownloadState.DATA_TIMESTAMP, it.scheduleRequestedAt).build()
+			}
 			?: return null
-		val task = workScheduler.getTask(id)
+		val task = input?.let { DownloadTask(it.data) }
 		if (task != null && task.favouriteSpace != favouriteSpace) return null
 		val mangaId = DownloadState.getMangaId(workData)
 		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null
