@@ -3,10 +3,14 @@
 package org.koitharu.kotatsu.tsuki
 
 import android.content.Context
+import android.os.SystemClock
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
 import okhttp3.Response
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.prefs.SourceSettings
@@ -25,6 +29,7 @@ import org.koitharu.kotatsu.tsuki.runtime.toMiyorare
 import org.koitharu.kotatsu.tsuki.runtime.toTsuki
 import org.koitharu.kotatsu.tsuki.runtime.withTsukiExceptions
 import java.util.EnumSet
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Adapts one optional Tsuki source to Miyorare's existing repository contract. No database,
@@ -126,10 +131,34 @@ class TsukiMangaRepository(
 	}
 
 	override suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage> {
+		if (!BuildConfig.DEBUG || source.identity != VoraToonPackRouting.global) {
+			return loadTsukiPages(chapter)
+		}
+		val trace = readerTraceIds.incrementAndGet()
+		val started = SystemClock.elapsedRealtime()
+		Log.i("VoraToonReader", "trace=$trace stage=page_list outcome=start")
+		try {
+			val pages = loadTsukiPages(chapter) {
+				Log.i("VoraToonReader", "trace=$trace stage=parser_get_pages outcome=start")
+			}
+			Log.i("VoraToonReader", "trace=$trace stage=page_list outcome=complete count=${pages.size} ms=${SystemClock.elapsedRealtime() - started}")
+			return pages
+		} catch (error: Exception) {
+			val outcome = if (error is CancellationException) "cancelled" else "failed"
+			Log.i("VoraToonReader", "trace=$trace stage=page_list outcome=$outcome type=${error.javaClass.simpleName} ms=${SystemClock.elapsedRealtime() - started}")
+			throw error
+		}
+	}
+
+	private suspend fun loadTsukiPages(
+		chapter: MangaChapter,
+		onParserStart: () -> Unit = {},
+	): List<MangaPage> {
 		val handle = runtime.getHandle(source)
 		return withTsukiExceptions(handle.source) {
-			handle.parser.getPages(chapter.toTsuki(handle.rawSource, handle.source))
-				.map { it.toMiyorare(handle.source) }
+			val input = chapter.toTsuki(handle.rawSource, handle.source)
+			onParserStart()
+			handle.parser.getPages(input).map { it.toMiyorare(handle.source) }
 		}
 	}
 
@@ -189,4 +218,9 @@ internal fun isTsukiDetailsCacheUsable(
 	val requiresCompleteDetails =
 		provider == TsukiPluginProvider.MIYORARE || EhentaiSourceFamily.isOfficialSource(sourceName)
 	return !requiresCompleteDetails || requestedHasChapters || cachedHasChapters
+
+	private companion object {
+		val readerTraceIds = AtomicLong()
+	}
+
 }
