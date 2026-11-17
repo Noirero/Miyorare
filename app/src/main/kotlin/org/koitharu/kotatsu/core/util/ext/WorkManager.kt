@@ -9,6 +9,7 @@ import androidx.work.WorkRequest
 import androidx.work.impl.WorkManagerImpl
 import androidx.work.impl.model.WorkSpec
 import kotlinx.coroutines.guava.await
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -80,6 +81,33 @@ suspend fun WorkManager.getWorkSpec(id: UUID): WorkSpec? = suspendCoroutine { co
 
 @SuppressLint("RestrictedApi")
 suspend fun WorkManager.getWorkInputData(id: UUID): Data? = getWorkSpec(id)?.input
+
+internal data class WorkSpecInput(val data: Data, val scheduleRequestedAt: Long)
+
+private const val WORK_SPEC_READ_BATCH = 32
+
+/** Fresh inputs for one model conversion; yield the WorkManager executor between bounded batches. */
+@SuppressLint("RestrictedApi")
+internal suspend fun WorkManager.readWorkSpecInputs(ids: List<UUID>): Map<UUID, WorkSpecInput> {
+	val inputs = HashMap<UUID, WorkSpecInput>(ids.size)
+	for (batch in ids.chunked(WORK_SPEC_READ_BATCH)) {
+		val result = suspendCancellableCoroutine<List<Pair<UUID, WorkSpecInput>>> { cont ->
+			workManagerImpl.workTaskExecutor.executeOnTaskThread {
+				if (!cont.isActive) return@executeOnTaskThread
+				try {
+					val dao = workManagerImpl.workDatabase.workSpecDao()
+					cont.resume(batch.mapNotNull { id ->
+						dao.getWorkSpec(id.toString())?.let { id to WorkSpecInput(it.input, it.scheduleRequestedAt) }
+					})
+				} catch (e: Exception) {
+					cont.resumeWithException(e)
+				}
+			}
+		}
+		for ((id, input) in result) inputs[id] = input
+	}
+	return inputs
+}
 
 val Data.isEmpty: Boolean
 	get() = this == Data.EMPTY
