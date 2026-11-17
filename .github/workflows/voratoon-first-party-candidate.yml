@@ -50,16 +50,28 @@ jobs:
           packages: 'platform-tools build-tools;35.0.0 platforms;android-35'
       - name: Stage only the local VoraToon parser
         run: |
-          python3 - <<'PY'
-          import json
+          PYTHONPATH=extensions/miyorare-sources/tools python3 - <<'PY'
+          import shutil
           from pathlib import Path
-          src = Path('extensions/miyorare-sources/packs.json')
-          data = json.loads(src.read_text(encoding='utf-8'))
-          data['packs']['id']['sources'] = ['VoraToon.kt']
-          Path('_baseline-candidate.json').write_text(json.dumps(data), encoding='utf-8')
+          from prepare_pack import (
+              assert_only_requested_parsers_remain,
+              prune_unselected_parser_files,
+          )
+
+          site = Path('_baseline/src/main/kotlin/tsuki/site')
+          language = site / 'id'
+          if not (language / 'VoraToon.kt').is_file():
+              raise SystemExit('Staged local parser is missing')
+          for child in site.iterdir():
+              if child != language:
+                  if child.is_dir():
+                      shutil.rmtree(child)
+                  else:
+                      child.unlink()
+          requested = ['VoraToon.kt']
+          prune_unselected_parser_files(language, requested)
+          assert_only_requested_parsers_remain(language, requested)
           PY
-          python3 extensions/miyorare-sources/tools/prepare_pack.py \
-            --manifest _baseline-candidate.json --upstream _baseline --pack id
       - name: Build single-source dex JAR
         working-directory: _baseline
         run: bash ./gradlew buildJar --rerun-tasks --no-daemon
