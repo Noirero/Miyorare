@@ -20,6 +20,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.download.domain.DownloadObservation
 import com.google.android.material.button.MaterialButtonToggleGroup
 import org.koitharu.kotatsu.core.model.MangaNovelSection
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
@@ -100,6 +101,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 		}
 		addMenuProvider(DownloadsMenuProvider(this, viewModel, isModernDownloads))
 		viewModel.items.observe(this, downloadsAdapter)
+		if (DownloadObservation.enabled) {
+			viewModel.items.observe(this) { traceDownloadRows("activity_observed", it) }
+		}
 		if (isModernDownloads) {
 			visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
 			viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
