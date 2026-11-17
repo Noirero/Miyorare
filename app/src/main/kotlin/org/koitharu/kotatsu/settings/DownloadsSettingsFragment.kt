@@ -34,6 +34,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,7 +51,9 @@ import org.koitharu.kotatsu.core.util.ext.powerManager
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.resolveFile
 import org.koitharu.kotatsu.core.util.ext.tryLaunch
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
@@ -74,6 +77,9 @@ class DownloadsSettingsFragment :
 	lateinit var storageManager: LocalStorageManager
 
 	@Inject
+	lateinit var destinationStore: DownloadDestinationStore
+
+	@Inject
 	lateinit var downloadsScheduler: DownloadWorker.Scheduler
 
 	@Inject
@@ -81,6 +87,7 @@ class DownloadsSettingsFragment :
 
 	private val maintenanceViewModel: DownloadMaintenanceViewModel by viewModels()
 
+	private var refreshJob: Job? = null
 	private val storageSummary = MutableStateFlow<String?>(null)
 	private val directoryCount = MutableStateFlow(0)
 	private val pagesDirSummary = MutableStateFlow<String?>(null)
@@ -124,8 +131,12 @@ class DownloadsSettingsFragment :
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 		settings.subscribe(this)
-		refreshAsync()
 		dozeAvailable.value = isDozeIgnoreAvailable()
+	}
+
+	override fun onResume() {
+		super.onResume()
+		refreshAsync()
 	}
 
 	override fun onDestroyView() {
@@ -142,12 +153,23 @@ class DownloadsSettingsFragment :
 	}
 
 	private fun refreshAsync() {
-		lifecycleScope.launch {
-			val storage = withContext(Dispatchers.IO) { storageManager.getDefaultWriteableDir() }
-			storageSummary.value = if (storage != null) {
-				storageManager.getDirectoryDisplayName(storage, isFullPath = true)
-			} else {
-				getString(R.string.not_available)
+		val owner = viewLifecycleOwnerLiveData.value ?: return
+		refreshJob?.cancel()
+		refreshJob = owner.lifecycleScope.launch {
+			val (storage, availability) = withContext(Dispatchers.IO) {
+				val root = destinationStore.effectiveRoot(FavouriteSpace.NORMAL)
+				root to downloadDestinationAvailability(root)
+			}
+			storageSummary.value = when (availability) {
+				DownloadDestinationAvailability.AVAILABLE ->
+					storageManager.getDirectoryDisplayName(checkNotNull(storage), isFullPath = true)
+				DownloadDestinationAvailability.UNAVAILABLE -> if (storage == null) {
+					getString(R.string.not_available)
+				} else {
+					getString(R.string.download_destination_summary_unavailable, storage.path)
+				}
+				DownloadDestinationAvailability.READ_ONLY ->
+					getString(R.string.download_destination_read_only, checkNotNull(storage).path)
 			}
 			directoryCount.value = withContext(Dispatchers.IO) { storageManager.getReadableDirs().size }
 			val df = withContext(Dispatchers.IO) { settings.getPagesSaveDir(requireContext()) }
