@@ -121,7 +121,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 				if (result.failed > 0) add(getString(R.string.downloads_remove_failed, result.failed))
 				if (result.notAttempted > 0) add(getString(R.string.downloads_remove_not_attempted, result.notAttempted))
 			}.joinToString("\n")
-			Snackbar.make(viewBinding.recyclerView, message, Snackbar.LENGTH_LONG).show()
+			Snackbar.make(viewBinding.recyclerView, message, Snackbar.LENGTH_LONG).apply {
+				view.findViewById<android.widget.TextView>(com.google.android.material.R.id.snackbar_text)?.maxLines = 10
+			}.show()
 		}
 		viewModel.onError.observeEvent(this, SnackbarErrorObserver(viewBinding.recyclerView, null))
 		val menuInvalidator = MenuInvalidator(this)
