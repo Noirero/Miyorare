@@ -1,3 +1,10 @@
 <resources>
     <string name="release_calendar_no_prediction">Belum ada prediksi rilis untuk manga ini.</string>
+    <string name="release_calendar_check_latest">Cek bab terbaru</string>
+    <string name="release_calendar_checking">Sedang mengecek sumber…</string>
+    <string name="release_calendar_check_failed">Sumber tidak bisa dicek.</string>
+    <string name="release_calendar_no_new_chapters">Belum ada bab baru di sumber ini.</string>
+    <plurals name="release_calendar_new_chapters">
+        <item quantity="other">%d bab baru ditemukan.</item>
+    </plurals>
 </resources>

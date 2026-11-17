@@ -35,4 +35,12 @@
     <string name="release_calendar_previous_month">Previous month</string>
     <string name="release_calendar_next_month">Next month</string>
     <string name="release_calendar_page">Page %1$d of 2</string>
+    <string name="release_calendar_check_latest">Check latest chapters</string>
+    <string name="release_calendar_checking">Checking source…</string>
+    <string name="release_calendar_check_failed">Could not check this source.</string>
+    <string name="release_calendar_no_new_chapters">No new chapters on this source.</string>
+    <plurals name="release_calendar_new_chapters">
+        <item quantity="one">%d new chapter found.</item>
+        <item quantity="other">%d new chapters found.</item>
+    </plurals>
 </resources>

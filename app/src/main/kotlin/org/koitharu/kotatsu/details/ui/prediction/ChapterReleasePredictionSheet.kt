@@ -125,6 +125,7 @@ internal fun ChapterReleasePredictionRoute(
 	canReadFavourites: Boolean,
 	useCase: FavouriteReleasePredictionsUseCase,
 	originTitle: String?,
+	onCheckLatestChapters: (suspend () -> Int?)?,
 	imageLoader: ImageLoader,
 	onDismiss: () -> Unit,
 ) {
@@ -140,8 +141,15 @@ internal fun ChapterReleasePredictionRoute(
 				.collect { value = UpcomingPredictions(it, loading = false) }
 		}
 	}
-	ChapterReleasePredictionSheet(originMangaId, origin.takeIf { canReadFavourites },
-		if (canReadFavourites) upcoming else UpcomingPredictions(loading = false, locked = true), imageLoader, originTitle, onDismiss)
+	ChapterReleasePredictionSheet(
+		originMangaId = originMangaId,
+		origin = origin.takeIf { canReadFavourites },
+		upcoming = if (canReadFavourites) upcoming else UpcomingPredictions(loading = false, locked = true),
+		imageLoader = imageLoader,
+		originTitle = originTitle.takeIf { canReadFavourites },
+		onCheckLatestChapters = onCheckLatestChapters.takeIf { canReadFavourites },
+		onDismiss = onDismiss,
+	)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,6 +160,7 @@ internal fun ChapterReleasePredictionSheet(
 	upcoming: UpcomingPredictions,
 	imageLoader: ImageLoader,
 	originTitle: String? = null,
+	onCheckLatestChapters: (suspend () -> Int?)? = null,
 	onDismiss: () -> Unit,
 ) {
 	val context = LocalContext.current
@@ -255,9 +264,13 @@ internal fun ChapterReleasePredictionSheet(
 							if (page == 0) {
 								if (selected != null) PredictionActions(selected, onDetails = { showDetails = true })
 								else if (showUnpredictedCalendar) {
-									OutlinedButton(onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-										modifier = Modifier.fillMaxWidth()) {
-										Text(stringResource(R.string.release_calendar_upcoming))
+									Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+										verticalArrangement = Arrangement.spacedBy(8.dp)) {
+										if (onCheckLatestChapters != null) CheckLatestChaptersAction(onCheckLatestChapters)
+										OutlinedButton(onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+											modifier = Modifier.fillMaxWidth()) {
+											Text(stringResource(R.string.release_calendar_upcoming))
+										}
 									}
 								}
 							} else PredictionMangaList(candidates, selectedId, upcoming, imageLoader) { item ->
@@ -333,6 +346,45 @@ internal fun ChapterReleasePredictionSheet(
 				}
 			},
 			confirmButton = { TextButton(onClick = { showDetails = false }) { Text(stringResource(R.string.close)) } },
+		)
+	}
+}
+
+@Composable
+private fun CheckLatestChaptersAction(checkSource: suspend () -> Int?) {
+	val scope = rememberCoroutineScope()
+	var checking by remember { mutableStateOf(false) }
+	var checked by remember { mutableStateOf(false) }
+	var count by remember { mutableStateOf<Int?>(null) }
+	Button(
+		onClick = {
+			if (!checking) {
+				checking = true
+				scope.launch {
+					try {
+						count = checkSource()
+						checked = true
+					} finally {
+						checking = false
+					}
+				}
+			}
+		},
+		enabled = !checking,
+		modifier = Modifier.fillMaxWidth(),
+	) {
+		Text(stringResource(if (checking) R.string.release_calendar_checking else R.string.release_calendar_check_latest))
+	}
+	if (checked && !checking) {
+		val found = count
+		Text(
+			text = when (found) {
+				null -> stringResource(R.string.release_calendar_check_failed)
+				0 -> stringResource(R.string.release_calendar_no_new_chapters)
+				else -> pluralStringResource(R.plurals.release_calendar_new_chapters, found, found)
+			},
+			style = MaterialTheme.typography.bodySmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
 		)
 	}
 }

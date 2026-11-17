@@ -29,6 +29,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.details.domain.countNewChaptersForReleaseCalendar
 import org.koitharu.kotatsu.details.domain.ChapterReleasePredictionItem
 import org.koitharu.kotatsu.details.domain.NextChapterReleasePrediction
 import org.koitharu.kotatsu.details.domain.NextChapterReleaseState
@@ -87,6 +88,42 @@ class ChapterReleasePredictionSheetTest {
 		compose.onNodeWithText(currentMonth.format(formatter)).assertIsDisplayed()
 		compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_next_month)).performClick()
 		compose.onNodeWithText(currentMonth.plusMonths(1).format(formatter)).assertIsDisplayed()
+	}
+
+	@Test fun manualCheckShowsNewNoNewAndFailureResultsInTheSameSheet() {
+		val results = listOf(1, 0, null)
+		var checks = 0
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(
+				1, null, UpcomingPredictions(loading = false), loader,
+				onCheckLatestChapters = { results[checks++] },
+			) {}
+		} }
+		val button = compose.onNodeWithText(context.getString(R.string.release_calendar_check_latest))
+		button.performScrollTo().performClick()
+		compose.onNodeWithText(context.resources.getQuantityString(R.plurals.release_calendar_new_chapters, 1, 1)).assertExists()
+		button.performClick()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_no_new_chapters)).assertExists()
+		button.performClick()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_check_failed)).assertExists()
+		compose.onNodeWithTag("release-prediction-sheet").assertExists()
+		compose.runOnIdle { assertEquals(3, checks) }
+	}
+
+	@Test fun chapterComparisonIgnoresDuplicatesAndOtherBranchesOrGroups() {
+		val seed = SampleData.mangaDetails
+		val existing = SampleData.chapter.copy(source = seed.source, branch = "English", scanlator = "Group A")
+		val added = existing.copy(id = existing.id + 1)
+		val baseline = seed.copy(chapters = listOf(existing))
+		val remote = seed.copy(chapters = listOf(existing, added, added,
+			existing.copy(id = existing.id + 2, branch = "Spanish"),
+			existing.copy(id = existing.id + 3, scanlator = "Group B"),
+		))
+		assertEquals(1, countNewChaptersForReleaseCalendar(baseline, remote, "English", "Group A"))
+		assertEquals(0, countNewChaptersForReleaseCalendar(baseline, baseline, "English", "Group A"))
+		assertThrows(IllegalStateException::class.java) {
+			countNewChaptersForReleaseCalendar(baseline, remote.copy(chapters = emptyList()), "English", "Group A")
+		}
 	}
 
 	@Test fun lockedSheetDoesNotShowOriginTitleOrCalendar() {
