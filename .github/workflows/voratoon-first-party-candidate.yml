@@ -1,0 +1,45 @@
+name: VoraToon first-party candidate
+on:
+  pull_request:
+    branches: [Amain2]
+    paths:
+      - 'extensions/miyorare-sources/first-party/voratoon/**'
+      - '.github/workflows/voratoon-first-party-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: InvalidDavid/UMA
+          ref: 52185ec4faada143f57dcfb41c6fa49aa346b4db
+          path: _baseline
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: Noirero/Miyorare-Source-Packs
+          ref: a88f541a3e486dd5e7660ad2c9b1d00c971a4b56
+          path: _fixtures
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: |
+            11
+            17
+      - name: Stage local parser and fixtures on exact baseline
+        run: |
+          test "$(git -C _baseline rev-parse HEAD)" = 52185ec4faada143f57dcfb41c6fa49aa346b4db
+          test "$(git -C _fixtures rev-parse HEAD)" = a88f541a3e486dd5e7660ad2c9b1d00c971a4b56
+          cp -R extensions/miyorare-sources/first-party/voratoon/src/. _baseline/src/main/kotlin/
+          mkdir -p _baseline/src/test/kotlin/compatibilityfarm
+          cp _fixtures/compatibility/harness/candidates/voratoon/*.kt _baseline/src/test/kotlin/compatibilityfarm/
+      - name: Test local parser on existing Tsuki build baseline
+        working-directory: _baseline
+        run: bash ./gradlew test --no-daemon --tests compatibilityfarm.VoraToonCandidateContractTest
