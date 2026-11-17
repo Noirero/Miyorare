@@ -193,6 +193,7 @@ class DownloadsViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
+	internal val onRemovalDone = MutableEventFlow<DownloadRemovalFeedback>()
 
 	init {
 		viewModelScope.launch(Dispatchers.Default) {
@@ -345,11 +346,15 @@ class DownloadsViewModel @Inject constructor(
 
 	fun remove(ids: Set<Long>, deleteFiles: Boolean = false) {
 		// Snapshot finished jobs before the asynchronous confirmation result can race a new job.
-		val selected = currentSectionRows().filter {
-			it.selectionId in ids && it.workState.isFinished && it.uiAction == null
-		}
+		if (ids.isEmpty()) return
+		val selection = planDownloadRemoval(ids, currentSectionRows())
+		val selected = selection.eligible
 		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
-		if (workIds.isEmpty()) return
+		val feedback = DownloadRemovalFeedback(selected.size, selection.active, selection.unavailable, deleteFiles)
+		if (workIds.isEmpty()) {
+			onRemovalDone.call(feedback.copy(removed = 0))
+			return
+		}
 		launchJob(Dispatchers.IO) {
 			if (deleteFiles) {
 				val selectedMangaIds = selected.mapNotNullTo(HashSet()) { it.manga?.id }
@@ -413,7 +418,7 @@ class DownloadsViewModel @Inject constructor(
 				// List-only removal never touches downloaded physical containers.
 				workScheduler.delete(workIds)
 			}
-			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
+			onRemovalDone.call(feedback)
 		}
 	}
 
