@@ -6,6 +6,7 @@ import android.util.Log
 import android.widget.TextView
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.room.Room
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +22,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.entity.MangaEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
@@ -118,7 +124,13 @@ class GlobalValidationActivity : FragmentActivity() {
 	}
 
 
-	private fun verifyVoraToonRouting() = synchronized(installLock) {
+	private suspend fun verifyVoraToonRouting() {
+		Room.inMemoryDatabaseBuilder(applicationContext, MangaDatabase::class.java).build().use { database ->
+			verifyVoraToonRouting(database)
+		}
+	}
+
+	private suspend fun verifyVoraToonRouting(database: MangaDatabase) {
 		val routing = VoraToonPackRouting
 		val storedName = routing.legacy.storedName
 		fun install(asset: String, id: String) {
@@ -144,6 +156,27 @@ class GlobalValidationActivity : FragmentActivity() {
 		val old = checkNotNull(plugins.resolveSource(storedName))
 		check(old.identity == routing.legacy && old.name == storedName)
 		plugins.setSourceEnabled(old.identity, true)
+		val mangaId = 810_001L
+		val chapterId = 810_002L
+		val manga = MangaEntity(
+			id = mangaId, title = "Migration fixture", altTitles = null,
+			url = "/series/migration-fixture", publicUrl = "https://voratoon.co/series/migration-fixture",
+			rating = -1f, isNsfw = false, contentRating = null, coverUrl = "", largeCoverUrl = "",
+			state = null, authors = null, description = null, source = old.name, sourceTitle = old.displayName,
+		)
+		database.getMangaDao().upsert(manga)
+		val category = database.getFavouriteCategoriesDao().insert(FavouriteCategoryEntity(
+			categoryId = 0, createdAt = 1L, sortKey = 0, title = "Migration fixture",
+			order = "", track = false, downloadNewChapters = false, isVisibleInLibrary = true, deletedAt = 0L,
+		))
+		database.getFavouritesDao().insert(FavouriteEntity(
+			mangaId = mangaId, categoryId = category, sortKey = 0, isPinned = false, createdAt = 1L, deletedAt = 0L,
+		))
+		val progress = HistoryEntity(
+			mangaId = mangaId, createdAt = 1L, updatedAt = 2L, chapterId = chapterId,
+			page = 5, scroll = 0.25f, percent = 0.5f, deletedAt = 0L, chaptersCount = 1,
+		)
+		database.getHistoryDao().insert(progress)
 		install(VoraToonPackRouting.GLOBAL_ASSET_NAME, routing.global.pluginId)
 		val moved = checkNotNull(plugins.resolveSource(storedName))
 		check(moved.identity == routing.global && moved.name == storedName)
@@ -163,6 +196,17 @@ class GlobalValidationActivity : FragmentActivity() {
 			plugins.setEnabled(TsukiPluginProvider.MIYORARE, routing.global.pluginId, true)
 		}
 		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
+		// The legacy fixture contains only VoraToon. Removing it models the old source no longer
+		// being installed; it does not exercise the official updater or an existing download.
+		plugins.remove(TsukiPluginProvider.MIYORARE, routing.legacy.pluginId)
+		check(plugins.findPlugin(TsukiPluginProvider.MIYORARE, routing.legacy.pluginId) == null)
+		val persisted = database.getMangaDao().findByIds(listOf(mangaId)).single().manga
+		check(persisted.id == mangaId && persisted.source == storedName)
+		check(plugins.resolveSource(persisted.source)?.identity == routing.global)
+		check(database.getFavouritesDao().findCategoriesIds(mangaId) == listOf(category))
+		check(database.getHistoryDao().find(mangaId) == progress)
+		check(plugins.getEnabledSources().single { it.name == storedName }.identity == routing.global)
+		Log.i(TAG, "VORATOON_STORED_DATA_OK revision=$revision")
 		Log.i(TAG, "VORATOON_ROUTING_OK revision=$revision")
 	}
 
