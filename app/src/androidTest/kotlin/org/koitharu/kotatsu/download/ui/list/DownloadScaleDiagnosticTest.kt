@@ -140,7 +140,7 @@ class DownloadScaleDiagnosticTest {
 				.entries.joinToString(",") { "${it.key}:${it.value}" }
 			report("fixture groups=$groups workspecs=${raw.size} states=$mix")
 			var nextProgress = 0
-			var baselineRows: List<RowSignature>? = null
+			var baselineRows: Set<RowSignature>? = null
 			// Two counterbalanced pairs in one fixture; these are not independent emulator sessions.
 			val arms = if (groups == 1 || groups == 400) listOf("A", "B", "B", "A") else listOf("A")
 			for ((block, arm) in arms.withIndex()) {
@@ -169,8 +169,24 @@ class DownloadScaleDiagnosticTest {
 							check(full.filterIsInstance<DownloadItemModel>().flatMap { it.workIds }.toSet() == ids.keys)
 							val signature = full.filterIsInstance<DownloadItemModel>().map {
 								RowSignature(it.workIds, it.workState)
+							}.toSet()
+							val baseline = baselineRows
+							if (baseline == null) {
+								baselineRows = signature
+							} else {
+								check(signature == baseline) {
+									val missing = baseline - signature
+									val added = signature - baseline
+									val context = "groups=$groups block=$block arm=$arm sample=$sample baseline=0/0"
+									for ((side, rows) in listOf("baseline_only" to missing, "current_only" to added)) {
+										for (row in rows.take(8)) {
+											val members = row.ids.sorted().joinToString(",") { "$it:${ids.getValue(it)}" }
+											report("row_mismatch $context side=$side model_state=${row.state} members_expected_states=$members")
+										}
+									}
+									"SCALE-01 row signature mismatch $context baseline_only=${missing.size} current_only=${added.size}; see row_mismatch records"
+								}
 							}
-							if (baselineRows == null) baselineRows = signature else check(signature.toSet() == baselineRows?.toSet())
 							val startup = "first_groups=${first.count { it is DownloadItemModel }} first_ns=$firstNs all_ns=$fullNs"
 							trace("stage=startup $startup")
 							if (block == 0) report("startup groups=$groups sample=$sample $startup")
