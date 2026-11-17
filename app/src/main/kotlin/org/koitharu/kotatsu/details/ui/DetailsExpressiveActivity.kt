@@ -511,6 +511,7 @@ class DetailsExpressiveActivity :
 					ChapterReleasePredictionRoute(
 						originMangaId = details?.id ?: viewModel.mangaId,
 						origin = chapterReleaseOrigin,
+						originTitle = details?.displayTitle(full = false),
 						space = predictionSpace,
 						canReadFavourites = predictionSpace == FavouriteSpace.NORMAL || privateUnlocked,
 						useCase = favouriteReleasePredictions,

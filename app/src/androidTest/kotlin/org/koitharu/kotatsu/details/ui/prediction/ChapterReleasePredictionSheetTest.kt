@@ -68,6 +68,38 @@ class ChapterReleasePredictionSheetTest {
 		compose.onNodeWithText("Parent: ${original.manga.title}").assertExists()
 	}
 
+	@Test fun missingOriginPredictionShowsNavigableCalendarWithoutPredictionActions() {
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(
+				1, null, UpcomingPredictions(loading = false), loader, originTitle = original.manga.title,
+			) {}
+		} }
+		compose.onNodeWithText(original.manga.title).assertIsDisplayed()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_no_prediction)).assertIsDisplayed()
+		compose.onNodeWithTag("release-prediction-calendar").assertIsDisplayed()
+		compose.onNodeWithTag("release-prediction-date").assertDoesNotExist()
+		compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_predicted), substring = true)
+			.assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_add)).assertDoesNotExist()
+		compose.onNodeWithText(context.getString(R.string.release_calendar_details)).assertDoesNotExist()
+		val formatter = java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")
+		val currentMonth = java.time.YearMonth.now()
+		compose.onNodeWithText(currentMonth.format(formatter)).assertIsDisplayed()
+		compose.onNodeWithContentDescription(context.getString(R.string.release_calendar_next_month)).performClick()
+		compose.onNodeWithText(currentMonth.plusMonths(1).format(formatter)).assertIsDisplayed()
+	}
+
+	@Test fun lockedSheetDoesNotShowOriginTitleOrCalendar() {
+		compose.setContent { MaterialTheme {
+			ChapterReleasePredictionSheet(
+				1, null, UpcomingPredictions(loading = false, locked = true), loader, originTitle = original.manga.title,
+			) {}
+		} }
+		compose.onNodeWithText(context.getString(R.string.release_calendar_locked)).assertExists()
+		compose.onNodeWithText(original.manga.title).assertDoesNotExist()
+		compose.onNodeWithTag("release-prediction-calendar").assertDoesNotExist()
+	}
+
 	@Test fun invalidatedSelectionCannotKeepUsingAnOldPrediction() {
 		val upcoming = mutableStateOf(UpcomingPredictions(listOf(alternate), loading = false))
 		compose.setContent { MaterialTheme { ChapterReleasePredictionSheet(1, original, upcoming.value, loader) {} } }

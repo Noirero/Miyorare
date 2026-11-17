@@ -124,6 +124,7 @@ internal fun ChapterReleasePredictionRoute(
 	space: FavouriteSpace,
 	canReadFavourites: Boolean,
 	useCase: FavouriteReleasePredictionsUseCase,
+	originTitle: String?,
 	imageLoader: ImageLoader,
 	onDismiss: () -> Unit,
 ) {
@@ -140,7 +141,7 @@ internal fun ChapterReleasePredictionRoute(
 		}
 	}
 	ChapterReleasePredictionSheet(originMangaId, origin.takeIf { canReadFavourites },
-		if (canReadFavourites) upcoming else UpcomingPredictions(loading = false, locked = true), imageLoader, onDismiss)
+		if (canReadFavourites) upcoming else UpcomingPredictions(loading = false, locked = true), imageLoader, originTitle, onDismiss)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,6 +151,7 @@ internal fun ChapterReleasePredictionSheet(
 	origin: ChapterReleasePredictionItem?,
 	upcoming: UpcomingPredictions,
 	imageLoader: ImageLoader,
+	originTitle: String? = null,
 	onDismiss: () -> Unit,
 ) {
 	val context = LocalContext.current
@@ -168,6 +170,7 @@ internal fun ChapterReleasePredictionSheet(
 	val selected = remember(selectedId, selectedFromOrigin, origin, upcoming.items) {
 		if (selectedFromOrigin) origin else upcoming.items.find { it.manga.id == selectedId }
 	}
+	val showUnpredictedCalendar = selected == null && selectedFromOrigin && !upcoming.locked
 	val pagerState = rememberPagerState(pageCount = { 2 })
 	val scope = rememberCoroutineScope()
 	val unavailable = stringResource(if (upcoming.locked) R.string.release_calendar_locked else R.string.release_calendar_unavailable)
@@ -237,13 +240,26 @@ internal fun ChapterReleasePredictionSheet(
 								modifier = Modifier.testTag("release-prediction-date").padding(top = 6.dp))
 							Text(expectedLabel(selected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 							Spacer(Modifier.height(8.dp))
-							PredictionCalendar(selected, imageBackground)
+							PredictionCalendar(selected.manga.id, selected, imageBackground)
+						} else if (showUnpredictedCalendar) {
+							originTitle?.let {
+								Text(it, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+							}
+							Text(stringResource(R.string.release_calendar_no_prediction),
+								style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+							Spacer(Modifier.height(8.dp))
+							PredictionCalendar(originMangaId, null, imageBackground)
 						} else Text(unavailable, modifier = Modifier.padding(vertical = 16.dp))
 						Spacer(Modifier.height(12.dp))
 						HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(280.dp).testTag("release-prediction-pager")) { page ->
 							if (page == 0) {
 								if (selected != null) PredictionActions(selected, onDetails = { showDetails = true })
-								else Text(unavailable)
+								else if (showUnpredictedCalendar) {
+									OutlinedButton(onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+										modifier = Modifier.fillMaxWidth()) {
+										Text(stringResource(R.string.release_calendar_upcoming))
+									}
+								}
 							} else PredictionMangaList(candidates, selectedId, upcoming, imageLoader) { item ->
 								selectedId = item.manga.id
 								selectedFromOrigin = item == origin
@@ -343,13 +359,16 @@ private fun PredictionBackground(item: ChapterReleasePredictionItem?, mode: Pred
 }
 
 @Composable
-private fun PredictionCalendar(item: ChapterReleasePredictionItem, imageBackground: Boolean) {
-	val expectedDate = item.prediction.expectedDate
-	var monthValue by rememberSaveable(item.manga.id, expectedDate.toString()) { mutableStateOf(YearMonth.from(expectedDate).toString()) }
+private fun PredictionCalendar(mangaId: Long, item: ChapterReleasePredictionItem?, imageBackground: Boolean) {
+	val expectedDate = item?.prediction?.expectedDate
+	var monthValue by rememberSaveable(mangaId, expectedDate) {
+		mutableStateOf((expectedDate?.let(YearMonth::from) ?: YearMonth.now()).toString())
+	}
 	val month = YearMonth.parse(monthValue)
 	val formatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()) }
-	val previousDate = item.releaseDates.maxOrNull()
-	val history = remember(item.releaseDates) { item.releaseDates.toSet() }
+	val releaseDates = item?.releaseDates.orEmpty()
+	val previousDate = releaseDates.maxOrNull()
+	val history = remember(releaseDates) { releaseDates.toSet() }
 	val density = LocalDensity.current
 	val dayHeight = maxOf(34.dp, with(density) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() + 6.dp })
 	val previousMonthLabel = stringResource(R.string.release_calendar_previous_month)
@@ -378,7 +397,7 @@ private fun PredictionCalendar(item: ChapterReleasePredictionItem, imageBackgrou
 				for (column in 0..6) {
 					val day = row * 7 + column - firstOffset + 1
 					val date = day.takeIf { it in 1..month.lengthOfMonth() }?.let(month::atDay)
-					val predicted = date == expectedDate
+					val predicted = date != null && date == expectedDate
 					val previous = date != null && date == previousDate
 					val historical = date != null && date in history
 					val markerLabel = when {

@@ -17,6 +17,7 @@
     <string name="release_calendar_empty">No Favorites currently have a valid prediction from persisted chapter history.</string>
     <string name="release_calendar_error">Favorite predictions could not be loaded.</string>
     <string name="release_calendar_locked">Unlock Private Favorites to view these predictions.</string>
+    <string name="release_calendar_no_prediction">No release prediction is available for this manga.</string>
     <string name="release_calendar_unavailable">This prediction is no longer available. Choose another manga from the predictions list.</string>
     <string name="release_calendar_estimate">Estimated from chapter release history on the current source. This is not an official publication schedule. Irregular, insufficient or stale predictions are omitted; a recent missed estimate may remain briefly as “Expected any day now”.</string>
     <string name="release_calendar_source">Source: %1$s</string>
