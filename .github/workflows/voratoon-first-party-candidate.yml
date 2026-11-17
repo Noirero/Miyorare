@@ -4,6 +4,8 @@ on:
     branches: [Amain2]
     paths:
       - 'extensions/miyorare-sources/first-party/voratoon/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/tsuki/VoraToonPackRoutingTest.kt'
       - 'extensions/miyorare-sources/tools/finalize_voratoon_candidate.py'
       - 'extensions/miyorare-sources/tools/assemble_voratoon_global_staging.py'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
@@ -94,7 +96,7 @@ jobs:
       staging-only: true
 
   assemble-global-staging:
-    needs: [contract, gekkoushi-staging]
+    needs: [contract, gekkoushi-staging, app-routing-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -120,3 +122,20 @@ jobs:
           name: miyorare-global-voratoon-staging
           path: build/global-voratoon-staging/
           if-no-files-found: error
+
+  app-routing-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run VoraToon routing unit tests on the app
+        run: |
+          bash ./gradlew :app:testDebugUnitTest --max-workers=4 --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.tsuki.VoraToonPackRoutingTest
