@@ -49,6 +49,9 @@ add_tracker_suite() {
   add_class org.koitharu.kotatsu.details.ui.prediction.ReleasePredictionHeaderTest
   add_class org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionSheetTest
   add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/details/ui/MangaNoteCardUiTest.kt ]]; then
+    add_class org.koitharu.kotatsu.details.ui.MangaNoteCardUiTest
+  fi
   MAPPED=true
 }
 
@@ -193,6 +196,9 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
   add_class org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest
   add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/details/ui/MangaNoteCardUiTest.kt ]]; then
+    add_class org.koitharu.kotatsu.details.ui.MangaNoteCardUiTest
+  fi
   add_class org.koitharu.kotatsu.discovery.DiscoveryCatalogUiTest
   add_class org.koitharu.kotatsu.discovery.CatalogReadingBridgeTest
   add_class org.koitharu.kotatsu.discovery.DiscoveryNavigationRuntimeTest
