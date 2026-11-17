@@ -207,6 +207,10 @@ class TsukiMangaRepository(
 			handle.httpClient.newCall(runtime.createTaggedRequest(handle.source, url)).execute()
 		}
 	}
+
+	private companion object {
+		val readerTraceIds = AtomicLong()
+	}
 }
 
 internal fun isTsukiDetailsCacheUsable(
@@ -218,9 +222,4 @@ internal fun isTsukiDetailsCacheUsable(
 	val requiresCompleteDetails =
 		provider == TsukiPluginProvider.MIYORARE || EhentaiSourceFamily.isOfficialSource(sourceName)
 	return !requiresCompleteDetails || requestedHasChapters || cachedHasChapters
-
-	private companion object {
-		val readerTraceIds = AtomicLong()
-	}
-
 }
