@@ -198,3 +198,17 @@ jobs:
           arch: x86_64
           profile: pixel_2
           script: bash .github/scripts/verify-voratoon-staging-apk.sh
+      - name: Stage emulator-verified APK and provenance
+        run: |
+          dir=build/voratoon-device-validation
+          test -s "$dir/android-15-proof.txt"
+          cp app/build/outputs/apk/debug/app-debug.apk "$dir/miyorare-voratoon-validation.apk"
+          git rev-parse HEAD > "$dir/revision"
+          (cd "$dir" && sha256sum miyorare-voratoon-validation.apk > miyorare-voratoon-validation.apk.sha256)
+      - name: Upload isolated device validation APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: miyorare-voratoon-device-validation
+          path: build/voratoon-device-validation/
+          if-no-files-found: error
+          retention-days: 7
