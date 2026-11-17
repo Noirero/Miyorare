@@ -207,10 +207,14 @@ class GlobalValidationActivity : FragmentActivity() {
 			plugins.setEnabled(TsukiPluginProvider.MIYORARE, routing.global.pluginId, true)
 		}
 		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
-		// The legacy fixture contains only VoraToon. Removing it models the old source no longer
-		// being installed; it does not exercise the official updater or an existing download.
-		plugins.remove(TsukiPluginProvider.MIYORARE, routing.legacy.pluginId)
-		check(plugins.findPlugin(TsukiPluginProvider.MIYORARE, routing.legacy.pluginId) == null)
+		verifyOfficialUpdater(firstParty, cutoverId = true)
+		val id = checkNotNull(MiyorareOfficialSourcePacks.find(routing.legacy.pluginId))
+		val idSources = id.shards.flatMap { shard ->
+			checkNotNull(plugins.findPlugin(TsukiPluginProvider.MIYORARE, shard.pluginId)).sources
+		}
+		check(idSources.none { it.name == routing.legacy.sourceName })
+		check(idSources.any { it.name == "HOLOTOON" })
+		Log.i(TAG, "VORATOON_ID_CUTOVER_OK revision=$revision")
 		val persisted = database.getMangaDao().findByIds(listOf(mangaId)).single().manga
 		check(persisted.id == mangaId && persisted.source == storedName)
 		check(plugins.resolveSource(persisted.source)?.identity == routing.global)
@@ -229,7 +233,7 @@ class GlobalValidationActivity : FragmentActivity() {
 	}
 
 	/** Debug-only, in-memory release transport; unmatched requests never reach the network. */
-	private suspend fun verifyOfficialUpdater(firstParty: ByteArray? = null) {
+	private suspend fun verifyOfficialUpdater(firstParty: ByteArray? = null, cutoverId: Boolean = false) {
 		val packId = MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID
 		val existing = requireNotNull(MiyorareOfficialSourcePacks.find(packId))
 		val jarName = existing.shards.single().assetName
@@ -239,13 +243,22 @@ class GlobalValidationActivity : FragmentActivity() {
 			displayName = "Miyorare-Global / First-party",
 			assetName = firstPartyName,
 		))
-		val servedJars = pack.shards.map { it.assetName }
+		val id = checkNotNull(MiyorareOfficialSourcePacks.find(MiyorareOfficialSourcePacks.ID_PLUGIN_ID))
+		val target = if (cutoverId) id else pack
+		val servedJars = target.shards.map { it.assetName }
+		val idJars = if (cutoverId) servedJars.associateWith { asset ->
+			val base = "global-validation/voratoon/$asset"
+			val bytes = assets.open(base).use { it.readBytes() }
+			val digest = assets.open("$base.sha256").bufferedReader().use { it.readText().trim() }
+			check(MiyorareSourcePackReleasePolicy.sha256Hex(bytes) == digest)
+			bytes
+		} else emptyMap()
 		val candidate = assets.open("global-validation/$jarName").use { it.readBytes() }
 		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
 		val expected = MiyorareSourcePackReleasePolicy.sha256Hex(candidate)
 		val provider = TsukiPluginProvider.MIYORARE
 		val seed = checkNotNull(plugins.findPlugin(provider, packId))
-		check(seed.version == "miyorare-sources-v0.0.1" && seed.sha256 != expected)
+		if (!cutoverId) check(seed.version == "miyorare-sources-v0.0.1" && seed.sha256 != expected)
 
 		suspend fun update(version: String, corrupt: Boolean): Result<org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor?> {
 			val tag = MiyorareOfficialSourcePacks.RELEASE_TAG_PREFIX + version
@@ -255,7 +268,8 @@ class GlobalValidationActivity : FragmentActivity() {
 			val manifestName = MiyorareSourcePackReleasePolicy.RELEASE_MANIFEST_ASSET
 			val lockName = MiyorareSourcePackReleasePolicy.RELEASE_LOCK_ASSET
 			val checksumName = MiyorareSourcePackReleasePolicy.RELEASE_LOCK_SHA256_ASSET
-			val packs = MiyorareOfficialSourcePacks.packs.map { if (it.pluginId == packId) pack else it }
+			// The ID fixture uses the current registry layout; only the Global fixture injects a future layout.
+			val packs = MiyorareOfficialSourcePacks.packs.map { if (!cutoverId && it.pluginId == packId) pack else it }
 			val payload = linkedMapOf<String, ByteArray>()
 			// Non-Global shards are metadata-only fixtures; any attempt to fetch them fails.
 			val manifestPacks = packs.map { logical ->
@@ -263,7 +277,7 @@ class GlobalValidationActivity : FragmentActivity() {
 					val bytes = when (shard.assetName) {
 						jarName -> candidate
 						firstPartyName -> checkNotNull(firstParty)
-						else -> shard.assetName.encodeToByteArray()
+						else -> idJars[shard.assetName] ?: shard.assetName.encodeToByteArray()
 					}
 					payload[shard.assetName] = bytes
 					JSONObject()
@@ -328,14 +342,14 @@ class GlobalValidationActivity : FragmentActivity() {
 					baseUrl + manifestName -> manifest
 					baseUrl + lockName -> lock
 					baseUrl + checksumName -> checkNotNull(payload[checksumName])
-					else -> error("Unexpected updater fixture request")
+					else -> checkNotNull(idJars[url.removePrefix(baseUrl)]) { "Unexpected updater fixture request" }
 				}
 				Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
 					.message("OK").body(bytes.toResponseBody()).build()
 			}.build()
 			val installer = TsukiPluginInstaller(applicationContext, plugins, client)
 			val result = try {
-				Result.success(installer.installOrUpdateMiyorare(pack))
+				Result.success(installer.installOrUpdateMiyorare(target))
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Exception) {
@@ -347,6 +361,11 @@ class GlobalValidationActivity : FragmentActivity() {
 			return result
 		}
 
+		if (cutoverId) {
+			val installed = checkNotNull(update("0.0.4", corrupt = false).getOrThrow())
+			check(installed.pluginId == id.pluginId && installed.version == "miyorare-sources-v0.0.4")
+			return
+		}
 		val installed = checkNotNull(update("0.0.2", corrupt = false).getOrThrow())
 		check(installed.version == "miyorare-sources-v0.0.2" && installed.sha256 == expected)
 		val firstPartyBeforeFailure = plugins.findPlugin(provider, VoraToonPackRouting.global.pluginId)

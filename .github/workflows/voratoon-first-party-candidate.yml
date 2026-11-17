@@ -200,6 +200,10 @@ jobs:
         with:
           name: voratoon-legacy-id-fixture
           path: _legacy-staging
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: miyorare-id-without-voratoon-staging
+          path: _id-staging
       - name: Build isolated debug validation APK
         run: |
           (cd _android-staging && sha256sum -c ./*.sha256)
@@ -210,6 +214,11 @@ jobs:
           cp _android-staging/miyorare-global-first-party.jar "$dir/voratoon/"
           cut -d ' ' -f 1 _android-staging/miyorare-global-first-party.jar.sha256 > "$dir/voratoon/miyorare-global-first-party.jar.sha256"
           cp _legacy-staging/legacy.jar* "$dir/voratoon/"
+          for asset in miyorare-id-uma.jar miyorare-id-gekkoushi.jar; do
+            (cd _id-staging && sha256sum -c "$asset.sha256")
+            cp "_id-staging/$asset" "$dir/voratoon/"
+            cut -d ' ' -f 1 "_id-staging/$asset.sha256" > "$dir/voratoon/$asset.sha256"
+          done
           git rev-parse HEAD > "$dir/revision"
           bash gradlew :app:assembleDebug -PMIYORARE_GLOBAL_VALIDATION=true --max-workers=2 --no-daemon --stacktrace
       - name: Enable KVM
