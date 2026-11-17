@@ -148,8 +148,13 @@ class GlobalValidationActivity : FragmentActivity() {
 		val moved = checkNotNull(plugins.resolveSource(storedName))
 		check(moved.identity == routing.global && moved.name == storedName)
 		check(plugins.getAvailableSources().single { it.name == storedName }.identity == routing.global)
-		plugins.setSourceEnabled(moved.identity, true)
+		check(moved.isEnabled) { "Global VoraToon did not inherit the active ID preference" }
 		check(plugins.getEnabledSources().single { it.name == storedName }.identity == routing.global)
+		plugins.setSourceEnabled(moved.identity, false)
+		install(VoraToonPackRouting.GLOBAL_ASSET_NAME, routing.global.pluginId)
+		check(plugins.resolveSource(storedName)?.isEnabled == false) { "Global update reset the explicit disabled preference" }
+		check(plugins.getEnabledSources().none { it.name == storedName }) { "Legacy VoraToon leaked into the enabled catalog" }
+		plugins.setSourceEnabled(moved.identity, true)
 		plugins.setEnabled(TsukiPluginProvider.MIYORARE, routing.global.pluginId, false)
 		try {
 			check(plugins.resolveSource(storedName)?.identity == routing.legacy)
