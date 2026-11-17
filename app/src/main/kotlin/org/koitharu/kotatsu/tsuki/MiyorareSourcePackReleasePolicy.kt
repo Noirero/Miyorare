@@ -85,7 +85,14 @@ object MiyorareSourcePackReleasePolicy {
 		val packs: Map<String, PackManifest>,
 	)
 
-	fun parseManifest(bytes: ByteArray, expectedTag: String): ReleaseManifest {
+	fun parseManifest(bytes: ByteArray, expectedTag: String): ReleaseManifest =
+		parseManifest(bytes, expectedTag, null)
+
+	internal fun parseManifest(
+		bytes: ByteArray,
+		expectedTag: String,
+		selectedPack: MiyorareOfficialSourcePack?,
+	): ReleaseManifest {
 		val root = json.parseToJsonElement(bytes.toString(Charsets.UTF_8)).jsonObject
 		require(root.requiredInt("schema") == RELEASE_MANIFEST_SCHEMA) {
 			"Unsupported Source Pack release manifest schema"
@@ -159,7 +166,9 @@ object MiyorareSourcePackReleasePolicy {
 		}
 
 		val packArray = root.requiredArray("packs")
-		val expectedPacks = MiyorareOfficialSourcePacks.packs.associateBy { it.pluginId }
+		val expectedPacks = MiyorareOfficialSourcePacks.packs
+			.map { if (it.pluginId == selectedPack?.pluginId) selectedPack else it }
+			.associateBy { it.pluginId }
 		val parsedPacks = LinkedHashMap<String, PackManifest>()
 		for (element in packArray) {
 			val item = element.jsonObject
@@ -190,7 +199,10 @@ object MiyorareSourcePackReleasePolicy {
 			for (shard in shards) {
 				val expectedShard = requireNotNull(expectedShards[shard.assetName])
 				require(shard.pluginId == expectedShard.pluginId) { "Shard plugin identity mismatch: ${shard.assetName}" }
-				require(shard.provider == "UMA" || shard.provider == "GEKKOUSHI") {
+				val firstParty = expectedShard.pluginId == VoraToonPackRouting.global.pluginId &&
+					expectedShard.assetName == VoraToonPackRouting.GLOBAL_ASSET_NAME &&
+					pluginId == MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID
+				require(if (firstParty) shard.provider == "MIYORARE" else shard.provider == "UMA" || shard.provider == "GEKKOUSHI") {
 					"Unexpected shard provider: ${shard.provider}"
 				}
 			}

@@ -121,22 +121,31 @@ class TsukiPluginInstaller @Inject constructor(
 	 * current pack returns null without downloading JARs. If no compatible sealed release exists,
 	 * an already installed last-known-good pack is left untouched.
 	 */
-	suspend fun installOrUpdateMiyorare(pluginId: String): TsukiPluginDescriptor? = withContext(Dispatchers.IO) {
-		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
+	suspend fun installOrUpdateMiyorare(pluginId: String): TsukiPluginDescriptor? =
+		installOrUpdateMiyorare(requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
 			"Unknown official Miyorare source pack: $pluginId"
+		})
+
+	// The debug updater can exercise a future shard layout against an isolated release fixture.
+	internal suspend fun installOrUpdateMiyorare(pack: MiyorareOfficialSourcePack): TsukiPluginDescriptor? =
+		withContext(Dispatchers.IO) {
+			installOrUpdatePack(pack)
 		}
+
+	@WorkerThread
+	private fun installOrUpdatePack(pack: MiyorareOfficialSourcePack): TsukiPluginDescriptor? {
 		val release = try {
 			fetchLatestMiyorarePackRelease(pack)
 		} catch (error: Exception) {
-			if (isMiyorarePackInstalled(pack)) return@withContext null
+			if (isMiyorarePackInstalled(pack)) return null
 			throw error
 		}
 		if (miyorareReleaseIsOlderThanInstalled(pack, release) || miyorarePackIsCurrent(pack, release)) {
-			return@withContext null
+			return null
 		}
 		requireMiyorareNotDowngrade(pack, release)
 		val installed = installMiyorarePack(pack, release)
-		installed.firstOrNull { it.pluginId == pack.pluginId } ?: installed.first()
+		return installed.firstOrNull { it.pluginId == pack.pluginId } ?: installed.first()
 	}
 
 	suspend fun installLatest(provider: TsukiPluginProvider): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
@@ -430,7 +439,7 @@ class TsukiPluginInstaller @Inject constructor(
 			"Release $tag is missing ${MiyorareSourcePackReleasePolicy.RELEASE_MANIFEST_ASSET}"
 		}
 		val manifestBytes = fetchReleaseMetadataAsset(repository, tag, manifestAsset)
-		val manifest = MiyorareSourcePackReleasePolicy.parseManifest(manifestBytes, tag)
+		val manifest = MiyorareSourcePackReleasePolicy.parseManifest(manifestBytes, tag, pack)
 		if (!MiyorareSourcePackReleasePolicy.isCompatible(manifest, BuildConfig.VERSION_CODE)) return null
 
 		val lockAsset = requireNotNull(assets[MiyorareSourcePackReleasePolicy.RELEASE_LOCK_ASSET]) {

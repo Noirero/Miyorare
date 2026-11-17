@@ -180,7 +180,15 @@ class GlobalValidationActivity : FragmentActivity() {
 			page = 5, scroll = 0.25f, percent = 0.5f, deletedAt = 0L, chaptersCount = 1,
 		)
 		database.getHistoryDao().insert(progress)
-		install(VoraToonPackRouting.GLOBAL_ASSET_NAME, routing.global.pluginId)
+		// Exercise the release parser, lock, downloads and installer without publishing any asset.
+		val globalAsset = VoraToonPackRouting.GLOBAL_ASSET_NAME
+		val firstParty = assets.open("global-validation/voratoon/$globalAsset").use { it.readBytes() }
+		val firstPartySha = assets.open("global-validation/voratoon/$globalAsset.sha256")
+			.bufferedReader().use { it.readText().trim() }
+		check(MiyorareSourcePackReleasePolicy.sha256Hex(firstParty) == firstPartySha)
+		installBundledGlobal(seedUpdater = true)
+		verifyOfficialUpdater(firstParty)
+		check(plugins.findPlugin(TsukiPluginProvider.MIYORARE, routing.global.pluginId)?.sha256 == firstPartySha)
 		val moved = checkNotNull(plugins.resolveSource(storedName))
 		check(moved.identity == routing.global && moved.name == storedName)
 		check(plugins.getAvailableSources().single { it.name == storedName }.identity == routing.global)
@@ -221,10 +229,17 @@ class GlobalValidationActivity : FragmentActivity() {
 	}
 
 	/** Debug-only, in-memory release transport; unmatched requests never reach the network. */
-	private suspend fun verifyOfficialUpdater() {
+	private suspend fun verifyOfficialUpdater(firstParty: ByteArray? = null) {
 		val packId = MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID
-		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(packId))
-		val jarName = pack.shards.single().assetName
+		val existing = requireNotNull(MiyorareOfficialSourcePacks.find(packId))
+		val jarName = existing.shards.single().assetName
+		val firstPartyName = VoraToonPackRouting.GLOBAL_ASSET_NAME
+		val pack = if (firstParty == null) existing else existing.copy(shards = existing.shards + MiyorareOfficialSourceShard(
+			pluginId = VoraToonPackRouting.global.pluginId,
+			displayName = "Miyorare-Global / First-party",
+			assetName = firstPartyName,
+		))
+		val servedJars = pack.shards.map { it.assetName }
 		val candidate = assets.open("global-validation/$jarName").use { it.readBytes() }
 		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
 		val expected = MiyorareSourcePackReleasePolicy.sha256Hex(candidate)
@@ -240,15 +255,23 @@ class GlobalValidationActivity : FragmentActivity() {
 			val manifestName = MiyorareSourcePackReleasePolicy.RELEASE_MANIFEST_ASSET
 			val lockName = MiyorareSourcePackReleasePolicy.RELEASE_LOCK_ASSET
 			val checksumName = MiyorareSourcePackReleasePolicy.RELEASE_LOCK_SHA256_ASSET
-			val packs = MiyorareOfficialSourcePacks.packs
+			val packs = MiyorareOfficialSourcePacks.packs.map { if (it.pluginId == packId) pack else it }
 			val payload = linkedMapOf<String, ByteArray>()
 			// Non-Global shards are metadata-only fixtures; any attempt to fetch them fails.
 			val manifestPacks = packs.map { logical ->
 				val shards = logical.shards.map { shard ->
-					val bytes = if (shard.assetName == jarName) candidate else shard.assetName.encodeToByteArray()
+					val bytes = when (shard.assetName) {
+						jarName -> candidate
+						firstPartyName -> checkNotNull(firstParty)
+						else -> shard.assetName.encodeToByteArray()
+					}
 					payload[shard.assetName] = bytes
 					JSONObject()
-						.put("provider", if (shard.assetName.endsWith("-uma.jar")) "UMA" else "GEKKOUSHI")
+						.put("provider", when {
+							shard.assetName == firstPartyName -> "MIYORARE"
+							shard.assetName.endsWith("-uma.jar") -> "UMA"
+							else -> "GEKKOUSHI"
+						})
 						.put("pluginId", shard.pluginId).put("assetName", shard.assetName)
 						.put("size", bytes.size).put("sha256", MiyorareSourcePackReleasePolicy.sha256Hex(bytes))
 						.put("sourceCount", 1)
@@ -300,7 +323,8 @@ class GlobalValidationActivity : FragmentActivity() {
 				requested.add(url)
 				val bytes = when (url) {
 					releasesUrl -> release
-					baseUrl + jarName -> if (corrupt) distinctZipBytes(candidate) else candidate
+					baseUrl + jarName -> if (corrupt && firstParty == null) distinctZipBytes(candidate) else candidate
+					baseUrl + firstPartyName -> checkNotNull(firstParty).let { if (corrupt) distinctZipBytes(it) else it }
 					baseUrl + manifestName -> manifest
 					baseUrl + lockName -> lock
 					baseUrl + checksumName -> checkNotNull(payload[checksumName])
@@ -311,21 +335,24 @@ class GlobalValidationActivity : FragmentActivity() {
 			}.build()
 			val installer = TsukiPluginInstaller(applicationContext, plugins, client)
 			val result = try {
-				Result.success(installer.installOrUpdateMiyorare(packId))
+				Result.success(installer.installOrUpdateMiyorare(pack))
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Exception) {
 				Result.failure(e)
 			}
 			check(requested.toList() == listOf(
-				releasesUrl, baseUrl + manifestName, baseUrl + lockName, baseUrl + checksumName, baseUrl + jarName,
-			)) { "Updater did not fetch the expected release metadata and Global JAR: ${result.exceptionOrNull()}" }
+				releasesUrl, baseUrl + manifestName, baseUrl + lockName, baseUrl + checksumName,
+			) + servedJars.map { baseUrl + it }) { "Updater did not fetch the expected release metadata and Global JAR: ${result.exceptionOrNull()}" }
 			return result
 		}
 
 		val installed = checkNotNull(update("0.0.2", corrupt = false).getOrThrow())
 		check(installed.version == "miyorare-sources-v0.0.2" && installed.sha256 == expected)
+		val firstPartyBeforeFailure = plugins.findPlugin(provider, VoraToonPackRouting.global.pluginId)
+		if (firstParty != null) check(firstPartyBeforeFailure?.version == installed.version)
 		val failure = update("0.0.3", corrupt = true).exceptionOrNull()
+		check(plugins.findPlugin(provider, VoraToonPackRouting.global.pluginId) == firstPartyBeforeFailure)
 		check(failure is IllegalArgumentException && failure.message == "Plugin SHA-256 does not match GitHub release") {
 			"Updater did not reject the changed JAR digest: $failure"
 		}
