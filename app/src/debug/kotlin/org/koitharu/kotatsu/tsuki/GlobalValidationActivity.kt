@@ -55,7 +55,14 @@ class GlobalValidationActivity : FragmentActivity() {
 						val source = plugins.getAvailableSources().single { EhentaiSourceFamily.isOfficialSource(it.name) }
 						verifyTitleFixture(source)
 					}
-					if (intent.getBooleanExtra("verify_voratoon", false)) verifyVoraToonRouting()
+					// Run only on a fresh validation install with the VoraToon assets bundled.
+					val validationState = getSharedPreferences("global_validation", MODE_PRIVATE)
+					if (assets.list("global-validation/voratoon").orEmpty().contains("legacy.jar") &&
+						!validationState.getBoolean("voratoon_verified", false)
+					) {
+						verifyVoraToonRouting()
+						validationState.edit().putBoolean("voratoon_verified", true).apply()
+					}
 					identityProof
 				}
 				Log.i(TAG, proof)
