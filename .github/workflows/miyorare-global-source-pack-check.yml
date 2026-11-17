@@ -14,12 +14,17 @@ on:
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      staging-only:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: miyorare-global-source-pack-${{ github.ref }}
+  group: miyorare-global-source-pack-${{ github.ref }}-${{ inputs.staging-only && 'candidate' || 'standard' }}
   cancel-in-progress: true
 
 jobs:
@@ -175,7 +180,7 @@ jobs:
           retention-days: 7
 
       - name: Build isolated owner-validation APK
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        if: inputs.staging-only != true && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
         shell: bash
         run: |
           set -euo pipefail
@@ -192,11 +197,11 @@ jobs:
           cp "$assets/revision" "$assets/sha256" build/global-validation/
 
       - name: Enable KVM for Global validation
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        if: inputs.staging-only != true && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
         run: sudo chmod 666 /dev/kvm
 
       - name: Verify bundled official Global on Android 15
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        if: inputs.staging-only != true && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 35
@@ -206,7 +211,7 @@ jobs:
           script: bash .github/scripts/verify-global-validation-apk.sh
 
       - name: Upload verified owner-validation APK
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        if: inputs.staging-only != true && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
         uses: actions/upload-artifact@v4
         with:
           name: miyorare-global-validation-apk
