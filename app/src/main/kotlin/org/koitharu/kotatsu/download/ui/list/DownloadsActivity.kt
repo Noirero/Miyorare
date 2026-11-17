@@ -18,7 +18,9 @@ import androidx.work.WorkInfo
 import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.download.domain.DownloadObservation
 import com.google.android.material.button.MaterialButtonToggleGroup
 import org.koitharu.kotatsu.core.model.MangaNovelSection
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
@@ -99,11 +101,34 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 		}
 		addMenuProvider(DownloadsMenuProvider(this, viewModel, isModernDownloads))
 		viewModel.items.observe(this, downloadsAdapter)
+		if (DownloadObservation.enabled) {
+			viewModel.items.observe(this) { traceDownloadRows("activity_observed", it) }
+		}
 		if (isModernDownloads) {
 			visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
 			viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
 		}
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
+		viewModel.onRemovalDone.observeEvent(this) { result ->
+			val message = buildList {
+				if (result.removed == 0) {
+					add(getString(R.string.downloads_remove_none))
+				} else {
+					val summary = if (result.deleteFiles) R.string.downloads_remove_count_with_files
+					else R.string.downloads_remove_count_list
+					add(getString(summary, result.removed))
+				}
+				if (result.active > 0) add(getString(R.string.downloads_remove_skipped_active, result.active))
+				if (result.unavailable > 0) add(getString(R.string.downloads_remove_skipped_unavailable, result.unavailable))
+				if (result.ambiguous > 0) add(getString(R.string.downloads_remove_unverified, result.ambiguous))
+				if (result.missing > 0) add(getString(R.string.downloads_remove_missing_file, result.missing))
+				if (result.failed > 0) add(getString(R.string.downloads_remove_failed, result.failed))
+				if (result.notAttempted > 0) add(getString(R.string.downloads_remove_not_attempted, result.notAttempted))
+			}.joinToString("\n")
+			Snackbar.make(viewBinding.recyclerView, message, Snackbar.LENGTH_LONG).apply {
+				view.findViewById<android.widget.TextView>(com.google.android.material.R.id.snackbar_text)?.maxLines = 10
+			}.show()
+		}
 		viewModel.onError.observeEvent(this, SnackbarErrorObserver(viewBinding.recyclerView, null))
 		val menuInvalidator = MenuInvalidator(this)
 		viewModel.hasActiveWorks.observe(this, menuInvalidator)
@@ -264,15 +289,15 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(), DownloadItem
 
 	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
 		val snapshot = viewModel.snapshot(controller.peekCheckedIds())
-		var canPause = true; var canResume = true; var canCancel = true; var canRemove = true
+		var canPause = true; var canResume = true; var canCancel = true
 		for (item in snapshot) {
 			canPause = canPause and item.canPause; canResume = canResume and item.canResume
-			canCancel = canCancel and item.canCancel; canRemove = canRemove and item.workState.isFinished && item.uiAction == null
+			canCancel = canCancel and item.canCancel
 		}
 		menu.findItem(R.id.action_pause)?.isVisible = canPause
 		menu.findItem(R.id.action_resume)?.isVisible = canResume
 		menu.findItem(R.id.action_cancel)?.isVisible = canCancel
-		menu.findItem(R.id.action_remove)?.isVisible = canRemove
+		menu.findItem(R.id.action_remove)?.isVisible = snapshot.isNotEmpty()
 		return super.onPrepareActionMode(controller, mode, menu)
 	}
 }

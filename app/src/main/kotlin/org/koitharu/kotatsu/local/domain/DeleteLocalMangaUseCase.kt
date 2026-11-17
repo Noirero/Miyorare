@@ -22,6 +22,12 @@ import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 
+/** Rejection before any file or index mutation. */
+internal class UnverifiedDownloadRemovalException(
+	message: String = "Cannot verify ownership of the selected download. Files were kept.",
+	val missing: Boolean = false,
+) : IOException(message)
+
 class DeleteLocalMangaUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val localMangaIndex: LocalMangaIndex,
@@ -56,14 +62,26 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	}
 
 
-	/** A compatibility read match is not enough evidence to delete a remote gallery's file. */
+	/** Details can delete an unambiguous destination CBZ; other actions require a verified copy. */
 	internal suspend fun deleteExhentaiCopy(
 		remote: Manga,
 		space: FavouriteSpace,
 		expectedFile: File? = null,
 		chapterIds: Set<Long>? = null,
+		useDestination: Boolean = false,
 	): Boolean = mangaLock.withLock(remote) {
 		require(ExhentaiDownloadedCopy.isOfficial(remote))
+		if (useDestination) {
+			val destination = localMangaRepository.findExhentaiDestinationCopy(remote, space)
+			if (destination != null) {
+				val file = destination.file.canonicalFile
+				if (expectedFile != null && expectedFile.canonicalFile != file ||
+					chapterIds != null && destination.manga.chapters.orEmpty().map { it.id }.toSet() != chapterIds) {
+					throw IOException("The selected ExHentai file changed. Files were kept.")
+				}
+				return@withLock localMangaRepository.deleteExhentaiDestinationCopy(destination)
+			}
+		}
 		val saved = downloadedMangaResolver.findSavedManga(remote, space) ?: return@withLock false
 		val file = saved.file.canonicalFile
 		val proven = ExhentaiDownloadedCopy.find(remote, file, withDetails = true)
@@ -100,26 +118,31 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		// The downloader locks a chapter-hydrated Manga from the repository. Use the same
 		// representation here rather than a metadata-only Downloads row.
 		val lockedManga = mangaDataRepository.findMangaById(remoteManga.id, withChapters = true)
-			?: throw IOException("Cannot verify the selected manga in the library. Files were kept.")
+			?: throw UnverifiedDownloadRemovalException("Cannot verify the selected manga in the library. Files were kept.")
 		mangaLock.withLock(lockedManga) {
 			val entry = database.getFavouriteDownloadIndexDao()
 				.findEntry(space.dbValue, remoteManga.id)
-				?: throw IOException("Cannot verify this download's file ownership. Files were kept.")
+				?: throw UnverifiedDownloadRemovalException("Cannot verify this download's file ownership. Files were kept.")
 			val file = File(entry.path).canonicalFile
-			if (!isInsideDownloadRoot(selectedRoot, file) || !file.exists()) {
-				throw IOException("The selected download's original file is unavailable. Files were kept.")
+			if (!isInsideDownloadRoot(selectedRoot, file)) {
+				throw UnverifiedDownloadRemovalException("The selected download is outside its original folder. Files were kept.")
+			}
+			if (!file.exists()) {
+				throw UnverifiedDownloadRemovalException(
+					"The selected download's original file is unavailable. Files were kept.", missing = true,
+				)
 			}
 			val resolvedPath = if (ExhentaiDownloadedCopy.isOfficial(lockedManga)) {
 				if (expectedFile == null || expectedRequest == null || expectedFile.canonicalFile != file) {
-					throw IOException("The selected job does not own the current ExHentai archive. Files were kept.")
+					throw UnverifiedDownloadRemovalException("The selected job does not own the current ExHentai archive. Files were kept.")
 				}
 				val exact = ExhentaiDownloadedCopy.find(lockedManga, file, withDetails = false, space = space, request = expectedRequest)
 					?.takeIf { file.isFile && it.verified }
-					?: throw IOException("Cannot verify the selected ExHentai archive. Files were kept.")
+					?: throw UnverifiedDownloadRemovalException("Cannot verify the selected ExHentai archive. Files were kept.")
 				exact.local.file.canonicalFile
 			} else {
 				val output = LocalMangaOutput.get(selectedRoot, lockedManga)
-					?: throw IOException("Cannot match the selected download to its saved file. Files were kept.")
+					?: throw UnverifiedDownloadRemovalException("Cannot match the selected download to its saved file. Files were kept.")
 				try {
 					output.rootFile.canonicalFile
 				} finally {
@@ -127,11 +150,11 @@ class DeleteLocalMangaUseCase @Inject constructor(
 				}
 			}
 			if (resolvedPath != file) {
-				throw IOException("Download storage has changed since this task. Files were kept.")
+				throw UnverifiedDownloadRemovalException("Download storage has changed since this task. Files were kept.")
 			}
 			val owners = database.getFavouriteDownloadIndexDao().findEntriesByPath(entry.path)
 			if (owners.any { it.mangaId != remoteManga.id || it.space != space.dbValue }) {
-				throw IOException("This file is shared with another library space. Files were kept.")
+				throw UnverifiedDownloadRemovalException("This file is shared with another library space. Files were kept.")
 			}
 			// A missing older ownership row must not make a shared Normal/Private root safe.
 			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
@@ -144,15 +167,15 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			// Even if an older index stored a non-canonical spelling of the same path,
 			// do not delete a file explicitly owned by the other library space.
 			if (otherEntry != null && File(otherEntry.path).canonicalFile == file) {
-				throw IOException("This file is owned by another library space. Files were kept.")
+				throw UnverifiedDownloadRemovalException("This file is owned by another library space. Files were kept.")
 			}
 			if (otherOwnsManga && otherCanSeeFile && otherEntry == null) {
-				throw IOException("This file could belong to both Normal and Private. Files were kept.")
+				throw UnverifiedDownloadRemovalException("This file could belong to both Normal and Private. Files were kept.")
 			}
 			val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails = false)
-				?: throw IOException("Cannot verify the selected downloaded file. Files were kept.")
+				?: throw UnverifiedDownloadRemovalException("Cannot verify the selected downloaded file. Files were kept.")
 			if (!local.manga.isLocal || local.file.canonicalFile != file) {
-				throw IOException("The selected download does not resolve to a local file. Files were kept.")
+				throw UnverifiedDownloadRemovalException("The selected download does not resolve to a local file. Files were kept.")
 			}
 			invoke(local.manga)
 		}

@@ -1156,6 +1156,7 @@
     <string name="changelog_summary">Changes history for recently released versions</string>
     <string name="collapse">Collapse</string>
     <string name="expand">Expand</string>
+    <string name="details_notes">Notes</string>
     <string name="adblock">Block ads in browser</string>
     <string name="adblock_summary">Block advertisement in the built-in browser (beta)</string>
     <string name="collapse_long_description">Collapse long description</string>
@@ -1501,4 +1502,11 @@
     <string name="chapter_download_renamed_refresh">File renamed. Refresh Details to update the chapter list.</string>
     <string name="chapter_download_rename_conflict">That chapter filename already exists or is being downloaded. Choose a different name.</string>
     <string name="chapter_download_rename_failed">Could not rename the chapter file. Refresh Details and try again.</string>
+    <string name="download_destination_summary_unavailable">%1$s (not available)</string>
+    <string name="download_destination_read_only">%1$s (read-only)</string>
+    <string name="downloads_remove_none">No download groups removed.</string>
+    <string name="downloads_remove_count_list">Groups removed from the list: %1$d</string>
+    <string name="downloads_remove_count_with_files">Groups removed with files: %1$d</string>
+    <string name="downloads_remove_skipped_active">Active groups kept: %1$d</string>
+    <string name="downloads_remove_skipped_unavailable">Other unavailable groups kept: %1$d</string>
 </resources>

@@ -50,7 +50,11 @@ internal object ExhentaiChapterOwnership {
 		name.equals(ExhentaiChapterFileName.PLAIN, ignoreCase = true) ||
 			name.equals(ExhentaiChapterFileName.withGalleryId(id), ignoreCase = true)
 
-	fun inspect(artifact: File): Evidence {
+	fun inspect(artifact: File): Evidence = inspect(artifact, requireChapterName = true)
+
+	internal fun inspectDestination(artifact: File): Evidence = inspect(artifact, requireChapterName = false)
+
+	private fun inspect(artifact: File, requireChapterName: Boolean): Evidence {
 		if (!artifact.isFile || !artifact.extension.equals("cbz", ignoreCase = true)) return Evidence.Unusable
 		return try {
 			ZipFile(artifact).use { archive ->
@@ -67,14 +71,14 @@ internal object ExhentaiChapterOwnership {
 					val single = parts[3] == "single"
 					if (storedComment != scopedComment(id, receipt, single)) return Evidence.Unusable
 					if (single && archive.getEntry("index.json") == null) return Evidence.Unusable
-					if (!single && !matchesChapterName(artifact.name, id)) return Evidence.Unusable
+					if (requireChapterName && !single && !matchesChapterName(artifact.name, id)) return Evidence.Unusable
 					return Evidence.Owned(id, receipt, single)
 				}
 				if (!storedComment.startsWith(PREFIX)) return Evidence.Unmarked
 				val owner = storedComment.removePrefix(PREFIX).toLongOrNull()?.takeIf { it > 0 }
 					?: return Evidence.Unusable
 				if (storedComment != comment(owner)) return Evidence.Unusable
-				if (!matchesChapterName(artifact.name, owner)) return Evidence.Unusable
+				if (requireChapterName && !matchesChapterName(artifact.name, owner)) return Evidence.Unusable
 				Evidence.Owned(owner)
 			}
 		} catch (_: IOException) {

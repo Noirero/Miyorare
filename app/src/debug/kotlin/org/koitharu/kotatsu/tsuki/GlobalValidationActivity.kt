@@ -1,6 +1,15 @@
 package org.koitharu.kotatsu.tsuki
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.MangaIndex
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
@@ -40,14 +49,17 @@ class GlobalValidationActivity : FragmentActivity() {
 	@Inject lateinit var plugins: TsukiPluginManager
 	@Inject lateinit var memoryCache: MemoryContentCache
 	@Inject lateinit var webViewExecutor: TsukiWebViewExecutor
+	@Inject lateinit var localRepository: LocalMangaRepository
+	@Inject lateinit var localIndex: LocalMangaIndex
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
-		val status = TextView(this).apply { text = "Verifying bundled Miyorare-Global…" }
+		val status = TextView(this).apply { text = "Verifying bundled Miyorare validation pack…" }
 		setContentView(status)
 		lifecycleScope.launch {
 			try {
 				val proof = withContext(Dispatchers.IO) {
+					if (intent.getBooleanExtra("verify_id_update", false) || isIdUpdateBuild()) return@withContext verifyIdUpdate()
 					val verifyFixture = intent.getBooleanExtra("verify_title_fixture", false)
 					val identityProof = installBundledGlobal(seedUpdater = verifyFixture)
 					if (verifyFixture) {
@@ -64,9 +76,28 @@ class GlobalValidationActivity : FragmentActivity() {
 				throw e
 			} catch (e: Exception) {
 				Log.e(TAG, "Global validation setup failed", e)
-				status.text = "Global validation setup failed: ${e.message}"
+				status.text = "Validation setup failed: ${e.message}"
 			}
 		}
+	}
+
+	/** True when this APK bundles the ID-update harness instead of the Global pack. */
+	private fun isIdUpdateBuild(): Boolean {
+		// Global builds ship global-validation/sha256; ID-update builds ship the
+		// previous ID shards under global-validation/old/ instead. When the Global
+		// proof file is absent, a launcher start can only be an ID-update test, so
+		// route it to the same verification the ADB-driven CI run performs.
+		if (hasAsset("global-validation/sha256")) return false
+		val pack = MiyorareOfficialSourcePacks.find("miyorare-id") ?: return false
+		val oldJar = pack.shards.firstOrNull()?.assetName ?: return false
+		return hasAsset("global-validation/old/$oldJar")
+	}
+
+	private fun hasAsset(path: String): Boolean = try {
+		assets.open(path).close()
+		true
+	} catch (e: Exception) {
+		false
 	}
 
 	private fun installBundledGlobal(seedUpdater: Boolean): String = synchronized(installLock) {
@@ -117,11 +148,116 @@ class GlobalValidationActivity : FragmentActivity() {
 	}
 
 	/** Debug-only, in-memory release transport; unmatched requests never reach the network. */
-	private suspend fun verifyOfficialUpdater() {
-		val packId = MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID
+	private suspend fun verifyIdUpdate(): String {
+		val provider = TsukiPluginProvider.MIYORARE
+		val pack = checkNotNull(MiyorareOfficialSourcePacks.find("miyorare-id"))
+		fun voratoon() = plugins.getAvailableSources().filterIsInstance<TsukiMangaSource>()
+			.single { it.plugin.provider == provider && it.plugin.pluginId == pack.pluginId &&
+				it.name.endsWith(":VORATOON") }
+		for (shard in pack.shards) {
+			val jar = File.createTempFile("legacy-id-", ".jar", cacheDir)
+			try {
+				assets.open("global-validation/old/${shard.assetName}").use { jar.writeBytes(it.readBytes()) }
+				plugins.installLocalJar(jar, TsukiPluginManager.InstallRequest(
+					pluginId = shard.pluginId, displayName = shard.displayName, provider = provider,
+					origin = "debug://bundled-id/old", version = "miyorare-sources-v0.0.1",
+				))
+			} finally {
+				jar.delete()
+			}
+		}
+		val before = voratoon()
+		val (oldManga, oldChapter) = readVoraToonFixture(before, legacy = true)
+		val archive = File.createTempFile("voratoon-legacy-", ".cbz", cacheDir)
+		try {
+			val index = MangaIndex(null).apply {
+				setMangaInfo(oldManga)
+				addChapter(IndexedValue(0, oldChapter), null)
+			}
+			ZipOutputStream(archive.outputStream()).use { zip ->
+				zip.putNextEntry(ZipEntry("index.json"))
+				zip.write(index.toString().encodeToByteArray())
+				zip.closeEntry()
+				zip.putNextEntry(ZipEntry("001.png"))
+				val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+				try {
+					check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip))
+				} finally {
+					bitmap.recycle()
+				}
+				zip.closeEntry()
+			}
+			localIndex.put(LocalMangaParser(archive).getManga(withDetails = true))
+			verifyOfficialUpdater(pack.pluginId)
+			val after = voratoon()
+			check(after.name == before.name)
+			val (newManga, newChapter) = readVoraToonFixture(after, legacy = false)
+			check(newManga.id == oldManga.id && newManga.url == oldManga.url)
+			check(newChapter.id == oldChapter.id && newChapter.url == oldChapter.url)
+			val indexed = checkNotNull(localIndex.get(newManga.id, withDetails = true))
+			check(indexed.file.canonicalFile == archive.canonicalFile)
+			val chapter = checkNotNull(indexed.manga.chapters).single { it.id == newChapter.id }
+			val page = localRepository.getPages(chapter).single()
+			check(page.url.contains("001.png"))
+			ZipFile(archive).use { zip ->
+				zip.getInputStream(checkNotNull(zip.getEntry("001.png"))).use { input ->
+					val image = checkNotNull(BitmapFactory.decodeStream(input))
+					try {
+						check(image.width == 2 && image.height == 2)
+					} finally {
+						image.recycle()
+					}
+				}
+			}
+		} finally {
+			localIndex.delete(oldManga.id)
+			archive.delete()
+		}
+		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
+		Log.i(TAG, "VORATOON_LEGACY_CBZ_OK revision=$revision")
+		return "VORATOON_ID_UPDATE_OK revision=$revision"
+	}
+
+	private suspend fun readVoraToonFixture(source: TsukiMangaSource, legacy: Boolean): Pair<
+		org.koitharu.kotatsu.parsers.model.Manga, org.koitharu.kotatsu.parsers.model.MangaChapter,
+	> {
+		fun flight(json: String) = "<html><script>self.__next_f.push(${JSONArray().put(1).put("0:$json\n")})</script></html>"
+		val series = "/series/fixture"
+		val pageUrl = "https://images.example.invalid/001.jpg"
+		val client = OkHttpClient.Builder().addInterceptor { chain ->
+			val request = chain.request()
+			val path = request.url.encodedPath
+			check(request.url.host == if (legacy) "v2.voratoon.com" else "voratoon.co")
+			val body = when (path) {
+				"/backend/series" -> """{"data":[{"data":{"slug":"fixture","title":"Fixture VoraToon"}}]}"""
+				"/backend$series" -> """{"data":{"data":{"title":"Fixture VoraToon"}}}"""
+				"/backend$series/chapters" -> """{"data":[{"data":{"index":1.5,"title":"Fractional"}}]}"""
+				"/browse" -> flight("""{"series":[{"data":{"slug":"fixture","title":"Fixture VoraToon"}}],"seriesMeta":{}}""")
+				series -> flight("""{"series":[{"data":{"title":"Fixture VoraToon"}}],"chapters":[{"chapterIndex":1.5,"data":{"title":"Fractional"}}]}""")
+				"$series/chapter/1.5" -> """<html><img data-chapter-page="$pageUrl"></html>"""
+				else -> error("Unexpected VoraToon fixture request: $path")
+			}
+			Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
+				.message("OK").body(body.toResponseBody((if (legacy) "application/json" else "text/html").toMediaType()))
+				.build()
+		}.build()
+		val runtime = TsukiPluginRuntime(applicationContext, plugins, client, CookieJar.NO_COOKIES, webViewExecutor)
+		val handle = runtime.getHandle(source)
+		val seed = handle.parser.getList(0, tsuki.model.SortOrder.POPULARITY, tsuki.model.MangaListFilter.EMPTY).single()
+		val manga = handle.parser.getDetails(seed)
+		val chapter = checkNotNull(manga.chapters).single()
+		check(manga.url == series && chapter.url == "$series/chapter/1.5")
+		if (!legacy) check(handle.parser.getPages(chapter).single().url == pageUrl)
+		return manga.toMiyorare(source) to chapter.toMiyorare(source)
+	}
+
+	private suspend fun verifyOfficialUpdater(packId: String = MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID) {
 		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(packId))
-		val jarName = pack.shards.single().assetName
-		val candidate = assets.open("global-validation/$jarName").use { it.readBytes() }
+		val jarName = pack.shards.first().assetName
+		val candidates = pack.shards.associate { shard ->
+			shard.assetName to assets.open("global-validation/${shard.assetName}").use { it.readBytes() }
+		}
+		val candidate = candidates.getValue(jarName)
 		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
 		val expected = MiyorareSourcePackReleasePolicy.sha256Hex(candidate)
 		val provider = TsukiPluginProvider.MIYORARE
@@ -141,7 +277,7 @@ class GlobalValidationActivity : FragmentActivity() {
 			// Non-Global shards are metadata-only fixtures; any attempt to fetch them fails.
 			val manifestPacks = packs.map { logical ->
 				val shards = logical.shards.map { shard ->
-					val bytes = if (shard.assetName == jarName) candidate else shard.assetName.encodeToByteArray()
+					val bytes = candidates[shard.assetName] ?: shard.assetName.encodeToByteArray()
 					payload[shard.assetName] = bytes
 					JSONObject()
 						.put("provider", if (shard.assetName.endsWith("-uma.jar")) "UMA" else "GEKKOUSHI")
@@ -200,7 +336,7 @@ class GlobalValidationActivity : FragmentActivity() {
 					baseUrl + manifestName -> manifest
 					baseUrl + lockName -> lock
 					baseUrl + checksumName -> checkNotNull(payload[checksumName])
-					else -> error("Unexpected updater fixture request")
+					else -> checkNotNull(candidates[url.removePrefix(baseUrl)]) { "Unexpected updater fixture request" }
 				}
 				Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
 					.message("OK").body(bytes.toResponseBody()).build()
@@ -214,13 +350,21 @@ class GlobalValidationActivity : FragmentActivity() {
 				Result.failure(e)
 			}
 			check(requested.toList() == listOf(
-				releasesUrl, baseUrl + manifestName, baseUrl + lockName, baseUrl + checksumName, baseUrl + jarName,
-			)) { "Updater did not fetch the expected release metadata and Global JAR: ${result.exceptionOrNull()}" }
+				releasesUrl, baseUrl + manifestName, baseUrl + lockName, baseUrl + checksumName,
+			) + if (corrupt) listOf(baseUrl + jarName) else candidates.keys.map { baseUrl + it }) { "Updater did not fetch the expected release metadata and Global JAR: ${result.exceptionOrNull()}" }
 			return result
 		}
 
 		val installed = checkNotNull(update("0.0.2", corrupt = false).getOrThrow())
 		check(installed.version == "miyorare-sources-v0.0.2" && installed.sha256 == expected)
+		if (packId == "miyorare-id") {
+			for (shard in pack.shards) {
+				val current = checkNotNull(plugins.findPlugin(provider, shard.pluginId))
+				check(current.version == installed.version)
+				check(current.sha256 == MiyorareSourcePackReleasePolicy.sha256Hex(candidates.getValue(shard.assetName)))
+			}
+			return
+		}
 		val failure = update("0.0.3", corrupt = true).exceptionOrNull()
 		check(failure is IllegalArgumentException && failure.message == "Plugin SHA-256 does not match GitHub release") {
 			"Updater did not reject the changed JAR digest: $failure"

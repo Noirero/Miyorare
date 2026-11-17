@@ -956,7 +956,7 @@ internal fun ChapterHeaderTitle(
 	val density = LocalDensity.current
 	val days = prediction?.daysUntilNext ?: 0L
 	val label = when (prediction?.state) {
-		null -> null
+		null -> stringResource(R.string.unknown)
 		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.OVERDUE_GRACE -> stringResource(R.string.chapter_release_expected_overdue)
 		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.EXPECTED_TODAY -> stringResource(R.string.chapter_release_expected_today)
 		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.UPCOMING -> when {
@@ -965,62 +965,73 @@ internal fun ChapterHeaderTitle(
 		}
 	}
 	val description = when (prediction?.state) {
-		null -> null
+		null -> stringResource(R.string.unknown)
 		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.OVERDUE_GRACE -> stringResource(R.string.chapter_release_accessibility_overdue)
 		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.EXPECTED_TODAY -> stringResource(R.string.chapter_release_accessibility_today)
 		org.koitharu.kotatsu.details.domain.NextChapterReleaseState.UPCOMING -> pluralStringResource(R.plurals.chapter_release_accessibility_days, days.toInt(), days)
 	}
-	val openCalendarLabel = stringResource(R.string.release_calendar_title)
 	BoxWithConstraints(modifier) {
 		val titleWidth = measurer.measure(title, titleStyle, maxLines = 1).size.width
-		val predictionWidth = label?.let {
-			measurer.measure(it, secondaryStyle, maxLines = 1).size.width +
-				measurer.measure(" · ", secondaryStyle, maxLines = 1).size.width +
-				with(density) { 20.dp.roundToPx() }
-		} ?: 0
-		val showPrediction = label != null && titleWidth + predictionWidth <= with(density) { maxWidth.roundToPx() }
-		Row(verticalAlignment = Alignment.CenterVertically) {
+		val calendarWidth = measurer.measure(label, secondaryStyle, maxLines = 1).size.width +
+			measurer.measure(" · ", secondaryStyle, maxLines = 1).size.width +
+			with(density) { 20.dp.roundToPx() }
+		val inline = titleWidth + calendarWidth <= constraints.maxWidth
+		val count: @Composable () -> Unit = {
 			Text(
 				text = title,
 				style = titleStyle,
 				color = MaterialTheme.colorScheme.onSurface,
 				maxLines = 1,
 				overflow = TextOverflow.Ellipsis,
-				modifier = Modifier.weight(1f, fill = false),
 			)
-			if (showPrediction) {
-				val lightSurface = MaterialTheme.colorScheme.surface.luminance() >= 0.5f
-				val predictionBrush = remember(lightSurface) {
-					Brush.horizontalGradient(
-						if (lightSurface) listOf(
-							Color(0xFFB71C47), Color(0xFFA34800), Color(0xFF806000),
-							Color(0xFF237A3B), Color(0xFF006DA8), Color(0xFF7541B8),
-						) else listOf(
-							Color(0xFFFF6B85), Color(0xFFFFB454), Color(0xFFFFE66D),
-							Color(0xFF7DE089), Color(0xFF6AD6F4), Color(0xFFC4A1FF),
-						),
-					)
-				}
-				Row(
-					verticalAlignment = Alignment.CenterVertically,
-					modifier = Modifier.clickable(onClick = onPredictionClick).clearAndSetSemantics {
-						contentDescription = description.orEmpty()
-						role = Role.Button
-						onClick(label = openCalendarLabel) { onPredictionClick(); true }
-					},
-				) {
-					Text(" · ", style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-					Icon(
-						painter = painterResource(R.drawable.ic_timer),
-						contentDescription = null,
-						tint = MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.size(16.dp),
-					)
-					Spacer(Modifier.width(4.dp))
-					Text(label.orEmpty(), style = secondaryStyle.copy(brush = predictionBrush), maxLines = 1)
-				}
+		}
+		if (inline) {
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				count()
+				ChapterReleaseCalendarAction(label, description, inline = true, onOpenCalendar = onPredictionClick)
+			}
+		} else {
+			Column {
+				count()
+				ChapterReleaseCalendarAction(label, description, inline = false, onOpenCalendar = onPredictionClick)
 			}
 		}
+	}
+}
+
+@Composable
+private fun ChapterReleaseCalendarAction(label: String, description: String, inline: Boolean, onOpenCalendar: () -> Unit) {
+	val secondaryStyle = MaterialTheme.typography.bodySmall
+	val openCalendarLabel = stringResource(R.string.release_calendar_title)
+	val lightSurface = MaterialTheme.colorScheme.surface.luminance() >= 0.5f
+	val predictionBrush = remember(lightSurface) {
+		Brush.horizontalGradient(
+			if (lightSurface) listOf(
+				Color(0xFFB71C47), Color(0xFFA34800), Color(0xFF806000),
+				Color(0xFF237A3B), Color(0xFF006DA8), Color(0xFF7541B8),
+			) else listOf(
+				Color(0xFFFF6B85), Color(0xFFFFB454), Color(0xFFFFE66D),
+				Color(0xFF7DE089), Color(0xFF6AD6F4), Color(0xFFC4A1FF),
+			),
+		)
+	}
+	Row(
+		verticalAlignment = Alignment.CenterVertically,
+		modifier = Modifier.clickable(onClick = onOpenCalendar).clearAndSetSemantics {
+			contentDescription = description
+			role = Role.Button
+			onClick(label = openCalendarLabel) { onOpenCalendar(); true }
+		},
+	) {
+		if (inline) Text(" · ", style = secondaryStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+		Icon(
+			painter = painterResource(R.drawable.ic_timer),
+			contentDescription = null,
+			tint = MaterialTheme.colorScheme.onSurfaceVariant,
+			modifier = Modifier.size(16.dp),
+		)
+		Spacer(Modifier.width(4.dp))
+		Text(label, style = secondaryStyle.copy(brush = predictionBrush))
 	}
 }
 

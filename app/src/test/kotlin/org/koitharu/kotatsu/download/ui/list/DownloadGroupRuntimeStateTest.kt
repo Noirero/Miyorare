@@ -69,8 +69,30 @@ class DownloadGroupRuntimeStateTest {
 		assertFalse(group.canResume)
 	}
 
+	@Test
+	fun `active group with completed siblings is entirely skipped`() {
+		val active = item(1).copy(workIds = setOf(UUID(1L, 0L), UUID(2L, 0L)))
+		val plan = planDownloadRemoval(setOf(active.selectionId), listOf(active))
+		assertTrue(plan.eligible.isEmpty())
+		assertEquals(1, plan.active)
+		assertEquals(0, plan.unavailable)
+	}
+
+	@Test
+	fun `mixed selection counts visible groups without removing pending or unselected work`() {
+		val active = item(1)
+		val done = item(2).copy(workState = WorkInfo.State.SUCCEEDED)
+		val pending = item(3).copy(workState = WorkInfo.State.CANCELLED, uiAction = DownloadUiAction.CANCELLING)
+		val unrelated = item(4).copy(workState = WorkInfo.State.SUCCEEDED)
+		val plan = planDownloadRemoval(setOf(active.selectionId, done.selectionId, pending.selectionId, 99L),
+			listOf(active, done, pending, unrelated))
+		assertEquals(listOf(done), plan.eligible)
+		assertEquals(1, plan.active)
+		assertEquals(2, plan.unavailable)
+	}
+
 	private fun item(id: Long) = DownloadItemModel(
-		id = UUID(0L, id), workState = WorkInfo.State.RUNNING,
+		id = UUID(id, 0L), workState = WorkInfo.State.RUNNING,
 		isIndeterminate = false, isPaused = false, isFinalizing = false,
 		phase = DownloadPhase.DOWNLOADING, phaseChapter = 1, requestedChapters = 1, retryAttempt = 0,
 		manga = null, error = null, max = 10, progress = 5, eta = 123L, isStuck = false,

@@ -22,7 +22,7 @@ import java.time.LocalDate
 class ReleasePredictionHeaderTest {
 	@get:Rule val compose = createComposeRule()
 
-	@Test fun predictionAloneIsClickableAndYieldsToManageOnNarrowHeaders() {
+	@Test fun predictionRemainsClickableAlongsideManageOnNarrowHeaders() {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val width = mutableStateOf(350.dp)
 		var opened = 0
@@ -35,8 +35,31 @@ class ReleasePredictionHeaderTest {
 		assertEquals(1, opened)
 		compose.onNodeWithText("Manage").assertIsDisplayed()
 		compose.runOnIdle { width.value = 130.dp }
-		compose.onNodeWithContentDescription(description).assertDoesNotExist()
+		compose.onNodeWithContentDescription(description).assertIsDisplayed().performClick()
+		compose.runOnIdle { assertEquals(2, opened) }
 		compose.onNodeWithText("Manage").assertIsDisplayed()
+	}
+
+	@Test fun unknownOpensCalendarAndUpdatesWhenPredictionArrives() {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val prediction = mutableStateOf<NextChapterReleasePrediction?>(null)
+		var opened = 0
+		compose.setContent { MaterialTheme { Row(Modifier.width(130.dp)) {
+			ChapterHeaderTitle("189 chapters", prediction.value, Modifier.weight(1f)) { opened++ }
+			Text("Manage")
+		} } }
+		val unknown = context.getString(R.string.unknown)
+		compose.onNodeWithText(unknown, useUnmergedTree = true).assertExists()
+		compose.onNodeWithContentDescription(unknown).assertIsDisplayed().performClick()
+		compose.onNodeWithText("Manage").assertIsDisplayed()
+		compose.runOnIdle {
+			assertEquals(1, opened)
+			prediction.value = NextChapterReleasePrediction(LocalDate.of(2026, 10, 10), 1)
+		}
+		compose.onNodeWithContentDescription(unknown).assertDoesNotExist()
+		val description = context.resources.getQuantityString(R.plurals.chapter_release_accessibility_days, 1, 1L)
+		compose.onNodeWithContentDescription(description).assertIsDisplayed().performClick()
+		compose.runOnIdle { assertEquals(2, opened) }
 	}
 
 	@Test fun overdueGraceHasDedicatedHeaderSemanticsInsteadOfExpectedToday() {

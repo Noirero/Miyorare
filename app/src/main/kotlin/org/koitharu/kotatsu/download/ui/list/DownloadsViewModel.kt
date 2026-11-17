@@ -7,6 +7,7 @@ import androidx.collection.getOrElse
 import androidx.collection.set
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.work.Data
 import androidx.work.WorkInfo
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +43,8 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isEmpty
+import org.koitharu.kotatsu.core.util.ext.WorkSpecInput
+import org.koitharu.kotatsu.download.domain.DownloadObservation
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.download.ui.worker.EXHENTAI_COMMITTED_PATH
@@ -60,6 +63,7 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.UnverifiedDownloadRemovalException
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.mapToSet
@@ -83,6 +87,7 @@ class DownloadsViewModel @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val deleteLocalManga: DeleteLocalMangaUseCase,
 	private val favouritesRepository: FavouritesRepository,
+	private val downloadSizeResolver: DownloadSizeResolver,
 ) : BaseViewModel() {
 
 	private val favouriteSpace = FavouriteSpace.fromArgument(
@@ -110,8 +115,12 @@ class DownloadsViewModel @Inject constructor(
 	private val chaptersCache = ArrayMap<Long, ChaptersCacheEntry>()
 	private val emptyChapters = MutableStateFlow<List<DownloadChapter>?>(null)
 	private val pendingUiActions = MutableStateFlow<Map<UUID, DownloadUiAction>>(emptyMap())
-	private val hydratedDownloadSizes = MutableStateFlow<Map<UUID, Long>>(emptyMap())
-	private val downloadSizeRequests = HashSet<UUID>()
+	private val downloadSizes = DownloadSizeHydration<SizeRequest>(viewModelScope + Dispatchers.IO) { workId, request ->
+		runCatchingCancellable {
+			downloadSizeResolver.findSizeArtifact(workId, request.manga, request.task, request.committedPath, favouriteSpace)
+				?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
+		}.getOrDefault(0L)
+	}
 
 	/**
 	 * Downloads can be opened either as the public/Normal queue or as an authenticated Private queue.
@@ -151,6 +160,14 @@ class DownloadsViewModel @Inject constructor(
 		workScheduler.observeWorks(),
 		membershipVisibility,
 	) { list, visibility ->
+		if (DownloadObservation.enabled) {
+			for (work in list) {
+				if (!DownloadObservation.tracks(work.id)) continue
+				val payload = if (work.state.isFinished) work.outputData else work.progress
+				DownloadObservation.record(work.id,
+					"work_observed state=${work.state} phase=${DownloadState.getPhase(payload)} progress=${DownloadState.getProgress(payload)}/${DownloadState.getMax(payload)}")
+			}
+		}
 		list.toDownloadsList(visibility)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
@@ -160,13 +177,13 @@ class DownloadsViewModel @Inject constructor(
 	 * action masks the round-trip through BroadcastReceiver/Worker/WorkManager until the worker state
 	 * catches up. As soon as the real state reflects the request, the optimistic layer disappears.
 	 */
-	private val rawWorks = combine(baseWorks, pendingUiActions, hydratedDownloadSizes) { list, actions, sizes ->
+	private val rawWorks = combine(baseWorks, pendingUiActions, downloadSizes.sizes) { list, actions, sizes ->
 		list?.map { item ->
 			val hydratedSize = if (
 				item.workState == WorkInfo.State.SUCCEEDED ||
 				(item.workState == WorkInfo.State.RUNNING && item.isPaused)
 			) {
-				sizes[item.id] ?: item.downloadSizeBytes
+				sizes[item.id] ?: 0L
 			} else {
 				0L
 			}
@@ -188,13 +205,11 @@ class DownloadsViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
+	internal val onRemovalDone = MutableEventFlow<DownloadRemovalFeedback>()
 
 	init {
 		viewModelScope.launch(Dispatchers.Default) {
-			localStorageChanges.collect {
-				hydratedDownloadSizes.value = emptyMap()
-				synchronized(downloadSizeRequests) { downloadSizeRequests.clear() }
-			}
+			localStorageChanges.collect { downloadSizes.invalidate() }
 		}
 	}
 
@@ -210,7 +225,10 @@ class DownloadsViewModel @Inject constructor(
 				delay(EMPTY_STATE_GRACE_MS)
 				emit(emptyStateList())
 			}
-			else -> emit(current.toUiList())
+			else -> {
+				traceDownloadRows("model_emit", current)
+				emit(current.toUiList())
+			}
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
@@ -343,75 +361,62 @@ class DownloadsViewModel @Inject constructor(
 
 	fun remove(ids: Set<Long>, deleteFiles: Boolean = false) {
 		// Snapshot finished jobs before the asynchronous confirmation result can race a new job.
-		val selected = currentSectionRows().filter {
-			it.selectionId in ids && it.workState.isFinished && it.uiAction == null
-		}
+		if (ids.isEmpty()) return
+		val selection = planDownloadRemoval(ids, currentSectionRows())
+		val selected = selection.eligible
 		val workIds = selected.flatMapTo(LinkedHashSet()) { it.workIds }
-		if (workIds.isEmpty()) return
+		val feedback = DownloadRemovalFeedback(0, selection.active, selection.unavailable, deleteFiles)
+		if (workIds.isEmpty()) {
+			onRemovalDone.call(feedback.copy(removed = 0))
+			return
+		}
 		launchJob(Dispatchers.IO) {
-			if (deleteFiles) {
-				val selectedMangaIds = selected.mapNotNullTo(HashSet()) { it.manga?.id }
-				check(rawWorks.value.orEmpty().none {
-					it.manga?.id in selectedMangaIds && !it.workState.isFinished
-				}) { "A selected manga is currently downloading. Files were kept." }
-				// Recheck WorkManager itself, not just the UI's potentially delayed StateFlow.
-				// This also sees jobs in the other favourite space.
-				val works = workScheduler.observeWorks().first()
-				for (work in works) {
-					if (work.state.isFinished) continue
-					val task = checkNotNull(workScheduler.getTask(work.id)) {
-						"Cannot inspect an active download task. Files were kept."
-					}
-					check(task.mangaId !in selectedMangaIds) {
-						"A selected manga has a new active download. Files were kept."
-					}
-				}
-				// Resolve every selection before deleting anything: a group can contain multiple
-				// chapter jobs, but physical deletion must not guess between different roots.
-				val targets = selected.map { row ->
-					val manga = checkNotNull(row.manga) { "Cannot verify selected manga. Files were kept." }
-					val tasks = row.workIds.map { workId ->
-						checkNotNull(workScheduler.getTask(workId)) {
-							"Cannot verify the original download task. Files were kept."
-						}
-					}
-					check(tasks.all { it.mangaId == manga.id && it.favouriteSpace == favouriteSpace }) {
-						"Selected jobs do not match this manga and library space. Files were kept."
-					}
-					val roots = tasks.map { task ->
-						checkNotNull(task.destination) {
-							"Original download destination is unknown. Files were kept."
-						}.canonicalFile
-					}.distinctBy { it.path }
-					check(roots.size == 1) {
-						"This manga has downloads in multiple folders. Files were kept."
-					}
-					val committed = if (ExhentaiDownloadedCopy.isOfficial(manga)) {
-						val archives = row.workIds.map { id ->
-							val completed = works.firstOrNull { it.id == id && it.state == WorkInfo.State.SUCCEEDED }
-							val path = checkNotNull(completed?.outputData?.getString(EXHENTAI_COMMITTED_PATH)) {
-								"Cannot verify the exact ExHentai archive from this download. Files were kept."
-							}
-							File(path) to id
-						}
-						check(archives.size == 1) { "Cannot verify a single ExHentai archive for the selected jobs. Files were kept." }
-						archives.single()
-					} else null
-					Triple(row.workIds, manga, roots.single() to committed)
-				}
-				for ((groupWorkIds, manga, destination) in targets) {
-					val (root, committed) = destination
-					if (committed == null) deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
-					else deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace, committed.first, committed.second)
-					// Keep each completed group's history consistent even if a later
-					// selected manga fails its own filesystem deletion.
-					workScheduler.delete(groupWorkIds)
-				}
-			} else {
+			if (!deleteFiles) {
 				// List-only removal never touches downloaded physical containers.
 				workScheduler.delete(workIds)
+				onRemovalDone.call(feedback.copy(removed = selected.size))
+				return@launchJob
 			}
-			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
+			// WorkManager also sees active jobs outside the current tab and space.
+			val works = workScheduler.observeWorks().first()
+			val activeMangaIds = HashSet<Long>()
+			for (work in works) {
+				if (work.state.isFinished) continue
+				val task = workScheduler.getTask(work.id)
+				if (task == null) {
+					// Unknown active work could belong to any of the selected groups.
+					onRemovalDone.call(feedback.copy(ambiguous = selected.size))
+					return@launchJob
+				}
+				activeMangaIds += task.mangaId
+			}
+			val completed = works.filter { it.state == WorkInfo.State.SUCCEEDED }.associateBy { it.id }
+			val result = processDownloadRemoval(selected, feedback) { row ->
+				val manga = verifiedRemovalValue(row.manga)
+				if (manga.id in activeMangaIds || rawWorks.value.orEmpty().any {
+						it.manga?.id == manga.id && !it.workState.isFinished
+					}) {
+					return@processDownloadRemoval DownloadRemovalOutcome.ACTIVE
+				}
+				val groupWorkIds = row.workIds
+				val tasks = groupWorkIds.map { workId -> verifiedRemovalValue(workScheduler.getTask(workId)) }
+				if (!tasks.all { it.mangaId == manga.id && it.favouriteSpace == favouriteSpace }) {
+					throw UnverifiedDownloadRemovalException()
+				}
+				val roots = tasks.map { verifiedRemovalValue(it.destination).canonicalFile }.distinct()
+				val root = verifiedRemovalValue(roots.singleOrNull())
+				if (ExhentaiDownloadedCopy.isOfficial(manga)) {
+					val id = verifiedRemovalValue(groupWorkIds.singleOrNull())
+					val path = verifiedRemovalValue(completed[id]?.outputData?.getString(EXHENTAI_COMMITTED_PATH))
+					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace, File(path), id)
+				} else {
+					deleteLocalManga.deleteOwnedDownloadAtRoot(manga, root, favouriteSpace)
+				}
+				// Prune only this group's history, and only after the file/index operation.
+				workScheduler.delete(groupWorkIds)
+				DownloadRemovalOutcome.REMOVED
+			}
+			onRemovalDone.call(result)
 		}
 	}
 
@@ -486,14 +491,16 @@ class DownloadsViewModel @Inject constructor(
 	private suspend fun List<WorkInfo>.toDownloadsList(
 		visibility: DownloadMembershipVisibility,
 	): List<DownloadItemModel> {
-		if (isEmpty()) return emptyList()
-		val list = coroutineScope {
+		val inputs = workScheduler.readModelInputs(map { it.id })
+		val rows = coroutineScope {
 			map { work ->
-				async { work.toUiModel(visibility) }
-			}.awaitAll().filterNotNullTo(ArrayList(size))
+				async { work.toUiModel(visibility, inputs[work.id]) }
+			}.awaitAll().filterNotNull()
 		}
-		list.sortByDescending { it.timestamp }
-		return list
+		downloadSizes.replaceRequests(buildMap {
+			for ((row, request) in rows) if (request != null) put(row.id, request)
+		})
+		return rows.map { it.first }.sortedByDescending { it.timestamp }
 	}
 
 	private fun List<DownloadItemModel>.groupForDisplay(
@@ -614,24 +621,24 @@ class DownloadsViewModel @Inject constructor(
 
 	private suspend fun WorkInfo.toUiModel(
 		visibility: DownloadMembershipVisibility,
-	): DownloadItemModel? {
+		input: WorkSpecInput?,
+	): Pair<DownloadItemModel, SizeRequest?>? {
 		val workData = outputData.takeUnless { it.isEmpty }
 			?: progress.takeUnless { it.isEmpty }
-			?: workScheduler.getInputData(id)
+			?: input?.let {
+				Data.Builder().putAll(it.data)
+					.putLong(DownloadState.DATA_TIMESTAMP, it.scheduleRequestedAt).build()
+			}
 			?: return null
-		val task = workScheduler.getTask(id)
+		val task = input?.let { DownloadTask(it.data) }
 		if (task != null && task.favouriteSpace != favouriteSpace) return null
 		val mangaId = DownloadState.getMangaId(workData)
 		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null
 		val manga = getManga(mangaId) ?: return null
 		val paused = DownloadState.isPaused(workData)
-		requestDownloadSizeHydration(
-			workId = id,
-			manga = manga,
-			task = task,
-			shouldHydrate = state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused),
-		)
-		val downloadSizeBytes = hydratedDownloadSizes.value[id] ?: 0L
+		val sizeRequest = if (state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused)) {
+			SizeRequest(manga, task, outputData.getString(EXHENTAI_COMMITTED_PATH))
+		} else null
 		return DownloadItemModel(
 			id = id,
 			workState = state,
@@ -650,36 +657,14 @@ class DownloadsViewModel @Inject constructor(
 			isStuck = DownloadState.isStuck(workData),
 			timestamp = DownloadState.getTimestamp(workData),
 			chaptersDownloaded = DownloadState.getDownloadedChapters(workData),
-			downloadSizeBytes = downloadSizeBytes,
+			downloadSizeBytes = 0L,
 			isExpanded = false,
 			chapters = emptyChapters,
 			workIds = setOf(id),
-		)
+		) to sizeRequest
 	}
 
-	private fun requestDownloadSizeHydration(
-		workId: UUID,
-		manga: Manga,
-		task: DownloadTask?,
-		shouldHydrate: Boolean,
-	) {
-		if (!shouldHydrate) return
-		val shouldLaunch = synchronized(downloadSizeRequests) {
-			downloadSizeRequests.add(workId)
-		}
-		if (!shouldLaunch) return
-		viewModelScope.launch(Dispatchers.IO) {
-			val size = runCatchingCancellable {
-				val local = task?.destination?.let { root ->
-					localMangaRepository.findSavedMangaInRoot(manga, root)
-				} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
-				local?.file?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
-			}.getOrDefault(0L)
-			hydratedDownloadSizes.update { current ->
-				if (current[workId] == size) current else current + (workId to size)
-			}
-		}
-	}
+	private data class SizeRequest(val manga: Manga, val task: DownloadTask?, val committedPath: String?)
 
 	private fun emptyStateList() = listOf(
 		EmptyState(
@@ -726,7 +711,12 @@ class DownloadsViewModel @Inject constructor(
 			runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
 		}
 		// Resolve chapter metadata once for the whole manga/source group.
-		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
+		val chapters = resolveDownloadChapterMetadata(
+			manga = manga,
+			requestedIds = chapterIds,
+			findStored = { mangaDataRepository.findMangaById(it, withChapters = true) },
+			loadRemote = ::tryLoad,
+		) ?: return@flow
 		// The existing compatibility matcher needs these chapters before comparing remote ids.
 		val chapterManga = manga.copy(chapters = chapters)
 
@@ -754,26 +744,14 @@ class DownloadsViewModel @Inject constructor(
 				}
 			}
 		}
-		emit(mapChapters())
-		localStorageChanges.collect { changed ->
-			if (changed?.manga?.id == manga.id) {
-				if (roots.isEmpty() || roots.any { changed.file.isInside(it) }) {
-					emit(mapChapters())
-				}
-			}
+		observeDownloadChapterInvalidations(localStorageChanges, manga.id, roots).collect {
+			emit(mapChapters())
 		}
 	}.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
 		null,
 	)
-
-	private fun java.io.File.isInside(root: java.io.File): Boolean {
-		val normalizedRoot = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile)
-		val normalizedFile = runCatching { canonicalFile }.getOrDefault(absoluteFile)
-		return normalizedFile == normalizedRoot ||
-			normalizedFile.path.startsWith(normalizedRoot.path + java.io.File.separator)
-	}
 
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)
@@ -801,3 +779,17 @@ class DownloadsViewModel @Inject constructor(
 }
 
 private const val KEY_DOWNLOADS_SECTION = "downloads_manga_novel_section"
+
+/** A grouped row reports both the traced request and the representative WorkSpec. */
+internal fun traceDownloadRows(stage: String, rows: List<ListModel>) {
+	if (!DownloadObservation.enabled) return
+	for (row in rows) {
+		if (row !is DownloadItemModel) continue
+		for (id in row.workIds) {
+			if (DownloadObservation.tracks(id)) {
+				DownloadObservation.record(id,
+					"$stage representative=${row.id} state=${row.workState} phase=${row.phase} progress=${row.progress}/${row.max}")
+			}
+		}
+	}
+}
