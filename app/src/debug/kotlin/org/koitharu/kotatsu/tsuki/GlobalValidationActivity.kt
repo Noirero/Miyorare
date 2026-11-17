@@ -54,12 +54,12 @@ class GlobalValidationActivity : FragmentActivity() {
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
-		val status = TextView(this).apply { text = "Verifying bundled Miyorare-Global…" }
+		val status = TextView(this).apply { text = "Verifying bundled Miyorare validation pack…" }
 		setContentView(status)
 		lifecycleScope.launch {
 			try {
 				val proof = withContext(Dispatchers.IO) {
-					if (intent.getBooleanExtra("verify_id_update", false)) return@withContext verifyIdUpdate()
+					if (intent.getBooleanExtra("verify_id_update", false) || isIdUpdateBuild()) return@withContext verifyIdUpdate()
 					val verifyFixture = intent.getBooleanExtra("verify_title_fixture", false)
 					val identityProof = installBundledGlobal(seedUpdater = verifyFixture)
 					if (verifyFixture) {
@@ -76,9 +76,28 @@ class GlobalValidationActivity : FragmentActivity() {
 				throw e
 			} catch (e: Exception) {
 				Log.e(TAG, "Global validation setup failed", e)
-				status.text = "Global validation setup failed: ${e.message}"
+				status.text = "Validation setup failed: ${e.message}"
 			}
 		}
+	}
+
+	/** True when this APK bundles the ID-update harness instead of the Global pack. */
+	private fun isIdUpdateBuild(): Boolean {
+		// Global builds ship global-validation/sha256; ID-update builds ship the
+		// previous ID shards under global-validation/old/ instead. When the Global
+		// proof file is absent, a launcher start can only be an ID-update test, so
+		// route it to the same verification the ADB-driven CI run performs.
+		if (hasAsset("global-validation/sha256")) return false
+		val pack = MiyorareOfficialSourcePacks.find("miyorare-id") ?: return false
+		val oldJar = pack.shards.firstOrNull()?.assetName ?: return false
+		return hasAsset("global-validation/old/$oldJar")
+	}
+
+	private fun hasAsset(path: String): Boolean = try {
+		assets.open(path).close()
+		true
+	} catch (e: Exception) {
+		false
 	}
 
 	private fun installBundledGlobal(seedUpdater: Boolean): String = synchronized(installLock) {
