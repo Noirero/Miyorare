@@ -91,23 +91,36 @@ class ChapterReleasePredictionSheetTest {
 	}
 
 	@Test fun manualCheckShowsNewNoNewAndFailureResultsInTheSameSheet() {
-		val results = listOf(1, 0, null)
+		val results = listOf(1, 0, null, 1)
 		var checks = 0
+		var reloads = 0
 		compose.setContent { MaterialTheme {
 			ChapterReleasePredictionSheet(
 				1, null, UpcomingPredictions(loading = false), loader,
 				onCheckLatestChapters = { results[checks++] },
+				onReloadChapterList = { reloads++ },
 			) {}
 		} }
 		val button = compose.onNodeWithText(context.getString(R.string.release_calendar_check_latest))
+		val reload = compose.onNodeWithText(context.getString(R.string.release_calendar_reload_chapters))
+		reload.assertDoesNotExist()
 		button.performScrollTo().performClick()
 		compose.onNodeWithText(context.resources.getQuantityString(R.plurals.release_calendar_new_chapters, 1, 1)).assertExists()
+		reload.assertExists()
 		button.performClick()
 		compose.onNodeWithText(context.getString(R.string.release_calendar_no_new_chapters)).assertExists()
+		reload.assertDoesNotExist()
 		button.performClick()
 		compose.onNodeWithText(context.getString(R.string.release_calendar_check_failed)).assertExists()
 		compose.onNodeWithTag("release-prediction-sheet").assertExists()
-		compose.runOnIdle { assertEquals(3, checks) }
+		reload.assertDoesNotExist()
+		compose.runOnIdle { assertEquals(0, reloads) }
+		button.performClick()
+		reload.performScrollTo().performClick()
+		compose.runOnIdle {
+			assertEquals(4, checks)
+			assertEquals(1, reloads)
+		}
 	}
 
 	@Test fun chapterComparisonIgnoresDuplicatesAndOtherBranchesOrGroups() {

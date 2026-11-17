@@ -7,4 +7,5 @@
     <plurals name="release_calendar_new_chapters">
         <item quantity="other">%d bab baru ditemukan.</item>
     </plurals>
+    <string name="release_calendar_reload_chapters">Muat ulang daftar bab</string>
 </resources>

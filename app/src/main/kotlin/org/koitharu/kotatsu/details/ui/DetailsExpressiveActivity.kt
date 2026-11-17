@@ -516,6 +516,10 @@ class DetailsExpressiveActivity :
 						onCheckLatestChapters = details?.sourceManga
 							?.takeIf { !it.isLocal && it.chapters != null }
 							?.let { viewModel::checkLatestChaptersForCalendar },
+						onReloadChapterList = {
+							predictionCalendarVisible.value = false
+							viewModel.reload()
+						},
 						space = predictionSpace,
 						canReadFavourites = predictionSpace == FavouriteSpace.NORMAL || privateUnlocked,
 						useCase = favouriteReleasePredictions,

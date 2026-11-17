@@ -126,6 +126,7 @@ internal fun ChapterReleasePredictionRoute(
 	useCase: FavouriteReleasePredictionsUseCase,
 	originTitle: String?,
 	onCheckLatestChapters: (suspend () -> Int?)?,
+	onReloadChapterList: () -> Unit,
 	imageLoader: ImageLoader,
 	onDismiss: () -> Unit,
 ) {
@@ -148,6 +149,7 @@ internal fun ChapterReleasePredictionRoute(
 		imageLoader = imageLoader,
 		originTitle = originTitle.takeIf { canReadFavourites },
 		onCheckLatestChapters = onCheckLatestChapters.takeIf { canReadFavourites },
+		onReloadChapterList = onReloadChapterList.takeIf { canReadFavourites },
 		onDismiss = onDismiss,
 	)
 }
@@ -161,6 +163,7 @@ internal fun ChapterReleasePredictionSheet(
 	imageLoader: ImageLoader,
 	originTitle: String? = null,
 	onCheckLatestChapters: (suspend () -> Int?)? = null,
+	onReloadChapterList: (() -> Unit)? = null,
 	onDismiss: () -> Unit,
 ) {
 	val context = LocalContext.current
@@ -266,7 +269,9 @@ internal fun ChapterReleasePredictionSheet(
 								else if (showUnpredictedCalendar) {
 									Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
 										verticalArrangement = Arrangement.spacedBy(8.dp)) {
-										if (onCheckLatestChapters != null) CheckLatestChaptersAction(onCheckLatestChapters)
+										if (onCheckLatestChapters != null) {
+											CheckLatestChaptersAction(onCheckLatestChapters, onReloadChapterList)
+										}
 										OutlinedButton(onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
 											modifier = Modifier.fillMaxWidth()) {
 											Text(stringResource(R.string.release_calendar_upcoming))
@@ -351,7 +356,7 @@ internal fun ChapterReleasePredictionSheet(
 }
 
 @Composable
-private fun CheckLatestChaptersAction(checkSource: suspend () -> Int?) {
+private fun CheckLatestChaptersAction(checkSource: suspend () -> Int?, onReloadChapterList: (() -> Unit)?) {
 	val scope = rememberCoroutineScope()
 	var checking by remember { mutableStateOf(false) }
 	var checked by remember { mutableStateOf(false) }
@@ -386,6 +391,11 @@ private fun CheckLatestChaptersAction(checkSource: suspend () -> Int?) {
 			style = MaterialTheme.typography.bodySmall,
 			color = MaterialTheme.colorScheme.onSurfaceVariant,
 		)
+		if (found != null && found > 0 && onReloadChapterList != null) {
+			TextButton(onClick = onReloadChapterList, modifier = Modifier.fillMaxWidth()) {
+				Text(stringResource(R.string.release_calendar_reload_chapters))
+			}
+		}
 	}
 }
 

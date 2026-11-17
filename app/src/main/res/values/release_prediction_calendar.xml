@@ -43,4 +43,5 @@
         <item quantity="one">%d new chapter found.</item>
         <item quantity="other">%d new chapters found.</item>
     </plurals>
+    <string name="release_calendar_reload_chapters">Reload chapter list</string>
 </resources>
