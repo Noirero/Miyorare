@@ -1,6 +1,15 @@
 package org.koitharu.kotatsu.tsuki
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.MangaIndex
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
@@ -40,6 +49,8 @@ class GlobalValidationActivity : FragmentActivity() {
 	@Inject lateinit var plugins: TsukiPluginManager
 	@Inject lateinit var memoryCache: MemoryContentCache
 	@Inject lateinit var webViewExecutor: TsukiWebViewExecutor
+	@Inject lateinit var localRepository: LocalMangaRepository
+	@Inject lateinit var localIndex: LocalMangaIndex
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -136,11 +147,89 @@ class GlobalValidationActivity : FragmentActivity() {
 				jar.delete()
 			}
 		}
-		val before = voratoon().name
-		verifyOfficialUpdater(pack.pluginId)
-		check(voratoon().name == before)
+		val before = voratoon()
+		val (oldManga, oldChapter) = readVoraToonFixture(before, legacy = true)
+		val archive = File.createTempFile("voratoon-legacy-", ".cbz", cacheDir)
+		try {
+			val index = MangaIndex(null).apply {
+				setMangaInfo(oldManga)
+				addChapter(IndexedValue(0, oldChapter), null)
+			}
+			ZipOutputStream(archive.outputStream()).use { zip ->
+				zip.putNextEntry(ZipEntry("index.json"))
+				zip.write(index.toString().encodeToByteArray())
+				zip.closeEntry()
+				zip.putNextEntry(ZipEntry("001.png"))
+				val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+				try {
+					check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip))
+				} finally {
+					bitmap.recycle()
+				}
+				zip.closeEntry()
+			}
+			localIndex.put(LocalMangaParser(archive).getManga(withDetails = true))
+			verifyOfficialUpdater(pack.pluginId)
+			val after = voratoon()
+			check(after.name == before.name)
+			val (newManga, newChapter) = readVoraToonFixture(after, legacy = false)
+			check(newManga.id == oldManga.id && newManga.url == oldManga.url)
+			check(newChapter.id == oldChapter.id && newChapter.url == oldChapter.url)
+			val indexed = checkNotNull(localIndex.get(newManga.id, withDetails = true))
+			check(indexed.file.canonicalFile == archive.canonicalFile)
+			val chapter = checkNotNull(indexed.manga.chapters).single { it.id == newChapter.id }
+			val page = localRepository.getPages(chapter).single()
+			check(page.url.contains("001.png"))
+			ZipFile(archive).use { zip ->
+				zip.getInputStream(checkNotNull(zip.getEntry("001.png"))).use { input ->
+					val image = checkNotNull(BitmapFactory.decodeStream(input))
+					try {
+						check(image.width == 2 && image.height == 2)
+					} finally {
+						image.recycle()
+					}
+				}
+			}
+		} finally {
+			localIndex.delete(oldManga.id)
+			archive.delete()
+		}
 		val revision = assets.open("global-validation/revision").bufferedReader().use { it.readText().trim() }
+		Log.i(TAG, "VORATOON_LEGACY_CBZ_OK revision=$revision")
 		return "VORATOON_ID_UPDATE_OK revision=$revision"
+	}
+
+	private suspend fun readVoraToonFixture(source: TsukiMangaSource, legacy: Boolean): Pair<
+		org.koitharu.kotatsu.parsers.model.Manga, org.koitharu.kotatsu.parsers.model.MangaChapter,
+	> {
+		fun flight(json: String) = "<html><script>self.__next_f.push(${JSONArray().put(1).put("0:$json\n")})</script></html>"
+		val series = "/series/fixture"
+		val pageUrl = "https://images.example.invalid/001.jpg"
+		val client = OkHttpClient.Builder().addInterceptor { chain ->
+			val request = chain.request()
+			val path = request.url.encodedPath
+			check(request.url.host == if (legacy) "v2.voratoon.com" else "voratoon.co")
+			val body = when (path) {
+				"/backend/series" -> """{"data":[{"data":{"slug":"fixture","title":"Fixture VoraToon"}}]}"""
+				"/backend$series" -> """{"data":{"data":{"title":"Fixture VoraToon"}}}"""
+				"/backend$series/chapters" -> """{"data":[{"data":{"index":1.5,"title":"Fractional"}}]}"""
+				"/browse" -> flight("""{"series":[{"data":{"slug":"fixture","title":"Fixture VoraToon"}}],"seriesMeta":{}}""")
+				series -> flight("""{"series":[{"data":{"title":"Fixture VoraToon"}}],"chapters":[{"chapterIndex":1.5,"data":{"title":"Fractional"}}]}""")
+				"$series/chapter/1.5" -> """<html><img data-chapter-page="$pageUrl"></html>"""
+				else -> error("Unexpected VoraToon fixture request: $path")
+			}
+			Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
+				.message("OK").body(body.toResponseBody((if (legacy) "application/json" else "text/html").toMediaType()))
+				.build()
+		}.build()
+		val runtime = TsukiPluginRuntime(applicationContext, plugins, client, CookieJar.NO_COOKIES, webViewExecutor)
+		val handle = runtime.getHandle(source)
+		val seed = handle.parser.getList(0, tsuki.model.SortOrder.POPULARITY, tsuki.model.MangaListFilter.EMPTY).single()
+		val manga = handle.parser.getDetails(seed)
+		val chapter = checkNotNull(manga.chapters).single()
+		check(manga.url == series && chapter.url == "$series/chapter/1.5")
+		if (!legacy) check(handle.parser.getPages(chapter).single().url == pageUrl)
+		return manga.toMiyorare(source) to chapter.toMiyorare(source)
 	}
 
 	private suspend fun verifyOfficialUpdater(packId: String = MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID) {
