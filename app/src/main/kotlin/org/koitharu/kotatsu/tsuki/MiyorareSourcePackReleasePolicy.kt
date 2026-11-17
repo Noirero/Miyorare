@@ -167,7 +167,7 @@ object MiyorareSourcePackReleasePolicy {
 
 		val packArray = root.requiredArray("packs")
 		val expectedPacks = MiyorareOfficialSourcePacks.packs
-			.map { if (it.pluginId == selectedPack?.pluginId) selectedPack else it }
+			.map { if (selectedPack != null && it.pluginId == selectedPack.pluginId) selectedPack else it }
 			.associateBy { it.pluginId }
 		val parsedPacks = LinkedHashMap<String, PackManifest>()
 		for (element in packArray) {
