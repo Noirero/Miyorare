@@ -50,7 +50,7 @@ internal class WestmangaParser(context: MangaLoaderContext) :
     override suspend fun getFavicons(): Favicons {
         return Favicons(
             listOf(
-                Favicon("https://$domain/favicon.ico", 48, null),
+                Favicon("https://cdn.jsdelivr.net/gh/keiyoushi/extensions-source@main/src/id/westmanga/res/mipmap-xhdpi/ic_launcher.png", 48, null),
             ),
             domain,
         )
