@@ -30,23 +30,9 @@ import java.util.EnumSet
  * keiyoushi/extensions-source (Apache-2.0); see ATTRIBUTION.md.
  */
 
-@MangaSourceParser("ASTRAL_SCANS", "Astral Scans", "id", ContentType.HENTAI)
-internal class AstralScans(context: MangaLoaderContext) :
-    MangaReaderParser(context, MangaParserSource.ASTRAL_SCANS, "astralscans.top", 20, 10)
-
 @MangaSourceParser("CROTPEDIA", "CrotPedia", "id", ContentType.HENTAI)
 internal class CrotPedia(context: MangaLoaderContext) :
     ZMangaParser(context, MangaParserSource.CROTPEDIA, "crotpedia.net")
-
-@MangaSourceParser("DAILYSUKA", "DailySuka", "id")
-internal class DailySuka(context: MangaLoaderContext) :
-    MangaReaderParser(context, MangaParserSource.DAILYSUKA, "dailysuka.com", 20, 10)
-
-@MangaSourceParser("KAGUYA", "Kaguya", "id", ContentType.HENTAI)
-internal class Kaguya(context: MangaLoaderContext) :
-    MadaraParser(context, MangaParserSource.KAGUYA, "02.kaguya.pro") {
-    override val withoutAjax = true
-}
 
 @MangaSourceParser("KUMAPOI", "KumaPoi", "id", ContentType.HENTAI)
 internal class KumaPoi(context: MangaLoaderContext) :
@@ -55,18 +41,6 @@ internal class KumaPoi(context: MangaLoaderContext) :
 @MangaSourceParser("KUMOPOI", "KumoPoi", "id", ContentType.HENTAI)
 internal class KumoPoi(context: MangaLoaderContext) :
     MangaReaderParser(context, MangaParserSource.KUMOPOI, "kumopoi.org", 20, 10)
-
-@MangaSourceParser("KURO_MANGA", "Kuro Manga", "id")
-internal class KuroManga(context: MangaLoaderContext) :
-    MangaReaderParser(context, MangaParserSource.KURO_MANGA, "kuromanga.id", 20, 10)
-
-@MangaSourceParser("MANGA_CAN", "Manga Can", "id")
-internal class MangaCan(context: MangaLoaderContext) :
-    MangaReaderParser(context, MangaParserSource.MANGA_CAN, "mangacanblog.com", 20, 10)
-
-@MangaSourceParser("MANGALAY", "Mangalay", "id")
-internal class Mangalay(context: MangaLoaderContext) :
-    ZeistMangaParser(context, MangaParserSource.MANGALAY, "mangalay.blogspot.com")
 
 @MangaSourceParser("PORNHWA18", "Pornhwa18", "id", ContentType.HENTAI)
 internal class Pornhwa18(context: MangaLoaderContext) :
@@ -78,37 +52,13 @@ internal class Pornhwa18(context: MangaLoaderContext) :
 internal class DreamTeamsScans(context: MangaLoaderContext) :
     MiyorareKeiyoushiHtmlParser(context, MangaParserSource.DREAMTEAMS_SCANS, "dreamteams.space", "comic")
 
-@MangaSourceParser("KOMIKNESIA", "KomikNesia", "id")
-internal class KomikNesia(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.KOMIKNESIA, "v1.komiknesiaku.com", "komik")
-
 @MangaSourceParser("KOMIK_NEXT_G_ONLINE", "Komik Next G Online", "id")
 internal class KomikNextGOnline(context: MangaLoaderContext) :
     MiyorareKeiyoushiHtmlParser(context, MangaParserSource.KOMIK_NEXT_G_ONLINE, "komiknextgonline.com", "manga")
 
-@MangaSourceParser("MANGAKURI", "Mangakuri", "id", ContentType.HENTAI)
-internal class Mangakuri(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.MANGAKURI, "lc2.mangakuri.online", "manga")
-
 @MangaSourceParser("NARASININJA", "NarasiNinja", "id")
 internal class NarasiNinja(context: MangaLoaderContext) :
     MiyorareKeiyoushiHtmlParser(context, MangaParserSource.NARASININJA, "narasininja.net", "manga")
-
-@MangaSourceParser("PRAMRAMADHAN", "Pramramadhan", "id")
-internal class Pramramadhan(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.PRAMRAMADHAN, "01.pramramadhan.my.id", "manga")
-
-@MangaSourceParser("RIZTRANSLATION", "Riztranslation", "id")
-internal class Riztranslation(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.RIZTRANSLATION, "riztranslation.pages.dev", "")
-
-@MangaSourceParser("ROSEVEIL", "Roseveil", "id")
-internal class Roseveil(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.ROSEVEIL, "roseveil.org", "manga")
-
-@MangaSourceParser("RYUKOMIK", "Ryukomik", "id", ContentType.HENTAI)
-internal class Ryukomik(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.RYUKOMIK, "ryukomik.my.id", "komik")
 
 @MangaSourceParser("SOFTKOMIK", "Softkomik", "id")
 internal class Softkomik(context: MangaLoaderContext) :
