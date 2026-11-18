@@ -34,14 +34,6 @@ import java.util.EnumSet
 internal class CrotPedia(context: MangaLoaderContext) :
     ZMangaParser(context, MangaParserSource.CROTPEDIA, "crotpedia.net")
 
-@MangaSourceParser("KUMAPOI", "KumaPoi", "id", ContentType.HENTAI)
-internal class KumaPoi(context: MangaLoaderContext) :
-    MangaReaderParser(context, MangaParserSource.KUMAPOI, "kumapoi.info", 20, 10)
-
-@MangaSourceParser("KUMOPOI", "KumoPoi", "id", ContentType.HENTAI)
-internal class KumoPoi(context: MangaLoaderContext) :
-    MangaReaderParser(context, MangaParserSource.KUMOPOI, "kumopoi.org", 20, 10)
-
 @MangaSourceParser("PORNHWA18", "Pornhwa18", "id", ContentType.HENTAI)
 internal class Pornhwa18(context: MangaLoaderContext) :
     MadaraParser(context, MangaParserSource.PORNHWA18, "pornhwa18.com") {
@@ -62,7 +54,7 @@ internal class NarasiNinja(context: MangaLoaderContext) :
 
 @MangaSourceParser("SOFTKOMIK", "Softkomik", "id")
 internal class Softkomik(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.SOFTKOMIK, "softkomik.co", "manga")
+    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.SOFTKOMIK, "softkomik.app", "manga")
 
 /**
  * Conservative compatibility parser for providers whose Keiyoushi implementation is custom rather
