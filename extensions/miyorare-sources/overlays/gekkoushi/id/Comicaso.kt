@@ -31,24 +31,29 @@ import java.util.TimeZone
  *
  * Replaces the upstream Gekkoushi parser, which subclasses the shared MangaReaderParser for
  * the old comicaso.xyz WordPress site. That domain is parked; the platform now lives as a web
- * app at v3.comicaso.pro backed by a JSON API at api.comicaso.pro (endpoints /home.php,
- * /manga.php, /chapter.php, /genres.php — note the API host serves them without an /api
- * prefix). The catalogue aggregates the platform's member sources (currently comicazen and
- * medusa), so every title is identified by its member source plus slug.
+ * app backed by a JSON API (endpoints /home.php, /manga.php, /chapter.php, /genres.php — note
+ * the API host serves them without an /api prefix). The default domain is the Indonesian
+ * mirror v3.mangacaso.web.id because the canonical v3.comicaso.pro host is unreachable from
+ * Indonesian networks (connection reset); the API host is derived from the configured domain
+ * the same way the platform's own web app derives it (api. + the domain's base). The catalogue
+ * aggregates the platform's member sources (currently comicazen and medusa), so every title is
+ * identified by its member source plus slug.
  *
- * The list and search endpoints are open. The detail and chapter endpoints are gated by the
- * platform's human verification: without a clearance cookie the API answers HTTP 428 with
- * {"need_challenge": true}. Once the user has passed that verification in the app's browser,
- * the shared cookie jar lets these calls through; until then this parser surfaces a clear
- * verification error instead of failing obscurely. API shapes verified against the live API
- * on 2026-11-18.
+ * The list and search endpoints are open. The detail and chapter endpoints are gated per
+ * member source: comicazen requires the platform's human verification (HTTP 428,
+ * {"need_challenge": true}) and medusa requires a Comicaso account login (HTTP 403,
+ * {"locked": true}). Once the user has signed in / passed the verification in the app's
+ * browser, the shared cookie jar lets these calls through; until then this parser surfaces a
+ * clear instruction error instead of failing obscurely. API shapes verified against the live
+ * mirror API on 2026-11-18.
  */
 @MangaSourceParser("COMICASO", "Comicaso", "id")
 internal class Comicaso(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.COMICASO, pageSize = 24) {
 
-	override val configKeyDomain = ConfigKey.Domain("v3.comicaso.pro")
-	private val apiUrl = "https://api.comicaso.pro"
+	override val configKeyDomain = ConfigKey.Domain("v3.mangacaso.web.id")
+	private val apiUrl: String
+		get() = "https://api." + domain.substringAfter('.')
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
 
@@ -249,10 +254,16 @@ internal class Comicaso(context: MangaLoaderContext) :
 			if (e.message?.contains("428") == true) {
 				throw verificationException(url)
 			}
+			if (e.message?.contains("403") == true) {
+				throw lockedException(url)
+			}
 			throw ParseException("Failed to load $url: ${e.message}", url, e)
 		}
 		if (json.optBoolean("need_challenge", false)) {
 			throw verificationException(url)
+		}
+		if (json.optBoolean("locked", false)) {
+			throw lockedException(url)
 		}
 		return json
 	}
@@ -260,6 +271,12 @@ internal class Comicaso(context: MangaLoaderContext) :
 	private fun verificationException(url: String) = ParseException(
 		"Comicaso asks for a one-time human verification before opening this content. " +
 			"Open the Comicaso site in the app's browser, complete the verification, then try again.",
+		url,
+	)
+
+	private fun lockedException(url: String) = ParseException(
+		"This title's collection is locked on Comicaso: it needs an account login. " +
+			"Open the Comicaso site in the app's browser, sign in, then try again.",
 		url,
 	)
 
