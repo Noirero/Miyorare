@@ -287,9 +287,11 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
     companion object {
 
         const val ARG_SOURCE = "provider"
+        const val ARG_DIAGNOSTIC = "diagnostic_test"
 
-        fun newInstance(source: MangaSource) = RemoteListFragment().withArgs(1) {
+        fun newInstance(source: MangaSource, diagnosticTest: Boolean = false) = RemoteListFragment().withArgs(2) {
             putString(ARG_SOURCE, source.name)
+            if (diagnosticTest) putBoolean(ARG_DIAGNOSTIC, true)
         }
     }
 }

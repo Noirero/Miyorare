@@ -54,6 +54,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
@@ -128,6 +129,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 					onPackEnabled = ::setPackEnabled,
 					onAllSourcesEnabled = ::setAllSourcesEnabled,
 					onSourceEnabled = ::setSourceEnabled,
+					onSourceTest = ::confirmTestSource,
 					onRemove = ::confirmRemove,
 				)
 			}
@@ -202,6 +204,37 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				withContext(Dispatchers.Main) { showError(error) }
 			}
 		}
+	}
+
+	/**
+	 * Offer a one-off diagnostic open for a source upstream marked broken. The source is not
+	 * enabled and nothing is persisted; the browse screen either loads (the broken verdict was
+	 * stale) or shows the network/parser error that proves the site is really gone.
+	 */
+	private fun confirmTestSource(row: MiyorareSourcePackRow) {
+		if (busy) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.tsuki_source_test_title)
+			.setMessage(
+				getString(
+					R.string.tsuki_source_test_message,
+					row.source.title.ifBlank { row.source.name },
+				),
+			)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.tsuki_source_test_action) { _, _ ->
+				if (busy) return@setPositiveButton
+				val identity = TsukiSourceIdentity(row.plugin.provider, row.plugin.pluginId, row.source.name)
+				val source = pluginManager.resolveDiagnosticSource(identity.storedName)
+				if (source == null) {
+					showError(IllegalStateException("Source ${row.source.name} is no longer available"))
+				} else {
+					startActivity(
+						AppRouter.listIntent(requireContext(), source, null, null, diagnosticTest = true),
+					)
+				}
+			}
+			.show()
 	}
 
 	private fun setSourceEnabled(row: MiyorareSourcePackRow, enabled: Boolean) {
@@ -335,6 +368,7 @@ private fun MiyorareSourcePackDetailScreen(
 	onPackEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
 	onAllSourcesEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
 	onSourceEnabled: (MiyorareSourcePackRow, Boolean) -> Unit,
+	onSourceTest: (MiyorareSourcePackRow) -> Unit,
 	onRemove: (MiyorarePackDetailModel) -> Unit,
 ) {
 	val context = LocalContext.current
@@ -605,6 +639,11 @@ private fun MiyorareSourcePackDetailScreen(
 					checked = checked,
 					enabled = enabled,
 					onCheckedChange = { onSourceEnabled(row, it) },
+					onRowClick = if (row.source.isBroken && row.plugin.state != TsukiPluginState.BROKEN) {
+						{ onSourceTest(row) }
+					} else {
+						null
+					},
 					source = source,
 					imageLoader = imageLoader,
 				)
@@ -639,6 +678,7 @@ private fun MiyorareSourceSwitchItem(
 	checked: Boolean,
 	enabled: Boolean,
 	onCheckedChange: (Boolean) -> Unit,
+	onRowClick: (() -> Unit)? = null,
 	source: TsukiSourceDescriptor,
 	imageLoader: ImageLoader,
 ) {
@@ -651,7 +691,9 @@ private fun MiyorareSourceSwitchItem(
 		Row(
 			modifier = Modifier
 				.heightIn(min = 64.dp)
-				.clickable(enabled = enabled) { onCheckedChange(!checked) }
+				.clickable(enabled = enabled || onRowClick != null) {
+					if (onRowClick != null) onRowClick() else onCheckedChange(!checked)
+				}
 				.padding(horizontal = 14.dp, vertical = 10.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {

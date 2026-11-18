@@ -126,6 +126,22 @@ class TsukiPluginManager @Inject constructor(
 		return TsukiMangaSource(plugin, source)
 	}
 
+	/**
+	 * Resolve a source for a one-off diagnostic test, including a source marked broken.
+	 *
+	 * Unlike [resolveSource], the broken flag does not reject the source here: the whole point
+	 * of the test is to let the user open a broken source once and see whether its site is
+	 * really gone or still works. The returned source carries
+	 * [TsukiMangaSource.diagnosticTest]; it is never added to enabled sets, catalogs or
+	 * persisted state, and the normal resolution paths keep rejecting the broken source.
+	 */
+	fun resolveDiagnosticSource(storedName: String): TsukiMangaSource? {
+		val identity = TsukiSourceIdentity.parse(storedName) ?: return null
+		val plugin = findPlugin(identity.provider, identity.pluginId)?.takeIf(::isUsablePlugin) ?: return null
+		val source = sourceIndexFor(plugin)[identity.sourceName] ?: return null
+		return TsukiMangaSource(plugin, source, diagnosticTest = true)
+	}
+
 	fun findPlugin(provider: TsukiPluginProvider, pluginId: String): TsukiPluginDescriptor? =
 		getPlugins().firstOrNull { it.provider == provider && it.pluginId == pluginId }
 
@@ -645,5 +661,9 @@ class TsukiPluginManager @Inject constructor(
 
 		/** Synchronous resolver used by DB mapping before a DI-aware repository exists. */
 		fun getByName(name: String): TsukiMangaSource? = activeInstance?.resolveSource(name)
+
+		/** Diagnostic counterpart of [getByName]; see [resolveDiagnosticSource]. */
+		fun getDiagnosticByName(name: String): TsukiMangaSource? =
+			activeInstance?.resolveDiagnosticSource(name)
 	}
 }
