@@ -20,6 +20,8 @@ import tsuki.model.MangaState
 import tsuki.model.MangaTag
 import tsuki.model.RATING_UNKNOWN
 import tsuki.model.SortOrder
+import tsuki.model.Favicon
+import tsuki.model.Favicons
 
 import tsuki.site.id.voratoon.FlightPage
 import tsuki.site.id.voratoon.NextJsData
@@ -54,6 +56,15 @@ import kotlin.time.Duration.Companion.milliseconds
 @MangaSourceParser("VORATOON", "VoraToon", "id")
 internal class VoraToon(context: MangaLoaderContext) :
     PagedMangaParser(context, MangaParserSource.VORATOON, 30) {
+    override suspend fun getFavicons(): Favicons {
+        return Favicons(
+            listOf(
+                Favicon("https://cdn.jsdelivr.net/gh/keiyoushi/extensions-source@main/src/id/voratoon/res/mipmap-xhdpi/ic_launcher.png", 96, null),
+            ),
+            domain,
+        )
+    }
+
 
     override val configKeyDomain = ConfigKey.Domain("voratoon.co")
 
