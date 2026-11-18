@@ -49,8 +49,8 @@ internal class Shinigami(context: MangaLoaderContext) :
     }
 
 
-    override val configKeyDomain = ConfigKey.Domain("g.shinigami.asia")
-    private val apiSuffix = "api.shngm.io/v1"
+    override val configKeyDomain = ConfigKey.Domain("s1.shinigami.mx")
+    private val apiSuffix = "api.shinigami.io/v1"
 
     override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
         super.onCreateConfig(keys)
@@ -107,8 +107,8 @@ internal class Shinigami(context: MangaLoaderContext) :
             append("https://")
             append(apiSuffix)
             append("/manga/list")
-            append("?page=").append(page)
-            append("&page_size=").append(pageSize)
+            append("?limit=").append(pageSize)
+            append("&offset=").append((page - 1) * pageSize)
 
             append("&sort=")
             append(
@@ -245,26 +245,42 @@ internal class Shinigami(context: MangaLoaderContext) :
     }
 
     private suspend fun getChapters(mangaId: String): List<MangaChapter> {
-        val url = "https://$apiSuffix/chapter/$mangaId/list?page_size=3000"
-        val json = webClient.httpGet(url, getApiHeaders()).parseJson()
-        val data = json.getJSONArray("data")
+        val chapters = ArrayList<MangaChapter>()
+        var cursor: String? = null
+        do {
+            val url = buildString {
+                append("https://$apiSuffix/chapter/$mangaId/list?sort_order=desc&limit=2000")
+                cursor?.let { append("&cursor=").append(it.urlEncoded()) }
+            }
+            val json = webClient.httpGet(url, getApiHeaders()).parseJson()
+            val data = json.getJSONArray("data")
 
-        return data.mapJSON { jo ->
-            val chapterId = jo.getString("chapter_id")
-            val number = jo.getDouble("chapter_number")
+            chapters += data.mapJSON { jo ->
+                val chapterId = jo.getString("chapter_id")
+                val number = jo.getDouble("chapter_number")
 
-            MangaChapter(
-                id = generateUid(chapterId),
-                title = "Chapter ${number.toFloat().toString().removeSuffix(".0")}",
-                number = number.toFloat(),
-                url = "/chapter/detail/$chapterId",
-                scanlator = null,
-                uploadDate = jo.getString("release_date").parseDate(),
-                branch = null,
-                source = source,
-                volume = 0,
-            )
-        }.reversed()
+                MangaChapter(
+                    id = generateUid(chapterId),
+                    title = "Chapter ${number.toFloat().toString().removeSuffix(".0")}",
+                    number = number.toFloat(),
+                    url = "/chapter/detail/$chapterId",
+                    scanlator = null,
+                    uploadDate = jo.getString("release_date").parseDate(),
+                    branch = null,
+                    source = source,
+                    volume = 0,
+                )
+            }
+
+            val meta = json.optJSONObject("meta")
+            cursor = if (meta?.optBoolean("has_next", false) == true) {
+                meta.getStringOrNull("next_cursor")
+            } else {
+                null
+            }
+        } while (cursor != null)
+
+        return chapters.reversed()
     }
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
@@ -289,7 +305,7 @@ internal class Shinigami(context: MangaLoaderContext) :
     }
 
     private suspend fun fetchTags(): Set<MangaTag> {
-        val json = webClient.httpGet("https://$apiSuffix/genre/list", getApiHeaders()).parseJson()
+        val json = webClient.httpGet("https://$apiSuffix/taxonomy/list?type=genre&limit=100", getApiHeaders()).parseJson()
         return json.getJSONArray("data").mapJSONToSet {
             MangaTag(
                 key = it.getString("slug"),
