@@ -58,6 +58,8 @@ import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.FilterHeaderFragment
 import org.koitharu.kotatsu.mihon.MihonFilterMapper
 import org.koitharu.kotatsu.list.ui.preview.PreviewFragment
+import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.local.ui.LocalListFragment
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -99,6 +101,10 @@ class MangaListActivity :
 	private val isShelfSession: Boolean
 		get() = intent.getBooleanExtra(SourceOverviewActivity.EXTRA_TRANSIENT_SORT, false)
 
+	/** One-off diagnostic open of a broken Tsuki source; see AppRouter.KEY_DIAGNOSTIC_TEST. */
+	private val isDiagnosticTest: Boolean
+		get() = intent.getBooleanExtra(AppRouter.KEY_DIAGNOSTIC_TEST, false)
+
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityMangaListBinding.inflate(layoutInflater))
@@ -111,7 +117,15 @@ class MangaListActivity :
 			findFilterOwner()?.filterCoordinator?.let { restoreShelfSession(it, restoredShelf) }
 		}
 		// Refresh the wrapper by exact source ID without redirecting to a sibling language.
-		val resolved = sourcesRepository.resolveActiveSource(MangaSource(intent.getStringExtra(AppRouter.KEY_SOURCE)))
+		// A diagnostic open resolves its Tsuki source with the broken gate lifted instead.
+		val diagnosticSource = if (isDiagnosticTest) {
+			intent.getStringExtra(AppRouter.KEY_SOURCE)?.let { TsukiPluginManager.getDiagnosticByName(it) }
+		} else {
+			null
+		}
+		val resolved = sourcesRepository.resolveActiveSource(
+			diagnosticSource ?: MangaSource(intent.getStringExtra(AppRouter.KEY_SOURCE)),
+		)
 		source = resolved.source
 		activeLanguageName = resolved.languageSubtitle
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
@@ -282,7 +296,10 @@ class MangaListActivity :
 		val shelf = if (isShelfSession) findFilterOwner()?.filterCoordinator?.snapshot() else null
 		supportFragmentManager.commit {
 			setReorderingAllowed(true)
-			val fragment = RemoteListFragment.newInstance(newSource)
+			val fragment = RemoteListFragment.newInstance(
+				newSource,
+				(newSource as? TsukiMangaSource)?.diagnosticTest == true,
+			)
 			replace(R.id.container, fragment)
 			if (shelf != null) runOnCommit { restoreShelfSession(fragment.filterCoordinator, shelf) }
 			// The filter header/side capture their FilterCoordinator at creation, so recreate them
@@ -357,7 +374,10 @@ class MangaListActivity :
 				val fragment = if (source == LocalMangaSource) {
 					LocalListFragment()
 				} else {
-					RemoteListFragment.newInstance(source)
+					RemoteListFragment.newInstance(
+						source,
+						(source as? TsukiMangaSource)?.diagnosticTest == true,
+					)
 				}
 				replace(R.id.container, fragment)
 				runOnCommit { initFilter(fragment) }
