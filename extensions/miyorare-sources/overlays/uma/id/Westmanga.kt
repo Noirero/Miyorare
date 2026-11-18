@@ -45,7 +45,7 @@ internal class WestmangaParser(context: MangaLoaderContext) :
     override val configKeyDomain = ConfigKey.Domain("westmanga.site")
 
     private val apiDomain: String
-        get() = "v1.westmanga.top"
+        get() = "v1.westmanga.my"
 
     override suspend fun getFavicons(): Favicons {
         return Favicons(
