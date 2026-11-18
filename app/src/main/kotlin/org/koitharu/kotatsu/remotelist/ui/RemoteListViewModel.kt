@@ -67,7 +67,7 @@ open class RemoteListViewModel @Inject constructor(
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), FilterCoordinator.Owner {
 
-	val source: MangaSource = if (savedStateHandle.get<Boolean>(RemoteListFragment.ARG_DIAGNOSTIC) == true) {
+	val source = if (savedStateHandle.get<Boolean>(RemoteListFragment.ARG_DIAGNOSTIC) == true) {
 		// One-off diagnostic open of a broken Tsuki source: resolve it with the broken gate
 		// lifted for this screen only. Any other name keeps the normal resolution.
 		savedStateHandle.get<String>(RemoteListFragment.ARG_SOURCE)
