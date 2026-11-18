@@ -1509,4 +1509,16 @@
     <string name="downloads_remove_count_with_files">Groups removed with files: %1$d</string>
     <string name="downloads_remove_skipped_active">Active groups kept: %1$d</string>
     <string name="downloads_remove_skipped_unavailable">Other unavailable groups kept: %1$d</string>
+    <string name="font_title">App font</string>
+    <string name="font_settings_summary">Download font packs and use one across the app</string>
+    <string name="font_section_in_use">Font in use</string>
+    <string name="font_section_catalog">Catalog</string>
+    <string name="font_builtin_title">Built-in font</string>
+    <string name="font_builtin_summary">Bundled with the app</string>
+    <string name="font_installed">Installed</string>
+    <string name="font_delete">Delete font pack</string>
+    <string name="font_download_size">Download \u00b7 %1$s</string>
+    <string name="font_catalog_loading">Loading the catalog\u2026</string>
+    <string name="font_catalog_empty">The catalog is empty.</string>
+    <string name="font_retry">Retry</string>
 </resources>
