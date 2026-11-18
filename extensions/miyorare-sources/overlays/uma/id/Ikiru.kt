@@ -1,1 +1,255 @@
-cGFja2FnZSB0c3VraS5zaXRlLmlkCgppbXBvcnQgdHN1a2kuTWFuZ2FMb2FkZXJDb250ZXh0CmltcG9ydCB0c3VraS5NYW5nYVNvdXJjZVBhcnNlcgppbXBvcnQgdHN1a2kuY29uZmlnLkNvbmZpZ0tleQppbXBvcnQgdHN1a2kuY29yZS5QYWdlZE1hbmdhUGFyc2VyCmltcG9ydCB0c3VraS5tb2RlbC5NYW5nYQppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FDaGFwdGVyCmltcG9ydCB0c3VraS5tb2RlbC5NYW5nYUxpc3RGaWx0ZXIKaW1wb3J0IHRzdWtpLm1vZGVsLk1hbmdhTGlzdEZpbHRlckNhcGFiaWxpdGllcwppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FMaXN0RmlsdGVyT3B0aW9ucwppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FQYWdlCmltcG9ydCB0c3VraS5tb2RlbC5NYW5nYVBhcnNlclNvdXJjZQppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FUYWcKaW1wb3J0IHRzdWtpLm1vZGVsLlJBVElOR19VTktOT1dOCmltcG9ydCB0c3VraS5tb2RlbC5Tb3J0T3JkZXIKaW1wb3J0IHRzdWtpLm5ldHdvcmsuVXNlckFnZW50cwppbXBvcnQgdHN1a2kudXRpbC5nZW5lcmF0ZVVpZAppbXBvcnQgdHN1a2kudXRpbC5qc29uLmdldFN0cmluZ09yTnVsbAppbXBvcnQgdHN1a2kudXRpbC5qc29uLm1hcEpTT04KaW1wb3J0IHRzdWtpLnV0aWwucGFyc2VIdG1sCmltcG9ydCB0c3VraS51dGlsLnBhcnNlSnNvbgppbXBvcnQgdHN1a2kudXRpbC50b0Fic29sdXRlVXJsCmltcG9ydCBva2h0dHAzLkh0dHBVcmwuQ29tcGFuaW9uLnRvSHR0cFVybAppbXBvcnQgb3JnLmpzb3VwLm5vZGVzLkRvY3VtZW50CmltcG9ydCBqYXZhLnRpbWUuSW5zdGFudAppbXBvcnQgamF2YS51dGlsLkVudW1TZXQKCi8qKgogKiBGaXJzdC1wYXJ0eSByZXBsYWNlbWVudCBmb3IgdGhlIFVNQSBJa2lydSBwYXJzZXIuCiAqCiAqIFRoZSBzaXRlIHdhcyByZWJ1aWx0IGFzIGEgTnV4dCBhcHBsaWNhdGlvbiBhbmQgdGhlIFdvcmRQcmVzcyBSRVNUIEFQSSB0aGUgb2xkCiAqIE5hdHN1UGFyc2VyIHJlbGllZCBvbiBubyBsb25nZXIgZXhpc3RzLiBUaGlzIHBhcnNlciB1c2VzIHRoZSBzaXRlJ3MgcHVibGljCiAqIEpTT04gQVBJIHdoZXJlIG9uZSBleGlzdHMgKGxhdGVzdCB1cGRhdGVzLCBxdWljayBzZWFyY2gsIGNoYXB0ZXIgbGlzdCkgYW5kCiAqIHNjcmFwZXMgdGhlIHNlcnZlci1yZW5kZXJlZCBIVE1MIGZvciBkZXRhaWxzLCBnZW5yZXMgYW5kIGNoYXB0ZXIgcGFnZXMuCiAqIFRoZSBtaXJyb3Igc3ViZG9tYWluIHJvdGF0ZXMgKDA3IC0+IDExIGF0IHRoZSB0aW1lIG9mIHdyaXRpbmcpLCBzbyB0aGUgZG9tYWluCiAqIHN0YXlzIHVzZXItY29uZmlndXJhYmxlIHRocm91Z2ggW2NvbmZpZ0tleURvbWFpbl0uCiAqLwpATWFuZ2FTb3VyY2VQYXJzZXIoIklLSVJVIiwgIklraXJ1IiwgImlkIikKaW50ZXJuYWwgY2xhc3MgSWtpcnUoY29udGV4dDogTWFuZ2FMb2FkZXJDb250ZXh0KSA6CglQYWdlZE1hbmdhUGFyc2VyKGNvbnRleHQsIE1hbmdhUGFyc2VyU291cmNlLklLSVJVLCBQQUdFX1NJWkUpIHsKCglvdmVycmlkZSB2YWwgY29uZmlnS2V5RG9tYWluID0gQ29uZmlnS2V5LkRvbWFpbigiMTEuaWtpcnUud3RmIikKCgkvLyBpa2lydS53dGYgc2l0cyBiZWhpbmQgQ2xvdWRmbGFyZSwgd2hpY2ggYW5zd2VycyA0MDMgZm9yIHRoZSBkZWZhdWx0CgkvLyAoT2tIdHRwKSB1c2VyIGFnZW50IG9uIEhUTUwgcGFnZXM7IHRoZSBKU09OIEFQSSBpcyBub3QgZmlsdGVyZWQgdGhhdAoJLy8gd2F5LiBBIGJyb3dzZXIgdXNlciBhZ2VudCBpcyByZXF1aXJlZCBmb3IgZGV0YWlsIGFuZCBjaGFwdGVyIHBhZ2VzLAoJLy8gb3RoZXJ3aXNlIGdldFBhZ2VzIGZpbmRzIG5vIGltYWdlcyBhbmQgdGhlIHJlYWRlciBmYWlscyB0byBvcGVuLgoJb3ZlcnJpZGUgdmFsIHVzZXJBZ2VudEtleSA9IENvbmZpZ0tleS5Vc2VyQWdlbnQoVXNlckFnZW50cy5LT1RBVFNVKQoKCW92ZXJyaWRlIGZ1biBvbkNyZWF0ZUNvbmZpZyhrZXlzOiBNdXRhYmxlQ29sbGVjdGlvbjxDb25maWdLZXk8Kj4+KSB7CgkJc3VwZXIub25DcmVhdGVDb25maWcoa2V5cykKCQlrZXlzLmFkZCh1c2VyQWdlbnRLZXkpCgl9CgoJb3ZlcnJpZGUgdmFsIGF2YWlsYWJsZVNvcnRPcmRlcnM6IFNldDxTb3J0T3JkZXI+ID0gRW51bVNldC5vZihTb3J0T3JkZXIuVVBEQVRFRCkKCglvdmVycmlkZSB2YWwgZmlsdGVyQ2FwYWJpbGl0aWVzOiBNYW5nYUxpc3RGaWx0ZXJDYXBhYmlsaXRpZXMKCQlnZXQoKSA9IE1hbmdhTGlzdEZpbHRlckNhcGFiaWxpdGllcygKCQkJaXNNdWx0aXBsZVRhZ3NTdXBwb3J0ZWQgPSBmYWxzZSwKCQkJaXNTZWFyY2hTdXBwb3J0ZWQgPSB0cnVlLAoJCQlpc1NlYXJjaFdpdGhGaWx0ZXJzU3VwcG9ydGVkID0gZmFsc2UsCgkJKQoKCW92ZXJyaWRlIHN1c3BlbmQgZnVuIGdldEZpbHRlck9wdGlvbnMoKSA9IE1hbmdhTGlzdEZpbHRlck9wdGlvbnMoCgkJYXZhaWxhYmxlVGFncyA9IGZldGNoR2VucmVzKCksCgkpCgoJb3ZlcnJpZGUgc3VzcGVuZCBmdW4gZ2V0TGlzdFBhZ2UoCgkJcGFnZTogSW50LAoJCW9yZGVyOiBTb3J0T3JkZXIsCgkJZmlsdGVyOiBNYW5nYUxpc3RGaWx0ZXIsCgkpOiBMaXN0PE1hbmdhPiB7CgkJdmFsIHF1ZXJ5ID0gZmlsdGVyLnF1ZXJ5Py50YWtlSWYgeyBpdC5pc05vdEJsYW5rKCkgfQoJCWlmIChxdWVyeSAhPSBudWxsKSB7CgkJCWlmIChwYWdlID4gMSkgcmV0dXJuIGVtcHR5TGlzdCgpCgkJCXJldHVybiBzZWFyY2gocXVlcnkpCgkJfQoJCXZhbCB0YWcgPSBmaWx0ZXIudGFncy5zaW5nbGVPck51bGwoKQoJCWlmICh0YWcgIT0gbnVsbCkgewoJCQlpZiAocGFnZSA+IDEpIHJldHVybiBlbXB0eUxpc3QoKQoJCQl2YWwgZG9jID0gd2ViQ2xpZW50Lmh0dHBHZXQoImh0dHBzOi8vJGRvbWFpbi9nZW5yZS8ke3RhZy5rZXl9IikucGFyc2VIdG1sKCkKCQkJcmV0dXJuIHBhcnNlQ2FyZHMoZG9jKQoJCX0KCQl2YWwgdXJsID0gImh0dHBzOi8vJGRvbWFpbi9hcGkvcHVibGljL21hbmdhL3VwZGF0ZWQiLnRvSHR0cFVybCgpLm5ld0J1aWxkZXIoKQoJCQkuYWRkUXVlcnlQYXJhbWV0ZXIoInBhZ2UiLCBwYWdlLnRvU3RyaW5nKCkpCgkJCS5idWlsZCgpCgkJdmFsIGRhdGEgPSB3ZWJDbGllbnQuaHR0cEdldCh1cmwpLnBhcnNlSnNvbigpLm9wdEpTT05BcnJheSgiZGF0YSIpID86IHJldHVybiBlbXB0eUxpc3QoKQoJCXJldHVybiBkYXRhLm1hcEpTT04geyBqbyAtPgoJCQl2YWwgc2x1ZyA9IGpvLmdldFN0cmluZygic2x1ZyIpCgkJCU1hbmdhKAoJCQkJaWQgPSBnZW5lcmF0ZVVpZChzbHVnKSwKCQkJCXRpdGxlID0gam8uZ2V0U3RyaW5nKCJ0aXRsZSIpLAoJCQkJYWx0VGl0bGVzID0gZW1wdHlTZXQoKSwKCQkJCXVybCA9ICIvbWFuZ2EvJHNsdWcvIiwKCQkJCXB1YmxpY1VybCA9ICJodHRwczovLyRkb21haW4vbWFuZ2EvJHNsdWciLAoJCQkJcmF0aW5nID0gam8ub3B0SlNPTk9iamVjdCgibWV0YWRhdGEiKQoJCQkJCT8ub3B0RG91YmxlKCJzY29yZSIsIDAuMCkKCQkJCQk/LnRha2VJZiB7IGl0ID4gMCB9CgkJCQkJPy5sZXQgeyAoaXQgLyAxMC4wKS50b0Zsb2F0KCkgfQoJCQkJCT86IFJBVElOR19VTktOT1dOLAoJCQkJY29udGVudFJhdGluZyA9IG51bGwsCgkJCQljb3ZlclVybCA9IGpvLmdldFN0cmluZ09yTnVsbCgiZmVhdHVyZWRJbWFnZSIpLAoJCQkJdGFncyA9IGVtcHR5U2V0KCksCgkJCQlzdGF0ZSA9IG51bGwsCgkJCQlhdXRob3JzID0gZW1wdHlTZXQoKSwKCQkJCXNvdXJjZSA9IHNvdXJjZSwKCQkJKQoJCX0KCX0KCglwcml2YXRlIHN1c3BlbmQgZnVuIHNlYXJjaChxdWVyeTogU3RyaW5nKTogTGlzdDxNYW5nYT4gewoJCXZhbCB1cmwgPSAiaHR0cHM6Ly8kZG9tYWluL2FwaS9wdWJsaWMvcXVpY2stc2VhcmNoIi50b0h0dHBVcmwoKS5uZXdCdWlsZGVyKCkKCQkJLmFkZFF1ZXJ5UGFyYW1ldGVyKCJxdWVyeSIsIHF1ZXJ5KQoJCQkuYnVpbGQoKQoJCXZhbCBkYXRhID0gd2ViQ2xpZW50Lmh0dHBHZXQodXJsKS5wYXJzZUpzb24oKS5vcHRKU09OQXJyYXkoImRhdGEiKSA/OiByZXR1cm4gZW1wdHlMaXN0KCkKCQlyZXR1cm4gZGF0YS5tYXBKU09OIHsgam8gLT4KCQkJdmFsIHNsdWcgPSBqby5nZXRTdHJpbmcoInNsdWciKQoJCQlNYW5nYSgKCQkJCWlkID0gZ2VuZXJhdGVVaWQoc2x1ZyksCgkJCQl0aXRsZSA9IGpvLmdldFN0cmluZygidGl0bGUiKSwKCQkJCWFsdFRpdGxlcyA9IGVtcHR5U2V0KCksCgkJCQl1cmwgPSAiL21hbmdhLyRzbHVnLyIsCgkJCQlwdWJsaWNVcmwgPSAiaHR0cHM6Ly8kZG9tYWluL21hbmdhLyRzbHVnIiwKCQkJCXJhdGluZyA9IGpvLm9wdEpTT05PYmplY3QoIm1ldGFkYXRhIikKCQkJCQk/Lm9wdERvdWJsZSgic2NvcmUiLCAwLjApCgkJCQkJPy50YWtlSWYgeyBpdCA+IDAgfQoJCQkJCT8ubGV0IHsgKGl0IC8gMTAuMCkudG9GbG9hdCgpIH0KCQkJCQk/OiBSQVRJTkdfVU5LTk9XTiwKCQkJCWNvbnRlbnRSYXRpbmcgPSBudWxsLAoJCQkJY292ZXJVcmwgPSBqby5nZXRTdHJpbmdPck51bGwoImZlYXR1cmVkSW1hZ2UiKSwKCQkJCXRhZ3MgPSBlbXB0eVNldCgpLAoJCQkJc3RhdGUgPSBudWxsLAoJCQkJYXV0aG9ycyA9IGVtcHR5U2V0KCksCgkJCQlzb3VyY2UgPSBzb3VyY2UsCgkJCSkKCQl9Cgl9CgoJcHJpdmF0ZSBmdW4gcGFyc2VDYXJkcyhkb2M6IERvY3VtZW50KTogTGlzdDxNYW5nYT4gewoJCXJldHVybiBkb2Muc2VsZWN0KCJhLmNhcmQtbGluayIpLm1hcE5vdE51bGwgeyBjYXJkIC0+CgkJCXZhbCBocmVmID0gY2FyZC5hdHRyKCJocmVmIikKCQkJdmFsIHNsdWcgPSBocmVmLnJlbW92ZVByZWZpeCgiL21hbmdhLyIpLnRyaW0oJy8nKQoJCQlpZiAoc2x1Zy5pc0VtcHR5KCkgfHwgc2x1Zy5jb250YWlucygnLycpKSByZXR1cm5AbWFwTm90TnVsbCBudWxsCgkJCXZhbCBpbWcgPSBjYXJkLnNlbGVjdEZpcnN0KCJpbWcuY292ZXItaW1nIikKCQkJdmFsIHRpdGxlID0gY2FyZC5zZWxlY3RGaXJzdCgiLmN0aXRsZSIpPy50ZXh0KCk/LnRyaW0oKQoJCQkJPzogaW1nPy5hdHRyKCJhbHQiKT8udHJpbSgpCgkJCQk/OiBjYXJkLmF0dHIoImFyaWEtbGFiZWwiKS50cmltKCkKCQkJaWYgKHRpdGxlLmlzRW1wdHkoKSkgcmV0dXJuQG1hcE5vdE51bGwgbnVsbAoJCQlNYW5nYSgKCQkJCWlkID0gZ2VuZXJhdGVVaWQoc2x1ZyksCgkJCQl0aXRsZSA9IHRpdGxlLAoJCQkJYWx0VGl0bGVzID0gZW1wdHlTZXQoKSwKCQkJCXVybCA9ICIvbWFuZ2EvJHNsdWcvIiwKCQkJCXB1YmxpY1VybCA9ICJodHRwczovLyRkb21haW4vbWFuZ2EvJHNsdWciLAoJCQkJcmF0aW5nID0gUkFUSU5HX1VOS05PV04sCgkJCQljb250ZW50UmF0aW5nID0gbnVsbCwKCQkJCWNvdmVyVXJsID0gaW1nPy5hdHRyKCJzcmMiKT8udGFrZUlmIHsgaXQuaXNOb3RCbGFuaygpIH0sCgkJCQl0YWdzID0gZW1wdHlTZXQoKSwKCQkJCXN0YXRlID0gbnVsbCwKCQkJCWF1dGhvcnMgPSBlbXB0eVNldCgpLAoJCQkJc291cmNlID0gc291cmNlLAoJCQkpCgkJfQoJfQoKCW92ZXJyaWRlIHN1c3BlbmQgZnVuIGdldERldGFpbHMobWFuZ2E6IE1hbmdhKTogTWFuZ2EgewoJCXZhbCBzbHVnID0gbWFuZ2EudXJsLnJlbW92ZVByZWZpeCgiL21hbmdhLyIpLnRyaW0oJy8nKQoJCXZhbCBkb2MgPSB3ZWJDbGllbnQuaHR0cEdldCgiaHR0cHM6Ly8kZG9tYWluL21hbmdhLyRzbHVnIikucGFyc2VIdG1sKCkKCQl2YWwgdGl0bGUgPSBkb2Muc2VsZWN0Rmlyc3QoImgxIik/LnRleHQoKT8udHJpbSgpLm9yRW1wdHkoKQoJCXZhbCBjb3ZlciA9IGRvYy5zZWxlY3RGaXJzdCgiaW1nW3NyYyo9J2Nkbi5pa2lydS5pZC9mZWF0dXJlZC8nXSIpPy5hdHRyKCJzcmMiKQoJCXZhbCBkZXNjcmlwdGlvbiA9IGRvYy5zZWxlY3RGaXJzdCgiZGl2LnN5bm9wc2lzIikKCQkJPy5zZWxlY3QoInAiKQoJCQk/Lm1hcCB7IGl0LnRleHQoKS50cmltKCkgfQoJCQk/LmZpbHRlciB7IGl0LmlzTm90RW1wdHkoKSB9CgkJCT8uam9pblRvU3RyaW5nKCJcblxuIikKCQkJPy50YWtlSWYgeyBpdC5pc05vdEVtcHR5KCkgfQoJCXZhbCB0YWdzID0gZG9jLnNlbGVjdCgiZGl2LmdlbnJlLXBpbGxzIGFbaHJlZl49Jy9nZW5yZS8nXSwgYS5ncC1saW5rW2hyZWZePScvZ2VucmUvJ10iKQoJCQkubWFwTm90TnVsbCB7IGEgLT4KCQkJCXZhbCBrZXkgPSBhLmF0dHIoImhyZWYiKS5yZW1vdmVQcmVmaXgoIi9nZW5yZS8iKS50cmltKCcvJykKCQkJCXZhbCBuYW1lID0gYS50ZXh0KCkudHJpbSgpCgkJCQlpZiAoa2V5LmlzRW1wdHkoKSB8fCBuYW1lLmlzRW1wdHkoKSkgbnVsbCBlbHNlIE1hbmdhVGFnKG5hbWUsIGtleSwgc291cmNlKQoJCQl9LnRvU2V0KCkKCQlyZXR1cm4gbWFuZ2EuY29weSgKCQkJdGl0bGUgPSB0aXRsZS5pZkVtcHR5IHsgbWFuZ2EudGl0bGUgfSwKCQkJY292ZXJVcmwgPSBjb3ZlciA/OiBtYW5nYS5jb3ZlclVybCwKCQkJZGVzY3JpcHRpb24gPSBkZXNjcmlwdGlvbiwKCQkJdGFncyA9IHRhZ3MsCgkJCWNoYXB0ZXJzID0gZmV0Y2hDaGFwdGVycyhzbHVnKSwKCQkpCgl9CgoJcHJpdmF0ZSBzdXNwZW5kIGZ1biBmZXRjaENoYXB0ZXJzKHNsdWc6IFN0cmluZyk6IExpc3Q8TWFuZ2FDaGFwdGVyPiB7CgkJdmFsIHVybCA9ICJodHRwczovLyRkb21haW4vYXBpL3B1YmxpYy9tYW5nYS8kc2x1Zy9jaGFwdGVyIi50b0h0dHBVcmwoKS5uZXdCdWlsZGVyKCkKCQkJLmFkZFF1ZXJ5UGFyYW1ldGVyKCJhbGwiLCAidHJ1ZSIpCgkJCS5idWlsZCgpCgkJdmFsIGRhdGEgPSB3ZWJDbGllbnQuaHR0cEdldCh1cmwpLnBhcnNlSnNvbigpLm9wdEpTT05PYmplY3QoImRhdGEiKSA/OiByZXR1cm4gZW1wdHlMaXN0KCkKCQl2YWwgYXJyYXkgPSBkYXRhLm9wdEpTT05BcnJheSgiY2hhcHRlcnMiKSA/OiByZXR1cm4gZW1wdHlMaXN0KCkKCQlyZXR1cm4gYXJyYXkubWFwSlNPTiB7IGpvIC0+CgkJCXZhbCBudW1iZXIgPSBqby5vcHREb3VibGUoIm51bWJlciIsIDAuMCkKCQkJdmFsIG51bWJlclRleHQgPSBpZiAobnVtYmVyICUgMS4wID09IDAuMCkgbnVtYmVyLnRvSW50KCkudG9TdHJpbmcoKSBlbHNlIG51bWJlci50b1N0cmluZygpCgkJCU1hbmdhQ2hhcHRlcigKCQkJCWlkID0gZ2VuZXJhdGVVaWQoIiRzbHVnL2NoYXB0ZXItJG51bWJlclRleHQiKSwKCQkJCXRpdGxlID0gIkNoYXB0ZXIgJG51bWJlclRleHQiLAoJCQkJbnVtYmVyID0gbnVtYmVyLnRvRmxvYXQoKSwKCQkJCXZvbHVtZSA9IDAsCgkJCQl1cmwgPSAiL21hbmdhLyRzbHVnL2NoYXB0ZXItJG51bWJlclRleHQiLAoJCQkJdXBsb2FkRGF0ZSA9IGpvLmdldFN0cmluZ09yTnVsbCgiY3JlYXRlZEF0IikKCQkJCQk/LmxldCB7IHJ1bkNhdGNoaW5nIHsgSW5zdGFudC5wYXJzZShpdCkudG9FcG9jaE1pbGxpKCkgfS5nZXRPck51bGwoKSB9CgkJCQkJPzogMEwsCgkJCQlzb3VyY2UgPSBzb3VyY2UsCgkJCQlzY2FubGF0b3IgPSBudWxsLAoJCQkJYnJhbmNoID0gbnVsbCwKCQkJKQoJCX0ucmV2ZXJzZWQoKQoJfQoKCW92ZXJyaWRlIHN1c3BlbmQgZnVuIGdldFBhZ2VzKGNoYXB0ZXI6IE1hbmdhQ2hhcHRlcik6IExpc3Q8TWFuZ2FQYWdlPiB7CgkJdmFsIGRvYyA9IHdlYkNsaWVudC5odHRwR2V0KGNoYXB0ZXIudXJsLnRvQWJzb2x1dGVVcmwoZG9tYWluKSkucGFyc2VIdG1sKCkKCQl2YWwgc2VlbiA9IExpbmtlZEhhc2hTZXQ8U3RyaW5nPigpCgkJZm9yIChpbWcgaW4gZG9jLnNlbGVjdCgiaW1nIikpIHsKCQkJdmFsIHNyYyA9IGltZy5hdHRyKCJzcmMiKS5pZkJsYW5rIHsgaW1nLmF0dHIoImRhdGEtc3JjIikgfQoJCQlpZiAoc3JjLmNvbnRhaW5zKCJjZG4uaWtpcnUuaWQvdC8iKSkgewoJCQkJc2Vlbi5hZGQoc3JjLnJlcGxhY2UoIiZhbXA7IiwgIiYiKSkKCQkJfQoJCX0KCQlyZXR1cm4gc2Vlbi5tYXAgeyB1cmwgLT4KCQkJTWFuZ2FQYWdlKAoJCQkJaWQgPSBnZW5lcmF0ZVVpZCh1cmwpLAoJCQkJdXJsID0gdXJsLAoJCQkJcHJldmlldyA9IG51bGwsCgkJCQlzb3VyY2UgPSBzb3VyY2UsCgkJCSkKCQl9Cgl9CgoJcHJpdmF0ZSBzdXNwZW5kIGZ1biBmZXRjaEdlbnJlcygpOiBTZXQ8TWFuZ2FUYWc+IHsKCQl2YWwgZG9jID0gd2ViQ2xpZW50Lmh0dHBHZXQoImh0dHBzOi8vJGRvbWFpbi8iKS5wYXJzZUh0bWwoKQoJCXJldHVybiBkb2Muc2VsZWN0KCJhW2hyZWZePScvZ2VucmUvJ10iKS5tYXBOb3ROdWxsIHsgYSAtPgoJCQl2YWwga2V5ID0gYS5hdHRyKCJocmVmIikucmVtb3ZlUHJlZml4KCIvZ2VucmUvIikudHJpbSgnLycpCgkJCWlmIChrZXkuaXNFbXB0eSgpIHx8IGtleS5jb250YWlucygnLycpKSB7CgkJCQludWxsCgkJCX0gZWxzZSB7CgkJCQl2YWwgbmFtZSA9IGEudGV4dCgpLnRyaW0oKS5pZkVtcHR5IHsKCQkJCQlrZXkucmVwbGFjZSgnLScsICcgJykucmVwbGFjZUZpcnN0Q2hhciB7IGl0LnVwcGVyY2FzZUNoYXIoKSB9CgkJCQl9CgkJCQlNYW5nYVRhZyhuYW1lLCBrZXksIHNvdXJjZSkKCQkJfQoJCX0udG9TZXQoKQoJfQoKCXByaXZhdGUgY29tcGFuaW9uIG9iamVjdCB7CgkJY29uc3QgdmFsIFBBR0VfU0laRSA9IDEyCgl9Cn0K
+package tsuki.site.id
+
+import tsuki.MangaLoaderContext
+import tsuki.MangaSourceParser
+import tsuki.config.ConfigKey
+import tsuki.core.PagedMangaParser
+import tsuki.model.Manga
+import tsuki.model.MangaChapter
+import tsuki.model.MangaListFilter
+import tsuki.model.MangaListFilterCapabilities
+import tsuki.model.MangaListFilterOptions
+import tsuki.model.MangaPage
+import tsuki.model.MangaParserSource
+import tsuki.model.MangaTag
+import tsuki.model.RATING_UNKNOWN
+import tsuki.model.SortOrder
+import tsuki.network.UserAgents
+import tsuki.util.generateUid
+import tsuki.util.json.getStringOrNull
+import tsuki.util.json.mapJSON
+import tsuki.util.parseHtml
+import tsuki.util.parseJson
+import tsuki.util.toAbsoluteUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.jsoup.nodes.Document
+import java.time.Instant
+import java.util.EnumSet
+
+/**
+ * First-party replacement for the UMA Ikiru parser.
+ *
+ * The site was rebuilt as a Nuxt application and the WordPress REST API the old
+ * NatsuParser relied on no longer exists. This parser uses the site's public
+ * JSON API where one exists (latest updates, quick search, chapter list) and
+ * scrapes the server-rendered HTML for details, genres and chapter pages.
+ * The mirror subdomain rotates (07 -> 11 at the time of writing), so the domain
+ * stays user-configurable through [configKeyDomain].
+ */
+@MangaSourceParser("IKIRU", "Ikiru", "id")
+internal class Ikiru(context: MangaLoaderContext) :
+	PagedMangaParser(context, MangaParserSource.IKIRU, PAGE_SIZE) {
+
+	override val configKeyDomain = ConfigKey.Domain("11.ikiru.wtf")
+
+	// ikiru.wtf sits behind Cloudflare, which answers 403 for the default
+	// (OkHttp) user agent on HTML pages; the JSON API is not filtered that
+	// way. A browser user agent is required for detail and chapter pages,
+	// otherwise getPages finds no images and the reader fails to open.
+	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOTATSU)
+
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
+
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = false,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = false,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchGenres(),
+	)
+
+	override suspend fun getListPage(
+		page: Int,
+		order: SortOrder,
+		filter: MangaListFilter,
+	): List<Manga> {
+		val query = filter.query?.takeIf { it.isNotBlank() }
+		if (query != null) {
+			if (page > 1) return emptyList()
+			return search(query)
+		}
+		val tag = filter.tags.singleOrNull()
+		if (tag != null) {
+			if (page > 1) return emptyList()
+			val doc = webClient.httpGet("https://$domain/genre/${tag.key}").parseHtml()
+			return parseCards(doc)
+		}
+		val url = "https://$domain/api/public/manga/updated".toHttpUrl().newBuilder()
+			.addQueryParameter("page", page.toString())
+			.build()
+		val data = webClient.httpGet(url).parseJson().optJSONArray("data") ?: return emptyList()
+		return data.mapJSON { jo ->
+			val slug = jo.getString("slug")
+			Manga(
+				id = generateUid(slug),
+				title = jo.getString("title"),
+				altTitles = emptySet(),
+				url = "/manga/$slug/",
+				publicUrl = "https://$domain/manga/$slug",
+				rating = jo.optJSONObject("metadata")
+					?.optDouble("score", 0.0)
+					?.takeIf { it > 0 }
+					?.let { (it / 10.0).toFloat() }
+					?: RATING_UNKNOWN,
+				contentRating = null,
+				coverUrl = jo.getStringOrNull("featuredImage"),
+				tags = emptySet(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
+	}
+
+	private suspend fun search(query: String): List<Manga> {
+		val url = "https://$domain/api/public/quick-search".toHttpUrl().newBuilder()
+			.addQueryParameter("query", query)
+			.build()
+		val data = webClient.httpGet(url).parseJson().optJSONArray("data") ?: return emptyList()
+		return data.mapJSON { jo ->
+			val slug = jo.getString("slug")
+			Manga(
+				id = generateUid(slug),
+				title = jo.getString("title"),
+				altTitles = emptySet(),
+				url = "/manga/$slug/",
+				publicUrl = "https://$domain/manga/$slug",
+				rating = jo.optJSONObject("metadata")
+					?.optDouble("score", 0.0)
+					?.takeIf { it > 0 }
+					?.let { (it / 10.0).toFloat() }
+					?: RATING_UNKNOWN,
+				contentRating = null,
+				coverUrl = jo.getStringOrNull("featuredImage"),
+				tags = emptySet(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
+	}
+
+	private fun parseCards(doc: Document): List<Manga> {
+		return doc.select("a.card-link").mapNotNull { card ->
+			val href = card.attr("href")
+			val slug = href.removePrefix("/manga/").trim('/')
+			if (slug.isEmpty() || slug.contains('/')) return@mapNotNull null
+			val img = card.selectFirst("img.cover-img")
+			val title = card.selectFirst(".ctitle")?.text()?.trim()
+				?: img?.attr("alt")?.trim()
+				?: card.attr("aria-label").trim()
+			if (title.isEmpty()) return@mapNotNull null
+			Manga(
+				id = generateUid(slug),
+				title = title,
+				altTitles = emptySet(),
+				url = "/manga/$slug/",
+				publicUrl = "https://$domain/manga/$slug",
+				rating = RATING_UNKNOWN,
+				contentRating = null,
+				coverUrl = img?.attr("src")?.takeIf { it.isNotBlank() },
+				tags = emptySet(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
+	}
+
+	override suspend fun getDetails(manga: Manga): Manga {
+		val slug = manga.url.removePrefix("/manga/").trim('/')
+		val doc = webClient.httpGet("https://$domain/manga/$slug").parseHtml()
+		val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
+		val cover = doc.selectFirst("img[src*='cdn.ikiru.id/featured/']")?.attr("src")
+		val description = doc.selectFirst("div.synopsis")
+			?.select("p")
+			?.map { it.text().trim() }
+			?.filter { it.isNotEmpty() }
+			?.joinToString("\n\n")
+			?.takeIf { it.isNotEmpty() }
+		val tags = doc.select("div.genre-pills a[href^='/genre/'], a.gp-link[href^='/genre/']")
+			.mapNotNull { a ->
+				val key = a.attr("href").removePrefix("/genre/").trim('/')
+				val name = a.text().trim()
+				if (key.isEmpty() || name.isEmpty()) null else MangaTag(name, key, source)
+			}.toSet()
+		return manga.copy(
+			title = title.ifEmpty { manga.title },
+			coverUrl = cover ?: manga.coverUrl,
+			description = description,
+			tags = tags,
+			chapters = fetchChapters(slug),
+		)
+	}
+
+	private suspend fun fetchChapters(slug: String): List<MangaChapter> {
+		val url = "https://$domain/api/public/manga/$slug/chapter".toHttpUrl().newBuilder()
+			.addQueryParameter("all", "true")
+			.build()
+		val data = webClient.httpGet(url).parseJson().optJSONObject("data") ?: return emptyList()
+		val array = data.optJSONArray("chapters") ?: return emptyList()
+		return array.mapJSON { jo ->
+			val number = jo.optDouble("number", 0.0)
+			val numberText = if (number % 1.0 == 0.0) number.toInt().toString() else number.toString()
+			MangaChapter(
+				id = generateUid("$slug/chapter-$numberText"),
+				title = "Chapter $numberText",
+				number = number.toFloat(),
+				volume = 0,
+				url = "/manga/$slug/chapter-$numberText",
+				uploadDate = jo.getStringOrNull("createdAt")
+					?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+					?: 0L,
+				source = source,
+				scanlator = null,
+				branch = null,
+			)
+		}.reversed()
+	}
+
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+		val seen = LinkedHashSet<String>()
+		for (img in doc.select("img")) {
+			val src = img.attr("src").ifBlank { img.attr("data-src") }
+			if (src.contains("cdn.ikiru.id/t/")) {
+				seen.add(src.replace("&amp;", "&"))
+			}
+		}
+		return seen.map { url ->
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source,
+			)
+		}
+	}
+
+	private suspend fun fetchGenres(): Set<MangaTag> {
+		val doc = webClient.httpGet("https://$domain/").parseHtml()
+		return doc.select("a[href^='/genre/']").mapNotNull { a ->
+			val key = a.attr("href").removePrefix("/genre/").trim('/')
+			if (key.isEmpty() || key.contains('/')) {
+				null
+			} else {
+				val name = a.text().trim().ifEmpty {
+					key.replace('-', ' ').replaceFirstChar { it.uppercaseChar() }
+				}
+				MangaTag(name, key, source)
+			}
+		}.toSet()
+	}
+
+	private companion object {
+		const val PAGE_SIZE = 12
+	}
+}
