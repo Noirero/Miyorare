@@ -19,6 +19,8 @@ import tsuki.model.MangaTag
 import tsuki.model.MangaState
 import tsuki.model.RATING_UNKNOWN
 import tsuki.model.SortOrder
+import tsuki.model.Favicon
+import tsuki.model.Favicons
 
 import tsuki.util.generateUid
 import tsuki.util.parseJson
@@ -36,6 +38,15 @@ import java.util.TimeZone
 @MangaSourceParser("COSMICSCANSID", "CosmicScans", "id")
 internal class CosmicScans(context: MangaLoaderContext) :
     PagedMangaParser(context, MangaParserSource.COSMICSCANSID, pageSize = 20) {
+    override suspend fun getFavicons(): Favicons {
+        return Favicons(
+            listOf(
+                Favicon("https://cdn.jsdelivr.net/gh/keiyoushi/extensions-source@main/src/id/cosmicscansid/res/mipmap-xhdpi/ic_launcher.png", 96, null),
+            ),
+            domain,
+        )
+    }
+
 
     override val configKeyDomain = ConfigKey.Domain("04.cosmicscans.to")
     private val apiUrl = "https://cdncid.csmcscns.id/v1/manga"

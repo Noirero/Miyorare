@@ -11,6 +11,8 @@ import tsuki.model.MangaListFilterOptions
 import tsuki.model.MangaParserSource
 import tsuki.model.MangaTag
 import tsuki.model.SortOrder
+import tsuki.model.Favicon
+import tsuki.model.Favicons
 
 import tsuki.util.parseHtml
 
@@ -21,6 +23,15 @@ import okhttp3.Response
 @MangaSourceParser("MGKOMIK", "MGKomik", "id")
 internal class MGKomik(context: MangaLoaderContext) :
     MadaraParser(context, MangaParserSource.MGKOMIK, "id.mgkomik.cc"), Interceptor, MangaParserAuthProvider {
+    override suspend fun getFavicons(): Favicons {
+        return Favicons(
+            listOf(
+                Favicon("https://cdn.jsdelivr.net/gh/keiyoushi/extensions-source@main/src/id/mgkomik/res/mipmap-xhdpi/ic_launcher.png", 96, null),
+            ),
+            domain,
+        )
+    }
+
 
     override val datePattern = "dd MMM yy"
     override val tagPrefix = "genres/"
