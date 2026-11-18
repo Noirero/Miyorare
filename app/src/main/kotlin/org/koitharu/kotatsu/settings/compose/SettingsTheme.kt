@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -25,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
+import dagger.hilt.android.EntryPointAccessors
+import org.koitharu.kotatsu.core.fonts.FontPackEntryPoint
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
@@ -335,6 +338,16 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 			activeGradientEnd = Color(ColorUtils.blendARGB(activeStart, spec.accent, 0.22f)),
 		)
 	} else basePalette
+	val fontPackRepository = remember {
+		EntryPointAccessors.fromApplication<FontPackEntryPoint>(
+			ctx.applicationContext,
+		).fontPackRepository
+	}
+	val activeFontPack by fontPackRepository.activePack.collectAsState()
+	val typography = remember(activeFontPack) {
+		activeFontPack?.let { bumpedTypography(fontPackRepository.composeFontFamily(it)) }
+			?: miyorareTypography
+	}
 	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
 	CompositionLocalProvider(
 		LocalMiyorareVisualPalette provides visualPalette,
@@ -343,7 +356,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		MaterialTheme(
 			colorScheme = scheme,
 			shapes = shapes,
-			typography = miyorareTypography,
+			typography = typography,
 			content = content,
 		)
 	}

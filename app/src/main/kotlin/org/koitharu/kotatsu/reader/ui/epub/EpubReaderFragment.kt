@@ -108,6 +108,7 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.lnreader.model.absoluteUrl
+import org.koitharu.kotatsu.core.fonts.AppFontHolder
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
@@ -2614,6 +2615,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val base = when {
 			activePublisherStyle -> Typeface.SERIF
 			activeFontFamily == EPUB_FONT_CUSTOM -> customReaderTypeface()
+			// The app Font Pack is the EPUB default: it applies only while the
+			// global EPUB family is still the untouched "serif" default and the
+			// book has no family of its own.
+			bookSettings?.fontFamily == null && activeFontFamily == "serif" &&
+				AppFontHolder.baseTypeface != null -> AppFontHolder.baseTypeface ?: Typeface.SERIF
 			else -> Typeface.create(activeFontFamily.substringBefore(',').trim().trim('\'', '"'), Typeface.NORMAL)
 		}
 		if (activePublisherStyle) return base

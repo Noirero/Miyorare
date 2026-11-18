@@ -75,6 +75,7 @@ import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.MiyorareChoiceSettingsItem
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
+import org.koitharu.kotatsu.settings.fonts.FontSettingsFragment
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SliderSettingsItem
@@ -165,6 +166,13 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
                     onOpenAdvanced = {
                         (activity as? SettingsActivity)?.openFragment(
                             AppearanceAdvancedSettingsFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
+                    onOpenFonts = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            FontSettingsFragment::class.java,
                             null,
                             isFromRoot = false,
                         )
@@ -263,6 +271,7 @@ private fun AppearanceScreen(
     onOpenNavConfig: () -> Unit,
     onOpenFeed: () -> Unit,
     onOpenAdvanced: () -> Unit,
+    onOpenFonts: () -> Unit,
     onPickCustomBackground: () -> Unit,
     onRemoveCustomBackground: () -> Unit,
     onResetAppearance: () -> Unit,
@@ -776,6 +785,15 @@ private fun AppearanceScreen(
                         icon = R.drawable.ic_list_detailed,
                         shape = pos.shape,
                         onClick = onOpenDetailsAppearance,
+                    )
+                }
+                item { pos ->
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.font_title),
+                        subtitle = stringResource(R.string.font_settings_summary),
+                        icon = R.drawable.ic_font,
+                        shape = pos.shape,
+                        onClick = onOpenFonts,
                     )
                 }
             }
