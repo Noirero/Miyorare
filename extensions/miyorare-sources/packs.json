@@ -54,6 +54,33 @@
         "nsfw/Sasangeyou.kt",
         "nsfw/SekteDoujin.kt",
         "nsfw/Yurilab.kt"
+      ],
+      "excludeSources": [
+        "ALCEASCAN",
+        "ASUPANKOMIK",
+        "COMIC21",
+        "DUNIAKOMIK",
+        "HENSEKAI",
+        "HWAGO",
+        "INDO18H",
+        "KISHISAN",
+        "KOMIKGES",
+        "KOMIKLOVERS",
+        "KOMIKPIX",
+        "KOMIKSAN",
+        "KOMIKSAY",
+        "KYUMIK",
+        "MANGAID",
+        "MANGASHIRO",
+        "MANHWAPLUS",
+        "MIKOROKU",
+        "OTSUGAMI",
+        "SHEAKOMIK",
+        "SOBATMANKU",
+        "WARUNGKOMIK",
+        "WORLDMANHWAS",
+        "YUBIKIRI",
+        "YURAMANGA"
       ]
     },
     "en": {
