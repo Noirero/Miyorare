@@ -6,13 +6,18 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import java.net.IDN
 
 /**
- * Miyorare-owned resilience policy for the four ordinary sources in Miyorare Global.
+ * Miyorare-owned resilience policy for the ordinary sources in Miyorare Global and
+ * Miyorare Indonesia.
  *
  * ExHentai is deliberately excluded: it owns a separate E-Hentai/ExHentai domain and session
- * contract and must not inherit generic mirror/custom-domain behavior.
+ * contract and must not inherit generic mirror/custom-domain behavior. The Indonesian pack
+ * follows the same policy with its own exclusion list below, for sources whose address is
+ * not a plain site host the user can meaningfully replace.
  */
 internal object OfficialGlobalSourceResilience {
 	const val GLOBAL_PLUGIN_ID = "miyorare-global"
+	const val ID_PLUGIN_ID = "miyorare-id"
+	const val ID_GEKKOUSHI_PLUGIN_ID = "miyorare-id-gekkoushi"
 
 	val supportedSourceNames: Set<String> = setOf(
 		"COMICASURA",
@@ -21,15 +26,27 @@ internal object OfficialGlobalSourceResilience {
 		"NEWXTOON",
 	)
 
+	/**
+	 * Indonesian-pack sources excluded from generic mirror/custom-domain behavior:
+	 * MangaPlus is an API service rather than a site, the Webtoons platform parsers own
+	 * per-language addresses, and DoujinDesu signs its page URLs against its declared host.
+	 */
+	val idExcludedSourceNames: Set<String> = setOf(
+		"DOUJINDESU",
+		"MANGAPLUSPARSER_ID",
+		"WEBTOONS_ID",
+		"LINEWEBTOONS_ID",
+	)
+
 	fun supports(source: TsukiMangaSource): Boolean =
-		source.plugin.provider == TsukiPluginProvider.MIYORARE &&
-			source.pluginId == GLOBAL_PLUGIN_ID &&
-			source.descriptor.name in supportedSourceNames
+		supports(source.plugin.provider, source.pluginId, source.descriptor.name)
 
 	fun supports(provider: TsukiPluginProvider, pluginId: String, sourceName: String): Boolean =
-		provider == TsukiPluginProvider.MIYORARE &&
-			pluginId == GLOBAL_PLUGIN_ID &&
-			sourceName in supportedSourceNames
+		provider == TsukiPluginProvider.MIYORARE && when (pluginId) {
+			GLOBAL_PLUGIN_ID -> sourceName in supportedSourceNames
+			ID_PLUGIN_ID, ID_GEKKOUSHI_PLUGIN_ID -> sourceName !in idExcludedSourceNames
+			else -> false
+		}
 
 	/**
 	 * ConfigKey.Domain stores only host[:port]. Accept a friendly https URL or bare host, but reject
