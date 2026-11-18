@@ -133,8 +133,12 @@ class AppRouter private constructor(
 
     /** Activities **/
 
-    fun openList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?) =
-        openSourceCatalog(source, filter, sortOrder)
+    fun openList(
+        source: MangaSource,
+        filter: MangaListFilter?,
+        sortOrder: SortOrder?,
+        diagnosticTest: Boolean = false,
+    ) = openSourceCatalog(source, filter, sortOrder, diagnosticTest = diagnosticTest)
 
     fun openSourceOverview(source: MangaSource) =
         openSourceCatalog(source, null, null, overview = true)
@@ -152,6 +156,7 @@ class AppRouter private constructor(
         overview: Boolean = false,
         transientSort: Boolean = false,
         showFilters: Boolean = false,
+        diagnosticTest: Boolean = false,
     ) {
         val context = contextOrNull() ?: return
         // The extension is not installed, so the list could only ever show an
@@ -171,7 +176,7 @@ class AppRouter private constructor(
             )
             return
         }
-        val intent = listIntent(context, source, filter, sortOrder, resolveFavouriteSpace())
+        val intent = listIntent(context, source, filter, sortOrder, resolveFavouriteSpace(), diagnosticTest)
         if (overview && source.unwrap() != org.koitharu.kotatsu.core.model.LocalMangaSource) {
             intent.setClass(context, SourceOverviewActivity::class.java)
         }
@@ -871,6 +876,7 @@ class AppRouter private constructor(
             filter: MangaListFilter?,
             sortOrder: SortOrder?,
             favouriteSpace: FavouriteSpace = FavouriteSpace.NORMAL,
+            diagnosticTest: Boolean = false,
         ): Intent = Intent(context, MangaListActivity::class.java)
             .setAction(ACTION_MANGA_EXPLORE)
             .putExtra(KEY_SOURCE, source.name)
@@ -881,6 +887,9 @@ class AppRouter private constructor(
                 }
                 if (sortOrder != null) {
                     putExtra(KEY_SORT_ORDER, sortOrder)
+                }
+                if (diagnosticTest) {
+                    putExtra(KEY_DIAGNOSTIC_TEST, true)
                 }
             }
 
@@ -1042,6 +1051,7 @@ class AppRouter private constructor(
         const val KEY_SOURCE_CATALOG_EXTERNAL_ONLY = "source_catalog_external_only"
         const val KEY_SOURCE_CATALOG_AUTO_MIGRATE = "source_catalog_auto_migrate"
         const val KEY_SOURCE = "source"
+        const val KEY_DIAGNOSTIC_TEST = "diagnostic_test"
         const val KEY_SCROLL_TO_LANGUAGE = "scroll_to_language"
         const val KEY_AUTO_DOWNLOAD = "auto_download"
         const val KEY_TAB = "tab"
