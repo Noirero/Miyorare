@@ -19,6 +19,7 @@ import tsuki.util.json.getStringOrNull
 import tsuki.util.json.mapJSON
 import tsuki.util.parseHtml
 import tsuki.util.parseJson
+import tsuki.util.toAbsoluteUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.nodes.Document
 import java.time.Instant
