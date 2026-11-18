@@ -36,6 +36,37 @@ class OfficialGlobalSourceResilienceTest {
 	}
 
 	@Test
+	fun indonesianPackSourcesAreSupported() {
+		assertTrue(
+			OfficialGlobalSourceResilience.supports(
+				TsukiPluginProvider.MIYORARE,
+				OfficialGlobalSourceResilience.ID_PLUGIN_ID,
+				"KOMIKU",
+			),
+		)
+		assertTrue(
+			OfficialGlobalSourceResilience.supports(
+				TsukiPluginProvider.MIYORARE,
+				OfficialGlobalSourceResilience.ID_GEKKOUSHI_PLUGIN_ID,
+				"WESTMANGA",
+			),
+		)
+	}
+
+	@Test
+	fun indonesianSpecialContractSourcesAreExcluded() {
+		setOf("DOUJINDESU", "MANGAPLUSPARSER_ID", "WEBTOONS_ID", "LINEWEBTOONS_ID").forEach { sourceName ->
+			assertFalse(
+				OfficialGlobalSourceResilience.supports(
+					TsukiPluginProvider.MIYORARE,
+					OfficialGlobalSourceResilience.ID_PLUGIN_ID,
+					sourceName,
+				),
+			)
+		}
+	}
+
+	@Test
 	fun otherPacksAndProvidersAreExcluded() {
 		assertFalse(
 			OfficialGlobalSourceResilience.supports(
