@@ -282,7 +282,8 @@ internal class WestmangaParser(context: MangaLoaderContext) :
 
         return Headers.Builder()
             .add("User-Agent", config[userAgentKey])
-            .add("Referer", "https://$domain/")
+            .add("Referer", "https://$apiDomain/")
+            .add("Origin", "https://$apiDomain")
             .add("x-wm-request-time", timestamp)
             .add("x-wm-accses-key", accessKey)
             .add("x-wm-request-signature", signature)
