@@ -101,14 +101,12 @@ internal class Siikomik(context: MangaLoaderContext) :
 		return MangaListFilterOptions(availableTags = fetchTags())
 	}
 
-	override fun getFilterCapabilities(): MangaListFilterCapabilities {
-		return MangaListFilterCapabilities(
-			isSearchSupported = true,
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
 			isMultipleTagsSupported = false,
-			isTagsSupported = true,
+			isSearchSupported = true,
 			isSearchWithFiltersSupported = false,
 		)
-	}
 
 	private suspend fun fetchTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/komik/").parseHtml()
@@ -184,7 +182,7 @@ internal class Siikomik(context: MangaLoaderContext) :
 				?.div(5f)
 				?: manga.rating,
 			contentRating = if (tags.any { it.key in ADULT_TAG_KEYS }) {
-				ContentRating.NSFW
+				ContentRating.ADULT
 			} else {
 				manga.contentRating
 			},
