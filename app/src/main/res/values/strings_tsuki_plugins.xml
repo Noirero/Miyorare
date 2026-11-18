@@ -69,6 +69,9 @@
     <string name="tsuki_source_show_unavailable">Show unavailable sources</string>
     <string name="tsuki_source_show_unavailable_summary">%1$d unavailable sources are hidden by default. Show them for status and troubleshooting.</string>
     <string name="tsuki_source_broken">Unavailable in this plugin release</string>
+    <string name="tsuki_source_test_title">Test this source?</string>
+    <string name="tsuki_source_test_message">%1$s is unavailable in this plugin release because the upstream project marked it broken. Open it once to check for yourself whether the site is really gone or still works. The source stays disabled and nothing is saved. A hijacked or parked domain may show spam or ads instead of manga.</string>
+    <string name="tsuki_source_test_action">Test source</string>
     <string name="tsuki_plugin_working">Working…</string>
     <string name="tsuki_plugin_install_success">%1$s installed. Choose the sources you want to enable.</string>
     <string name="tsuki_plugin_import_success">%1$s imported. Choose the sources you want to enable.</string>
