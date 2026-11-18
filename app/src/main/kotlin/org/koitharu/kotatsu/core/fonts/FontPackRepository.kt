@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import java.io.File
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 @EntryPoint
@@ -42,10 +43,18 @@ interface FontPackEntryPoint {
  */
 @Singleton
 class FontPackRepository @Inject constructor(
-	@BaseHttpClient private val okHttp: OkHttpClient,
+	@BaseHttpClient private val baseHttpClient: Provider<OkHttpClient>,
 	@ApplicationContext private val context: Context,
 	private val settings: AppSettings,
 ) {
+
+	/**
+	 * The shared HTTP client, realized lazily. Creating it is prohibited on
+	 * the main thread (see NetworkModule), and this repository is constructed
+	 * during activity startup to resolve the active font — so the client may
+	 * only be touched from the IO-dispatched functions below.
+	 */
+	private val okHttp: OkHttpClient get() = baseHttpClient.get()
 
 	private val rootDir = File(context.filesDir, FONTS_DIR)
 
