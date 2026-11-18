@@ -21,6 +21,7 @@ import tsuki.util.json.mapJSON
 import tsuki.util.parseHtml
 import tsuki.util.parseJson
 import tsuki.util.toAbsoluteUrl
+import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.nodes.Document
 import java.time.Instant
@@ -47,6 +48,14 @@ internal class Ikiru(context: MangaLoaderContext) :
 	// way. A browser user agent is required for detail and chapter pages,
 	// otherwise getPages finds no images and the reader fails to open.
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOTATSU)
+
+	// HTML requests carry an explicit browser user agent: the resolved
+	// userAgentKey config may still hold the old default on installs that
+	// configured this source before, and Cloudflare blocks non-browser
+	// agents on HTML pages (see the userAgentKey note above).
+	private val htmlHeaders: Headers = Headers.Builder()
+		.add("User-Agent", BROWSER_USER_AGENT)
+		.build()
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -79,7 +88,7 @@ internal class Ikiru(context: MangaLoaderContext) :
 		val tag = filter.tags.singleOrNull()
 		if (tag != null) {
 			if (page > 1) return emptyList()
-			val doc = webClient.httpGet("https://$domain/genre/${tag.key}").parseHtml()
+			val doc = webClient.httpGet("https://$domain/genre/${tag.key}", htmlHeaders).parseHtml()
 			return parseCards(doc)
 		}
 		val url = "https://$domain/api/public/manga/updated".toHttpUrl().newBuilder()
@@ -166,7 +175,7 @@ internal class Ikiru(context: MangaLoaderContext) :
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val slug = manga.url.removePrefix("/manga/").trim('/')
-		val doc = webClient.httpGet("https://$domain/manga/$slug").parseHtml()
+		val doc = webClient.httpGet("https://$domain/manga/$slug", htmlHeaders).parseHtml()
 		val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
 		val cover = doc.selectFirst("img[src*='cdn.ikiru.id/featured/']")?.attr("src")
 		val description = doc.selectFirst("div.synopsis")
@@ -216,7 +225,7 @@ internal class Ikiru(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain), htmlHeaders).parseHtml()
 		val seen = LinkedHashSet<String>()
 		for (img in doc.select("img")) {
 			val src = img.attr("src").ifBlank { img.attr("data-src") }
@@ -235,7 +244,7 @@ internal class Ikiru(context: MangaLoaderContext) :
 	}
 
 	private suspend fun fetchGenres(): Set<MangaTag> {
-		val doc = webClient.httpGet("https://$domain/").parseHtml()
+		val doc = webClient.httpGet("https://$domain/", htmlHeaders).parseHtml()
 		return doc.select("a[href^='/genre/']").mapNotNull { a ->
 			val key = a.attr("href").removePrefix("/genre/").trim('/')
 			if (key.isEmpty() || key.contains('/')) {
@@ -251,5 +260,6 @@ internal class Ikiru(context: MangaLoaderContext) :
 
 	private companion object {
 		const val PAGE_SIZE = 12
+		const val BROWSER_USER_AGENT = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36"
 	}
 }
