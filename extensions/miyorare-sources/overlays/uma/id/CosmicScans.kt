@@ -1,5 +1,6 @@
 package tsuki.site.id
 
+import tsuki.Broken
 import tsuki.MangaLoaderContext
 import tsuki.MangaSourceParser
 import tsuki.config.ConfigKey
@@ -21,7 +22,6 @@ import tsuki.model.SortOrder
 
 import tsuki.util.generateUid
 import tsuki.util.parseJson
-import tsuki.util.parseHtml
 
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONArray
@@ -32,6 +32,7 @@ import java.util.EnumSet
 import java.util.Locale
 import java.util.TimeZone
 
+@Broken("Chapter images are protected by the site's browser verification; lists load but reading is blocked upstream")
 @MangaSourceParser("COSMICSCANSID", "CosmicScans", "id")
 internal class CosmicScans(context: MangaLoaderContext) :
     PagedMangaParser(context, MangaParserSource.COSMICSCANSID, pageSize = 20) {
@@ -259,41 +260,15 @@ internal class CosmicScans(context: MangaLoaderContext) :
             .removeSuffix("/")
             .ifBlank { throw ParseException("Manga URL is blank: ${manga.url}", manga.url) }
 
-        var data = fetchDetailFromSlug(initialSlug)
-
-        if (data == null) {
-            val pageUrl = manga.publicUrl
-            if (pageUrl.isBlank()) {
-                throw ParseException("Public URL missing for manga: ${manga.title}", manga.url)
-            }
-
-            val doc = try {
-                webClient.httpGet(pageUrl).parseHtml()
-            } catch (e: Exception) {
-                throw ParseException("Failed to load manga page for slug resolution: $pageUrl", pageUrl, e)
-            }
-
-            val canonicalUrl = doc.selectFirst("link[rel=canonical]")?.attr("href")
-                ?: doc.selectFirst("meta[property=og:url]")?.attr("content")
-                ?: pageUrl
-
-            val canonicalSlug = canonicalUrl
-                .substringAfterLast('/')
-                .substringBefore('?')
-                .trim()
-                .ifBlank { throw ParseException("Could not extract canonical slug from page: $pageUrl", pageUrl) }
-
-            if (canonicalSlug != initialSlug) {
-                data = fetchDetailFromSlug(canonicalSlug)
-            }
-        }
-
-        if (data == null) {
-            throw ParseException(
-                "Details not found for manga '${manga.title}' (tried slugs: $initialSlug)",
+        // The web /series/ page is only an app shell, so there is no HTML fallback:
+        // when the detail API does not answer for a slug, the title is unavailable
+        // on the source's side (its API returns a server error for some records).
+        val data = fetchDetailFromSlug(initialSlug)
+            ?: throw ParseException(
+                "The source's server did not return details for '${manga.title}'. " +
+                    "This title is currently unavailable on the source's side.",
                 manga.publicUrl,
             )
-        }
 
         val title = data.optString("title", manga.title).ifBlank { manga.title }
         val cover = data.optString("cover", manga.coverUrl)
@@ -402,11 +377,26 @@ internal class CosmicScans(context: MangaLoaderContext) :
 
         val pages = mutableListOf<MangaPage>()
         for (i in 0 until chaptersArray.length()) {
-            val html = chaptersArray.getString(i)
-            val img = Jsoup.parse(html).selectFirst("img")
-                ?: throw ParseException("Page $i does not contain an <img> tag", url)
-            val imageUrl = img.attr("src").takeIf { it.isNotBlank() }
-                ?: throw ParseException("Page $i has empty src attribute", url)
+            val entry = chaptersArray.getString(i).trim()
+            val imageUrl = when {
+                entry.isEmpty() -> throw ParseException("Page $i is empty", url)
+                // The API answers non-browser clients with decoy "trap" URLs that
+                // serve a promotional image instead of the comic page: the real
+                // images are only released inside the site's own web reader after
+                // its browser verification. Surface that instead of the decoy.
+                entry.contains("/img/trap/") -> throw ParseException(
+                    "Chapter images are protected by the source's browser verification " +
+                        "and cannot be loaded yet",
+                    url,
+                )
+                entry.startsWith("http://") || entry.startsWith("https://") -> entry
+                else -> {
+                    val img = Jsoup.parse(entry).selectFirst("img")
+                        ?: throw ParseException("Page $i does not contain an <img> tag", url)
+                    img.attr("src").takeIf { it.isNotBlank() }
+                        ?: throw ParseException("Page $i has empty src attribute", url)
+                }
+            }
             pages += MangaPage(
                 id = generateUid(imageUrl),
                 url = imageUrl,
