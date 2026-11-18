@@ -1,5 +1,6 @@
 package tsuki.site.id
 
+import tsuki.Broken
 import tsuki.MangaLoaderContext
 import tsuki.MangaSourceParser
 import tsuki.config.ConfigKey
@@ -31,6 +32,7 @@ import java.util.EnumSet
 import java.util.Locale
 import java.util.TimeZone
 
+@Broken("Chapter images are protected by the site's browser verification; lists load but reading is blocked upstream")
 @MangaSourceParser("COSMICSCANSID", "CosmicScans", "id")
 internal class CosmicScans(context: MangaLoaderContext) :
     PagedMangaParser(context, MangaParserSource.COSMICSCANSID, pageSize = 20) {

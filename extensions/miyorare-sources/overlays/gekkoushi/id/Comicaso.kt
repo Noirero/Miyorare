@@ -3,6 +3,7 @@ package tsuki.site.mangareader.id
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONArray
 import org.json.JSONObject
+import tsuki.Broken
 import tsuki.MangaLoaderContext
 import tsuki.MangaSourceParser
 import tsuki.config.ConfigKey
@@ -47,6 +48,7 @@ import java.util.TimeZone
  * clear instruction error instead of failing obscurely. API shapes verified against the live
  * mirror API on 2026-11-18.
  */
+@Broken("Details and chapters are gated by the platform (Medusa needs an account login, ComicAzen a human verification); only the catalogue loads without signing in")
 @MangaSourceParser("COMICASO", "Comicaso", "id")
 internal class Comicaso(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.COMICASO, pageSize = 24) {
