@@ -47,6 +47,7 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonFilterMapper
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.sizeOrZero
+import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.jsoup.HttpStatusException
 import java.net.HttpURLConnection
 import javax.inject.Inject
@@ -66,7 +67,14 @@ open class RemoteListViewModel @Inject constructor(
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), FilterCoordinator.Owner {
 
-	val source = MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE])
+	val source: MangaSource = if (savedStateHandle.get<Boolean>(RemoteListFragment.ARG_DIAGNOSTIC) == true) {
+		// One-off diagnostic open of a broken Tsuki source: resolve it with the broken gate
+		// lifted for this screen only. Any other name keeps the normal resolution.
+		TsukiPluginManager.getDiagnosticByName(savedStateHandle[RemoteListFragment.ARG_SOURCE])
+			?: MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE])
+	} else {
+		MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE])
+	}
 	val isRandomLoading = MutableStateFlow(false)
 	val onOpenManga = MutableEventFlow<Manga>()
 	val onBrokenSortFallback = MutableEventFlow<Unit>()
