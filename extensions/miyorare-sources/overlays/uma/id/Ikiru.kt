@@ -22,6 +22,8 @@ import tsuki.util.parseHtml
 import tsuki.util.parseJson
 import tsuki.util.toAbsoluteUrl
 import okhttp3.Headers
+import org.jsoup.Jsoup
+import tsuki.exception.ParseException
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.nodes.Document
 import java.time.Instant
@@ -225,13 +227,30 @@ internal class Ikiru(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain), htmlHeaders).parseHtml()
+		val pageUrl = chapter.url.toAbsoluteUrl(domain)
+		val response = webClient.httpGet(pageUrl, htmlHeaders)
+		val body = response.body.string()
+		val doc = Jsoup.parse(body, pageUrl)
+		val allSrcs = doc.select("img").map { img ->
+			img.attr("src").ifBlank { img.attr("data-src") }
+		}
 		val seen = LinkedHashSet<String>()
-		for (img in doc.select("img")) {
-			val src = img.attr("src").ifBlank { img.attr("data-src") }
+		for (src in allSrcs) {
 			if (src.contains("cdn.ikiru.id/t/")) {
 				seen.add(src.replace("&amp;", "&"))
 			}
+		}
+		if (seen.isEmpty()) {
+			// TEMPORARY DIAGNOSTICS for the device test builds: the reader
+			// used to fail silently on an empty page list; surface what the
+			// chapter page actually contained so the cause stays visible.
+			throw ParseException(
+				"IkiruDiag http=${response.code} bytes=${body.length} imgs=${allSrcs.size} " +
+					"first=${allSrcs.firstOrNull()?.take(70)} " +
+					"second=${allSrcs.getOrNull(1)?.take(70)} " +
+					"head=${body.take(120)}",
+				pageUrl,
+			)
 		}
 		return seen.map { url ->
 			MangaPage(
