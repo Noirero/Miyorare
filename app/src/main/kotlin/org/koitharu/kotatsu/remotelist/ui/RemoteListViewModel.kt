@@ -70,7 +70,8 @@ open class RemoteListViewModel @Inject constructor(
 	val source: MangaSource = if (savedStateHandle.get<Boolean>(RemoteListFragment.ARG_DIAGNOSTIC) == true) {
 		// One-off diagnostic open of a broken Tsuki source: resolve it with the broken gate
 		// lifted for this screen only. Any other name keeps the normal resolution.
-		TsukiPluginManager.getDiagnosticByName(savedStateHandle[RemoteListFragment.ARG_SOURCE])
+		savedStateHandle.get<String>(RemoteListFragment.ARG_SOURCE)
+			?.let { TsukiPluginManager.getDiagnosticByName(it) }
 			?: MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE])
 	} else {
 		MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE])
