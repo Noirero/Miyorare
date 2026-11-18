@@ -23,6 +23,15 @@ import java.util.EnumSet
 @MangaSourceParser("HOLOTOON", "HoloToon", "id")
 internal class Holotoon(context: MangaLoaderContext) :
     PagedMangaParser(context, MangaParserSource.HOLOTOON, PAGE_SIZE) {
+    override suspend fun getFavicons(): Favicons {
+        return Favicons(
+            listOf(
+                Favicon("https://cdn.jsdelivr.net/gh/keiyoushi/extensions-source@main/src/id/holotoon/res/mipmap-xhdpi/ic_launcher.png", 96, null),
+            ),
+            domain,
+        )
+    }
+
 
     override val configKeyDomain = ConfigKey.Domain("holodek.run")
 

@@ -30,32 +30,6 @@ import java.util.EnumSet
  * keiyoushi/extensions-source (Apache-2.0); see ATTRIBUTION.md.
  */
 
-@MangaSourceParser("CROTPEDIA", "CrotPedia", "id", ContentType.HENTAI)
-internal class CrotPedia(context: MangaLoaderContext) :
-    ZMangaParser(context, MangaParserSource.CROTPEDIA, "crotpedia.net")
-
-@MangaSourceParser("PORNHWA18", "Pornhwa18", "id", ContentType.HENTAI)
-internal class Pornhwa18(context: MangaLoaderContext) :
-    MadaraParser(context, MangaParserSource.PORNHWA18, "pornhwa18.com") {
-    override val withoutAjax = true
-}
-
-@MangaSourceParser("DREAMTEAMS_SCANS", "DreamTeams Scans", "id", ContentType.HENTAI)
-internal class DreamTeamsScans(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.DREAMTEAMS_SCANS, "dreamteams.space", "comic")
-
-@MangaSourceParser("KOMIK_NEXT_G_ONLINE", "Komik Next G Online", "id")
-internal class KomikNextGOnline(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.KOMIK_NEXT_G_ONLINE, "komiknextgonline.com", "manga")
-
-@MangaSourceParser("NARASININJA", "NarasiNinja", "id")
-internal class NarasiNinja(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.NARASININJA, "narasininja.net", "manga")
-
-@MangaSourceParser("SOFTKOMIK", "Softkomik", "id")
-internal class Softkomik(context: MangaLoaderContext) :
-    MiyorareKeiyoushiHtmlParser(context, MangaParserSource.SOFTKOMIK, "softkomik.app", "manga")
-
 /**
  * Conservative compatibility parser for providers whose Keiyoushi implementation is custom rather
  * than one of the Tsuki theme families already present in Gekkoushi. It intentionally supports the
