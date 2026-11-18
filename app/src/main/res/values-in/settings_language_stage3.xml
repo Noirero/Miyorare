@@ -172,6 +172,9 @@
     <string name="tsuki_plugins_summary">Pasang dan kelola plugin pihak ketiga kompatibel Tsuki / Usagi. Paket resmi Miyorare-ID dan Miyorare-EN dikelola terpisah dari Ekstensi.</string>
     <string name="tsuki_plugins_title">Plugin kompatibel</string>
     <string name="tsuki_source_broken">Tidak tersedia pada rilis plugin ini</string>
+    <string name="tsuki_source_test_title">Uji sumber ini?</string>
+    <string name="tsuki_source_test_message">%1$s tidak tersedia pada rilis plugin ini karena proyek hulunya menandainya rusak. Buka sekali untuk memeriksa sendiri apakah situsnya memang sudah hilang atau ternyata masih berfungsi. Sumber ini tetap nonaktif dan tidak ada yang disimpan. Domain yang dibajak atau diparkir dapat menampilkan spam atau iklan, bukan manga.</string>
+    <string name="tsuki_source_test_action">Uji sumber</string>
     <string name="tsuki_source_search_hint">Cari sumber plugin</string>
     <string name="tsuki_source_show_unavailable">Tampilkan sumber yang tidak tersedia</string>
     <string name="tsuki_source_show_unavailable_summary">%1$d sumber yang tidak tersedia disembunyikan secara bawaan. Tampilkan untuk melihat status dan pemecahan masalah.</string>
