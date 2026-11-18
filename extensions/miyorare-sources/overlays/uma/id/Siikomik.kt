@@ -1,1 +1,241 @@
-cGFja2FnZSB0c3VraS5zaXRlLmlkCgppbXBvcnQgdHN1a2kuTWFuZ2FMb2FkZXJDb250ZXh0CmltcG9ydCB0c3VraS5NYW5nYVNvdXJjZVBhcnNlcgppbXBvcnQgdHN1a2kuY29uZmlnLkNvbmZpZ0tleQppbXBvcnQgdHN1a2kuY29yZS5QYWdlZE1hbmdhUGFyc2VyCmltcG9ydCB0c3VraS5tb2RlbC5Db250ZW50UmF0aW5nCmltcG9ydCB0c3VraS5tb2RlbC5NYW5nYQppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FDaGFwdGVyCmltcG9ydCB0c3VraS5tb2RlbC5NYW5nYUxpc3RGaWx0ZXIKaW1wb3J0IHRzdWtpLm1vZGVsLk1hbmdhTGlzdEZpbHRlckNhcGFiaWxpdGllcwppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FMaXN0RmlsdGVyT3B0aW9ucwppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FQYWdlCmltcG9ydCB0c3VraS5tb2RlbC5NYW5nYVBhcnNlclNvdXJjZQppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FTdGF0ZQppbXBvcnQgdHN1a2kubW9kZWwuTWFuZ2FUYWcKaW1wb3J0IHRzdWtpLm1vZGVsLlJBVElOR19VTktOT1dOCmltcG9ydCB0c3VraS5tb2RlbC5Tb3J0T3JkZXIKaW1wb3J0IHRzdWtpLnV0aWwuZ2VuZXJhdGVVaWQKaW1wb3J0IHRzdWtpLnV0aWwucGFyc2VIdG1sCmltcG9ydCB0c3VraS51dGlsLnRvQWJzb2x1dGVVcmwKaW1wb3J0IG9raHR0cDMuSHR0cFVybC5Db21wYW5pb24udG9IdHRwVXJsCmltcG9ydCBqYXZhLnV0aWwuRW51bVNldAoKLyoqCiAqIEZpcnN0LXBhcnR5IHJlcGxhY2VtZW50IGZvciB0aGUgVU1BIFNpaWtvbWlrIHBhcnNlci4KICoKICogc2lpa29taWsuY29tIGlzIG5vIGxvbmdlciBhIE1hZGFyYS9Xb3JkUHJlc3Mgc2l0ZTogaXQgd2FzIHJlYnVpbHQgYXMgYQogKiBjdXN0b20gTmV4dC5qcyBhcHBsaWNhdGlvbi4gVGhlIHN0b2NrIE1hZGFyYVBhcnNlciBzZWxlY3RvcnMgbWF0Y2gKICogbm90aGluZyBpbiB0aGUgbmV3IG1hcmt1cCBhbmQgaXRzIGFkbWluLWFqYXggZW5kcG9pbnQgaXMgZ29uZSwgc28gdGhlCiAqIG9sZCBwYXJzZXIgY2Fubm90IGxvYWQgYW55dGhpbmcuIFRoaXMgcGFyc2VyIHJlYWRzIHRoZSBzZXJ2ZXItcmVuZGVyZWQKICogcGFnZXMgb2YgdGhlIG5ldyBzaXRlIGRpcmVjdGx5OgogKgogKiAtIGxpc3Q6ICAgIEdFVCAva29taWsvIChzNC1jYXJkIG1hcmt1cDsgP3BhZ2U9LCA/c29ydD1wb3B1bGFyfHJhdGluZywKICogICAgICAgICAgICA/Z2VucmU9PHNsdWc+KQogKiAtIHNlYXJjaDogIEdFVCAvY2FyaS8/cT08cXVlcnk+IChzYW1lIGNhcmQgbWFya3VwKQogKiAtIGRldGFpbHM6IGgxIHRpdGxlLCAvYXBpL21lZGlhLyBjb3ZlciwgbWV0YWRhdGEgZGVmaW5pdGlvbiBsaXN0CiAqICAgICAgICAgICAgKFJhdGluZyAvIFN0YXR1cyAvIEFsdGVybmF0aXZlIC8gVHlwZSksIGdlbnJlIGNoaXBzIGFuZCB0aGUKICogICAgICAgICAgICBpbmxpbmUgY2hhcHRlciBsaXN0IChubyBkYXRlcyBhcmUgcHVibGlzaGVkKQogKiAtIHBhZ2VzOiAgIHRoZSByZWFkZXIgcGFnZSBlbWJlZHMgc2lnbmVkIC9hcGkvbWVkaWEvIGltYWdlIFVSTHMgaW4gaXRzCiAqICAgICAgICAgICAgcGF5bG9hZDsgdGhleSBhcmUgZXh0cmFjdGVkIGZyb20gdGhlIHJhdyBib2R5CiAqLwpATWFuZ2FTb3VyY2VQYXJzZXIoIlNJSUtPTUlLIiwgIlNpaWtvbWlrIiwgImlkIikKaW50ZXJuYWwgY2xhc3MgU2lpa29taWsoY29udGV4dDogTWFuZ2FMb2FkZXJDb250ZXh0KSA6CglQYWdlZE1hbmdhUGFyc2VyKGNvbnRleHQsIE1hbmdhUGFyc2VyU291cmNlLlNJSUtPTUlLLCBQQUdFX1NJWkUpIHsKCglvdmVycmlkZSB2YWwgY29uZmlnS2V5RG9tYWluID0gQ29uZmlnS2V5LkRvbWFpbigic2lpa29taWsuY29tIikKCglvdmVycmlkZSB2YWwgYXZhaWxhYmxlU29ydE9yZGVyczogU2V0PFNvcnRPcmRlcj4gPSBFbnVtU2V0Lm9mKAoJCVNvcnRPcmRlci5VUERBVEVELAoJCVNvcnRPcmRlci5QT1BVTEFSSVRZLAoJCVNvcnRPcmRlci5SQVRJTkcsCgkpCgoJb3ZlcnJpZGUgc3VzcGVuZCBmdW4gZ2V0TGlzdFBhZ2UoCgkJcGFnZTogSW50LAoJCW9yZGVyOiBTb3J0T3JkZXIsCgkJZmlsdGVyOiBNYW5nYUxpc3RGaWx0ZXIsCgkpOiBMaXN0PE1hbmdhPiB7CgkJdmFsIHF1ZXJ5ID0gZmlsdGVyLnF1ZXJ5Py50cmltKCkub3JFbXB0eSgpCgkJdmFsIGRvYyA9IGlmIChxdWVyeS5pc05vdEVtcHR5KCkpIHsKCQkJaWYgKHBhZ2UgPiAxKSByZXR1cm4gZW1wdHlMaXN0KCkKCQkJdmFsIHVybCA9ICJodHRwczovLyRkb21haW4vY2FyaS8iLnRvSHR0cFVybCgpLm5ld0J1aWxkZXIoKQoJCQkJLmFkZFF1ZXJ5UGFyYW1ldGVyKCJxIiwgcXVlcnkpCgkJCQkuYnVpbGQoKQoJCQl3ZWJDbGllbnQuaHR0cEdldCh1cmwpLnBhcnNlSHRtbCgpCgkJfSBlbHNlIHsKCQkJdmFsIHVybCA9ICJodHRwczovLyRkb21haW4va29taWsvIi50b0h0dHBVcmwoKS5uZXdCdWlsZGVyKCkuYXBwbHkgewoJCQkJaWYgKHBhZ2UgPiAxKSBhZGRRdWVyeVBhcmFtZXRlcigicGFnZSIsIHBhZ2UudG9TdHJpbmcoKSkKCQkJCXdoZW4gKG9yZGVyKSB7CgkJCQkJU29ydE9yZGVyLlBPUFVMQVJJVFkgLT4gYWRkUXVlcnlQYXJhbWV0ZXIoInNvcnQiLCAicG9wdWxhciIpCgkJCQkJU29ydE9yZGVyLlJBVElORyAtPiBhZGRRdWVyeVBhcmFtZXRlcigic29ydCIsICJyYXRpbmciKQoJCQkJCWVsc2UgLT4gVW5pdAoJCQkJfQoJCQkJZmlsdGVyLnRhZ3MuZmlyc3RPck51bGwoKT8ubGV0IHsgYWRkUXVlcnlQYXJhbWV0ZXIoImdlbnJlIiwgaXQua2V5KSB9CgkJCX0uYnVpbGQoKQoJCQl3ZWJDbGllbnQuaHR0cEdldCh1cmwpLnBhcnNlSHRtbCgpCgkJfQoJCXJldHVybiBkb2Muc2VsZWN0KCJhLnM0LWNhcmQiKS5tYXBOb3ROdWxsIHsgYSAtPgoJCQl2YWwgaHJlZiA9IGEuYXR0cigiaHJlZiIpLnRha2VJZiB7IGl0LmlzTm90RW1wdHkoKSB9ID86IHJldHVybkBtYXBOb3ROdWxsIG51bGwKCQkJdmFsIHRpdGxlID0gYS5hdHRyKCJ0aXRsZSIpLnRha2VJZiB7IGl0LmlzTm90RW1wdHkoKSB9ID86IHJldHVybkBtYXBOb3ROdWxsIG51bGwKCQkJTWFuZ2EoCgkJCQlpZCA9IGdlbmVyYXRlVWlkKGhyZWYpLAoJCQkJdGl0bGUgPSB0aXRsZSwKCQkJCWFsdFRpdGxlcyA9IGVtcHR5U2V0KCksCgkJCQl1cmwgPSBocmVmLAoJCQkJcHVibGljVXJsID0gaHJlZi50b0Fic29sdXRlVXJsKGRvbWFpbiksCgkJCQlyYXRpbmcgPSBSQVRJTkdfVU5LTk9XTiwKCQkJCWNvbnRlbnRSYXRpbmcgPSBudWxsLAoJCQkJY292ZXJVcmwgPSBhLnNlbGVjdEZpcnN0KCJpbWciKT8uYXR0cigic3JjIik/LnRha2VJZiB7IGl0LmlzTm90RW1wdHkoKSB9LAoJCQkJdGFncyA9IGVtcHR5U2V0KCksCgkJCQlzdGF0ZSA9IG51bGwsCgkJCQlhdXRob3JzID0gZW1wdHlTZXQoKSwKCQkJCXNvdXJjZSA9IHNvdXJjZSwKCQkJKQoJCX0KCX0KCglvdmVycmlkZSBzdXNwZW5kIGZ1biBnZXRGaWx0ZXJPcHRpb25zKCk6IE1hbmdhTGlzdEZpbHRlck9wdGlvbnMgewoJCXJldHVybiBNYW5nYUxpc3RGaWx0ZXJPcHRpb25zKGF2YWlsYWJsZVRhZ3MgPSBmZXRjaFRhZ3MoKSkKCX0KCglvdmVycmlkZSBmdW4gZ2V0RmlsdGVyQ2FwYWJpbGl0aWVzKCk6IE1hbmdhTGlzdEZpbHRlckNhcGFiaWxpdGllcyB7CgkJcmV0dXJuIE1hbmdhTGlzdEZpbHRlckNhcGFiaWxpdGllcygKCQkJaXNTZWFyY2hTdXBwb3J0ZWQgPSB0cnVlLAoJCQlpc011bHRpcGxlVGFnc1N1cHBvcnRlZCA9IGZhbHNlLAoJCQlpc1RhZ3NTdXBwb3J0ZWQgPSB0cnVlLAoJCQlpc1NlYXJjaFdpdGhGaWx0ZXJzU3VwcG9ydGVkID0gZmFsc2UsCgkJKQoJfQoKCXByaXZhdGUgc3VzcGVuZCBmdW4gZmV0Y2hUYWdzKCk6IFNldDxNYW5nYVRhZz4gewoJCXZhbCBkb2MgPSB3ZWJDbGllbnQuaHR0cEdldCgiaHR0cHM6Ly8kZG9tYWluL2tvbWlrLyIpLnBhcnNlSHRtbCgpCgkJcmV0dXJuIGRvYy5zZWxlY3QoImEubWFuZ2EtZmlsdGVyLWJveFtocmVmKj0/Z2VucmU9XSIpLm1hcE5vdE51bGxUb1NldCB7IGEgLT4KCQkJdmFsIHNsdWcgPSBhLmF0dHIoImhyZWYiKS5zdWJzdHJpbmdBZnRlcigiP2dlbnJlPSIsICIiKS5zdWJzdHJpbmdCZWZvcmUoIiYiKQoJCQkJLnRha2VJZiB7IGl0LmlzTm90RW1wdHkoKSB9ID86IHJldHVybkBtYXBOb3ROdWxsVG9TZXQgbnVsbAoJCQl2YWwgdGl0bGUgPSBhLnNlbGVjdEZpcnN0KCJzcGFuIik/LnRleHQoKT8udGFrZUlmIHsgaXQuaXNOb3RFbXB0eSgpIH0KCQkJCT86IHJldHVybkBtYXBOb3ROdWxsVG9TZXQgbnVsbAoJCQlNYW5nYVRhZyh0aXRsZSA9IHRpdGxlLCBrZXkgPSBzbHVnLCBzb3VyY2UgPSBzb3VyY2UpCgkJfQoJfQoKCW92ZXJyaWRlIHN1c3BlbmQgZnVuIGdldERldGFpbHMobWFuZ2E6IE1hbmdhKTogTWFuZ2EgewoJCXZhbCBkb2MgPSB3ZWJDbGllbnQuaHR0cEdldChtYW5nYS51cmwudG9BYnNvbHV0ZVVybChkb21haW4pKS5wYXJzZUh0bWwoKQoKCQl2YWwgbWV0YSA9IEhhc2hNYXA8U3RyaW5nLCBTdHJpbmc+KCkKCQlmb3IgKGR0IGluIGRvYy5zZWxlY3QoImR0IikpIHsKCQkJdmFsIGRkID0gZHQubmV4dEVsZW1lbnRTaWJsaW5nKCkgPzogY29udGludWUKCQkJbWV0YVtkdC50ZXh0KCkudHJpbSgpLmxvd2VyY2FzZSgpXSA9IGRkLnRleHQoKS50cmltKCkKCQl9CgoJCXZhbCB0YWdzID0gTGlua2VkSGFzaFNldDxNYW5nYVRhZz4oKQoJCWZvciAoYSBpbiBkb2Muc2VsZWN0KCJhW2hyZWYqPT9nZW5yZT1dIikpIHsKCQkJdmFsIHNsdWcgPSBhLmF0dHIoImhyZWYiKS5zdWJzdHJpbmdBZnRlcigiP2dlbnJlPSIsICIiKS5zdWJzdHJpbmdCZWZvcmUoIiYiKQoJCQkJLnRha2VJZiB7IGl0LmlzTm90RW1wdHkoKSB9ID86IGNvbnRpbnVlCgkJCXZhbCBuYW1lID0gYS50ZXh0KCkudHJpbSgpLnRha2VJZiB7IGl0LmlzTm90RW1wdHkoKSB9ID86IGNvbnRpbnVlCgkJCXRhZ3MgKz0gTWFuZ2FUYWcodGl0bGUgPSBuYW1lLCBrZXkgPSBzbHVnLCBzb3VyY2UgPSBzb3VyY2UpCgkJfQoJCW1ldGFbInR5cGUiXT8udGFrZUlmIHsgaXQuaXNOb3RFbXB0eSgpIH0/LmxldCB7IHR5cGUgLT4KCQkJdGFncyArPSBNYW5nYVRhZyh0aXRsZSA9IHR5cGUsIGtleSA9IHR5cGUubG93ZXJjYXNlKCksIHNvdXJjZSA9IHNvdXJjZSkKCQl9CgoJCXZhbCBkZXNjcmlwdGlvbiA9IGRvYy5zZWxlY3QoInAiKQoJCQkubWFwIHsgaXQudGV4dCgpLnRyaW0oKSB9CgkJCS5maWx0ZXIgeyBpdC5sZW5ndGggPj0gNjAgfQoJCQkudGFrZSgzKQoJCQkuam9pblRvU3RyaW5nKCJcblxuIikKCQkJLnRha2VJZiB7IGl0LmlzTm90RW1wdHkoKSB9CgoJCXZhbCBjaGFwdGVyQnlIcmVmID0gTGlua2VkSGFzaE1hcDxTdHJpbmcsIE1hbmdhQ2hhcHRlcj4oKQoJCWZvciAoYSBpbiBkb2Muc2VsZWN0KCJhW2hyZWYqPS9jaGFwdGVyLV0iKSkgewoJCQl2YWwgaHJlZiA9IGEuYXR0cigiaHJlZiIpCgkJCXZhbCBudW1iZXIgPSBDSEFQVEVSX05VTUJFUl9SRUdFWC5maW5kKGhyZWYpPy5ncm91cFZhbHVlcz8uZ2V0KDEpPy50b0Zsb2F0T3JOdWxsKCkKCQkJCT86IGNvbnRpbnVlCgkJCXZhbCB0ZXh0ID0gYS50ZXh0KCkudHJpbSgpCgkJCXZhbCBleGlzdGluZyA9IGNoYXB0ZXJCeUhyZWZbaHJlZl0KCQkJaWYgKGV4aXN0aW5nICE9IG51bGwgJiYgIXRleHQuc3RhcnRzV2l0aCgiQ2hhcHRlciIpKSBjb250aW51ZQoJCQljaGFwdGVyQnlIcmVmW2hyZWZdID0gTWFuZ2FDaGFwdGVyKAoJCQkJaWQgPSBnZW5lcmF0ZVVpZChocmVmKSwKCQkJCXRpdGxlID0gaWYgKHRleHQuc3RhcnRzV2l0aCgiQ2hhcHRlciIpKSB0ZXh0IGVsc2UgIkNoYXB0ZXIgJHtmb3JtYXROdW1iZXIobnVtYmVyKX0iLAoJCQkJbnVtYmVyID0gbnVtYmVyLAoJCQkJdm9sdW1lID0gMCwKCQkJCXVybCA9IGhyZWYsCgkJCQl1cGxvYWREYXRlID0gMEwsCgkJCQlzb3VyY2UgPSBzb3VyY2UsCgkJCQlzY2FubGF0b3IgPSBudWxsLAoJCQkJYnJhbmNoID0gbnVsbCwKCQkJKQoJCX0KCgkJcmV0dXJuIG1hbmdhLmNvcHkoCgkJCXRpdGxlID0gZG9jLnNlbGVjdEZpcnN0KCJoMSIpPy50ZXh0KCk/LnRyaW0oKT8udGFrZUlmIHsgaXQuaXNOb3RFbXB0eSgpIH0gPzogbWFuZ2EudGl0bGUsCgkJCWFsdFRpdGxlcyA9IG1ldGFbImFsdGVybmF0aXZlIl0KCQkJCT8uc3BsaXQoJy8nLCAnLCcpCgkJCQk/Lm1hcCB7IGl0LnRyaW0oKSB9CgkJCQk/LmZpbHRlciB7IGl0LmlzTm90RW1wdHkoKSB9CgkJCQk/LnRvU2V0KCkKCQkJCT86IG1hbmdhLmFsdFRpdGxlcywKCQkJdXJsID0gbWFuZ2EudXJsLAoJCQlwdWJsaWNVcmwgPSBtYW5nYS51cmwudG9BYnNvbHV0ZVVybChkb21haW4pLAoJCQlyYXRpbmcgPSBtZXRhWyJyYXRpbmciXQoJCQkJPy5sZXQgeyBGTE9BVF9SRUdFWC5maW5kKGl0KT8udmFsdWU/LnRvRmxvYXRPck51bGwoKSB9CgkJCQk/LmRpdig1ZikKCQkJCT86IG1hbmdhLnJhdGluZywKCQkJY29udGVudFJhdGluZyA9IGlmICh0YWdzLmFueSB7IGl0LmtleSBpbiBBRFVMVF9UQUdfS0VZUyB9KSB7CgkJCQlDb250ZW50UmF0aW5nLk5TRlcKCQkJfSBlbHNlIHsKCQkJCW1hbmdhLmNvbnRlbnRSYXRpbmcKCQkJfSwKCQkJY292ZXJVcmwgPSBkb2Muc2VsZWN0Rmlyc3QoImltZ1tzcmMqPS9hcGkvbWVkaWEvXSIpPy5hdHRyKCJzcmMiKQoJCQkJPy50YWtlSWYgeyBpdC5pc05vdEVtcHR5KCkgfSA/OiBtYW5nYS5jb3ZlclVybCwKCQkJdGFncyA9IHRhZ3MsCgkJCXN0YXRlID0gd2hlbiB7CgkJCQltZXRhWyJzdGF0dXMiXT8uY29udGFpbnMoIm9uZ29pbmciLCBpZ25vcmVDYXNlID0gdHJ1ZSkgPT0gdHJ1ZSAtPiBNYW5nYVN0YXRlLk9OR09JTkcKCQkJCW1ldGFbInN0YXR1cyJdPy5jb250YWlucygiY29tcGxldGVkIiwgaWdub3JlQ2FzZSA9IHRydWUpID09IHRydWUgLT4gTWFuZ2FTdGF0ZS5GSU5JU0hFRAoJCQkJbWV0YVsic3RhdHVzIl0/LmNvbnRhaW5zKCJoaWF0dXMiLCBpZ25vcmVDYXNlID0gdHJ1ZSkgPT0gdHJ1ZSAtPiBNYW5nYVN0YXRlLlBBVVNFRAoJCQkJZWxzZSAtPiBtYW5nYS5zdGF0ZQoJCQl9LAoJCQlhdXRob3JzID0gbWFuZ2EuYXV0aG9ycywKCQkJZGVzY3JpcHRpb24gPSBkZXNjcmlwdGlvbiA/OiBtYW5nYS5kZXNjcmlwdGlvbiwKCQkJY2hhcHRlcnMgPSBjaGFwdGVyQnlIcmVmLnZhbHVlcy5zb3J0ZWRCeSB7IGl0Lm51bWJlciB9LAoJCSkKCX0KCglvdmVycmlkZSBzdXNwZW5kIGZ1biBnZXRQYWdlcyhjaGFwdGVyOiBNYW5nYUNoYXB0ZXIpOiBMaXN0PE1hbmdhUGFnZT4gewoJCXZhbCBib2R5ID0gd2ViQ2xpZW50Lmh0dHBHZXQoY2hhcHRlci51cmwudG9BYnNvbHV0ZVVybChkb21haW4pKS5ib2R5LnN0cmluZygpCgkJdmFsIGJ5UGF0aCA9IExpbmtlZEhhc2hNYXA8U3RyaW5nLCBTdHJpbmc+KCkKCQlmb3IgKG1hdGNoIGluIFBBR0VfVVJMX1JFR0VYLmZpbmRBbGwoYm9keSkpIHsKCQkJdmFsIHVybCA9IG1hdGNoLnZhbHVlLnJlcGxhY2UoIiZhbXA7IiwgIiYiKQoJCQlieVBhdGgucHV0SWZBYnNlbnQodXJsLnN1YnN0cmluZ0JlZm9yZSgnPycpLCB1cmwpCgkJfQoJCXJldHVybiBieVBhdGguZW50cmllcwoJCQkuc29ydGVkQnkgeyBlbnRyeSAtPgoJCQkJUEFHRV9OVU1CRVJfUkVHRVguZmluZChlbnRyeS5rZXkpPy5ncm91cFZhbHVlcz8uZ2V0KDEpPy50b0ludE9yTnVsbCgpCgkJCQkJPzogSW50Lk1BWF9WQUxVRQoJCQl9CgkJCS5tYXAgeyAoXywgdXJsKSAtPgoJCQkJTWFuZ2FQYWdlKAoJCQkJCWlkID0gZ2VuZXJhdGVVaWQodXJsLnN1YnN0cmluZ0JlZm9yZSgnPycpKSwKCQkJCQl1cmwgPSB1cmwsCgkJCQkJcHJldmlldyA9IG51bGwsCgkJCQkJc291cmNlID0gc291cmNlLAoJCQkJKQoJCQl9Cgl9CgoJcHJpdmF0ZSBmdW4gZm9ybWF0TnVtYmVyKG51bWJlcjogRmxvYXQpOiBTdHJpbmcgewoJCXJldHVybiBpZiAobnVtYmVyICUgMWYgPT0gMGYpIG51bWJlci50b0ludCgpLnRvU3RyaW5nKCkgZWxzZSBudW1iZXIudG9TdHJpbmcoKQoJfQoKCXByaXZhdGUgY29tcGFuaW9uIG9iamVjdCB7CgkJY29uc3QgdmFsIFBBR0VfU0laRSA9IDI0CgkJdmFsIEFEVUxUX1RBR19LRVlTID0gc2V0T2YoImFkdWx0IiwgInNtdXQiLCAibWF0dXJlIikKCQl2YWwgRkxPQVRfUkVHRVggPSBSZWdleCgiIiJcZCsoPzpcLlxkKyk/IiIiKQoJCXZhbCBDSEFQVEVSX05VTUJFUl9SRUdFWCA9IFJlZ2V4KCIiIi9jaGFwdGVyLShbMC05XSsoPzpcLlswLTldKyk/KS8iIiIpCgkJdmFsIFBBR0VfVVJMX1JFR0VYID0gUmVnZXgoCgkJCSIiImh0dHBzOi8vc2lpa29taWtcLmNvbS9hcGkvbWVkaWEvbGVnYWN5L21hbmdhX1teXHMiJzw+XFxdKz9cLndlYnAoPzpcP1teXHMiJzw+XFxdKik/IiIiLAoJCSkKCQl2YWwgUEFHRV9OVU1CRVJfUkVHRVggPSBSZWdleCgiIiIvKFxkKylcLndlYnAkIiIiKQoJfQp9Cg==
+package tsuki.site.id
+
+import tsuki.MangaLoaderContext
+import tsuki.MangaSourceParser
+import tsuki.config.ConfigKey
+import tsuki.core.PagedMangaParser
+import tsuki.model.ContentRating
+import tsuki.model.Manga
+import tsuki.model.MangaChapter
+import tsuki.model.MangaListFilter
+import tsuki.model.MangaListFilterCapabilities
+import tsuki.model.MangaListFilterOptions
+import tsuki.model.MangaPage
+import tsuki.model.MangaParserSource
+import tsuki.model.MangaState
+import tsuki.model.MangaTag
+import tsuki.model.RATING_UNKNOWN
+import tsuki.model.SortOrder
+import tsuki.util.generateUid
+import tsuki.util.parseHtml
+import tsuki.util.toAbsoluteUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import java.util.EnumSet
+
+/**
+ * First-party replacement for the UMA Siikomik parser.
+ *
+ * siikomik.com is no longer a Madara/WordPress site: it was rebuilt as a
+ * custom Next.js application. The stock MadaraParser selectors match
+ * nothing in the new markup and its admin-ajax endpoint is gone, so the
+ * old parser cannot load anything. This parser reads the server-rendered
+ * pages of the new site directly:
+ *
+ * - list:    GET /komik/ (s4-card markup; ?page=, ?sort=popular|rating,
+ *            ?genre=<slug>)
+ * - search:  GET /cari/?q=<query> (same card markup)
+ * - details: h1 title, /api/media/ cover, metadata definition list
+ *            (Rating / Status / Alternative / Type), genre chips and the
+ *            inline chapter list (no dates are published)
+ * - pages:   the reader page embeds signed /api/media/ image URLs in its
+ *            payload; they are extracted from the raw body
+ */
+@MangaSourceParser("SIIKOMIK", "Siikomik", "id")
+internal class Siikomik(context: MangaLoaderContext) :
+	PagedMangaParser(context, MangaParserSource.SIIKOMIK, PAGE_SIZE) {
+
+	override val configKeyDomain = ConfigKey.Domain("siikomik.com")
+
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.UPDATED,
+		SortOrder.POPULARITY,
+		SortOrder.RATING,
+	)
+
+	override suspend fun getListPage(
+		page: Int,
+		order: SortOrder,
+		filter: MangaListFilter,
+	): List<Manga> {
+		val query = filter.query?.trim().orEmpty()
+		val doc = if (query.isNotEmpty()) {
+			if (page > 1) return emptyList()
+			val url = "https://$domain/cari/".toHttpUrl().newBuilder()
+				.addQueryParameter("q", query)
+				.build()
+			webClient.httpGet(url).parseHtml()
+		} else {
+			val url = "https://$domain/komik/".toHttpUrl().newBuilder().apply {
+				if (page > 1) addQueryParameter("page", page.toString())
+				when (order) {
+					SortOrder.POPULARITY -> addQueryParameter("sort", "popular")
+					SortOrder.RATING -> addQueryParameter("sort", "rating")
+					else -> Unit
+				}
+				filter.tags.firstOrNull()?.let { addQueryParameter("genre", it.key) }
+			}.build()
+			webClient.httpGet(url).parseHtml()
+		}
+		return doc.select("a.s4-card").mapNotNull { a ->
+			val href = a.attr("href").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+			val title = a.attr("title").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+			Manga(
+				id = generateUid(href),
+				title = title,
+				altTitles = emptySet(),
+				url = href,
+				publicUrl = href.toAbsoluteUrl(domain),
+				rating = RATING_UNKNOWN,
+				contentRating = null,
+				coverUrl = a.selectFirst("img")?.attr("src")?.takeIf { it.isNotEmpty() },
+				tags = emptySet(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
+	}
+
+	override suspend fun getFilterOptions(): MangaListFilterOptions {
+		return MangaListFilterOptions(availableTags = fetchTags())
+	}
+
+	override fun getFilterCapabilities(): MangaListFilterCapabilities {
+		return MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isMultipleTagsSupported = false,
+			isTagsSupported = true,
+			isSearchWithFiltersSupported = false,
+		)
+	}
+
+	private suspend fun fetchTags(): Set<MangaTag> {
+		val doc = webClient.httpGet("https://$domain/komik/").parseHtml()
+		return doc.select("a.manga-filter-box[href*=?genre=]").mapNotNullToSet { a ->
+			val slug = a.attr("href").substringAfter("?genre=", "").substringBefore("&")
+				.takeIf { it.isNotEmpty() } ?: return@mapNotNullToSet null
+			val title = a.selectFirst("span")?.text()?.takeIf { it.isNotEmpty() }
+				?: return@mapNotNullToSet null
+			MangaTag(title = title, key = slug, source = source)
+		}
+	}
+
+	override suspend fun getDetails(manga: Manga): Manga {
+		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+
+		val meta = HashMap<String, String>()
+		for (dt in doc.select("dt")) {
+			val dd = dt.nextElementSibling() ?: continue
+			meta[dt.text().trim().lowercase()] = dd.text().trim()
+		}
+
+		val tags = LinkedHashSet<MangaTag>()
+		for (a in doc.select("a[href*=?genre=]")) {
+			val slug = a.attr("href").substringAfter("?genre=", "").substringBefore("&")
+				.takeIf { it.isNotEmpty() } ?: continue
+			val name = a.text().trim().takeIf { it.isNotEmpty() } ?: continue
+			tags += MangaTag(title = name, key = slug, source = source)
+		}
+		meta["type"]?.takeIf { it.isNotEmpty() }?.let { type ->
+			tags += MangaTag(title = type, key = type.lowercase(), source = source)
+		}
+
+		val description = doc.select("p")
+			.map { it.text().trim() }
+			.filter { it.length >= 60 }
+			.take(3)
+			.joinToString("\n\n")
+			.takeIf { it.isNotEmpty() }
+
+		val chapterByHref = LinkedHashMap<String, MangaChapter>()
+		for (a in doc.select("a[href*=/chapter-]")) {
+			val href = a.attr("href")
+			val number = CHAPTER_NUMBER_REGEX.find(href)?.groupValues?.get(1)?.toFloatOrNull()
+				?: continue
+			val text = a.text().trim()
+			val existing = chapterByHref[href]
+			if (existing != null && !text.startsWith("Chapter")) continue
+			chapterByHref[href] = MangaChapter(
+				id = generateUid(href),
+				title = if (text.startsWith("Chapter")) text else "Chapter ${formatNumber(number)}",
+				number = number,
+				volume = 0,
+				url = href,
+				uploadDate = 0L,
+				source = source,
+				scanlator = null,
+				branch = null,
+			)
+		}
+
+		return manga.copy(
+			title = doc.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotEmpty() } ?: manga.title,
+			altTitles = meta["alternative"]
+				?.split('/', ',')
+				?.map { it.trim() }
+				?.filter { it.isNotEmpty() }
+				?.toSet()
+				?: manga.altTitles,
+			url = manga.url,
+			publicUrl = manga.url.toAbsoluteUrl(domain),
+			rating = meta["rating"]
+				?.let { FLOAT_REGEX.find(it)?.value?.toFloatOrNull() }
+				?.div(5f)
+				?: manga.rating,
+			contentRating = if (tags.any { it.key in ADULT_TAG_KEYS }) {
+				ContentRating.NSFW
+			} else {
+				manga.contentRating
+			},
+			coverUrl = doc.selectFirst("img[src*=/api/media/]")?.attr("src")
+				?.takeIf { it.isNotEmpty() } ?: manga.coverUrl,
+			tags = tags,
+			state = when {
+				meta["status"]?.contains("ongoing", ignoreCase = true) == true -> MangaState.ONGOING
+				meta["status"]?.contains("completed", ignoreCase = true) == true -> MangaState.FINISHED
+				meta["status"]?.contains("hiatus", ignoreCase = true) == true -> MangaState.PAUSED
+				else -> manga.state
+			},
+			authors = manga.authors,
+			description = description ?: manga.description,
+			chapters = chapterByHref.values.sortedBy { it.number },
+		)
+	}
+
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val body = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).body.string()
+		val byPath = LinkedHashMap<String, String>()
+		for (match in PAGE_URL_REGEX.findAll(body)) {
+			val url = match.value.replace("&amp;", "&")
+			byPath.putIfAbsent(url.substringBefore('?'), url)
+		}
+		return byPath.entries
+			.sortedBy { entry ->
+				PAGE_NUMBER_REGEX.find(entry.key)?.groupValues?.get(1)?.toIntOrNull()
+					?: Int.MAX_VALUE
+			}
+			.map { (_, url) ->
+				MangaPage(
+					id = generateUid(url.substringBefore('?')),
+					url = url,
+					preview = null,
+					source = source,
+				)
+			}
+	}
+
+	private fun formatNumber(number: Float): String {
+		return if (number % 1f == 0f) number.toInt().toString() else number.toString()
+	}
+
+	private companion object {
+		const val PAGE_SIZE = 24
+		val ADULT_TAG_KEYS = setOf("adult", "smut", "mature")
+		val FLOAT_REGEX = Regex("""\d+(?:\.\d+)?""")
+		val CHAPTER_NUMBER_REGEX = Regex("""/chapter-([0-9]+(?:\.[0-9]+)?)/""")
+		val PAGE_URL_REGEX = Regex(
+			"""https://siikomik\.com/api/media/legacy/manga_[^\s"'<>\\]+?\.webp(?:\?[^\s"'<>\\]*)?""",
+		)
+		val PAGE_NUMBER_REGEX = Regex("""/(\d+)\.webp$""")
+	}
+}
