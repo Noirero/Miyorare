@@ -17,6 +17,7 @@ import tsuki.model.MangaTag
 import tsuki.model.RATING_UNKNOWN
 import tsuki.model.SortOrder
 import tsuki.util.generateUid
+import tsuki.util.mapNotNullToSet
 import tsuki.util.parseHtml
 import tsuki.util.toAbsoluteUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
