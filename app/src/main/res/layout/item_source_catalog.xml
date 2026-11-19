@@ -1,148 +1,138 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
-	xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto"
-	xmlns:tools="http://schemas.android.com/tools"
-	android:layout_width="match_parent"
-	android:layout_height="wrap_content"
-	android:background="?selectableItemBackground"
-	android:gravity="center_vertical"
-	android:minHeight="?listPreferredItemHeightSmall"
-	android:orientation="horizontal"
-	android:paddingStart="?listPreferredItemPaddingStart"
-	android:paddingTop="5dp"
-	android:paddingBottom="5dp"
-	tools:ignore="RtlSymmetry">
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="12dp"
+    android:layout_marginVertical="4dp"
+    android:background="@drawable/bg_settings_tile"
+    android:clipToOutline="true"
+    android:foreground="?selectableItemBackground"
+    android:orientation="vertical"
+    android:padding="14dp">
 
-	<FrameLayout
-		android:layout_width="44dp"
-		android:layout_height="44dp"
-		android:foregroundGravity="center">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-		<org.koitharu.kotatsu.core.ui.image.FaviconView
-			android:id="@+id/imageView_icon"
-			android:layout_width="32dp"
-			android:layout_height="32dp"
-			android:layout_gravity="center"
-			android:background="?colorControlHighlight"
-			android:labelFor="@id/textView_title"
-			android:scaleType="fitCenter"
-			app:iconStyle="@style/FaviconDrawable.Small"
-			app:shapeAppearance="?shapeAppearanceCornerSmall"
-			tools:src="@tools:sample/avatars" />
+        <FrameLayout
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:foregroundGravity="center">
 
-		<com.google.android.material.loadingindicator.LoadingIndicator
-			android:id="@+id/progress_icon"
-			android:layout_width="44dp"
-			android:layout_height="44dp"
-			android:layout_gravity="center"
-			android:visibility="gone"
-			app:containerHeight="44dp"
-			app:containerWidth="44dp"
-			app:indicatorColor="?attr/colorPrimary"
-			app:indicatorSize="34dp" />
-	</FrameLayout>
+            <org.koitharu.kotatsu.core.ui.image.FaviconView
+                android:id="@+id/imageView_icon"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:background="?colorControlHighlight"
+                android:scaleType="fitCenter"
+                app:iconStyle="@style/FaviconDrawable.Small"
+                app:shapeAppearance="?shapeAppearanceCornerSmall"
+                tools:src="@tools:sample/avatars" />
 
-	<LinearLayout
-		android:layout_width="0dp"
-		android:layout_height="wrap_content"
-		android:layout_marginStart="?android:listPreferredItemPaddingStart"
-		android:layout_marginEnd="@dimen/margin_small"
-		android:layout_weight="1"
-		android:orientation="vertical">
+            <com.google.android.material.loadingindicator.LoadingIndicator
+                android:id="@+id/progress_icon"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                app:containerHeight="44dp"
+                app:containerWidth="44dp"
+                app:indicatorColor="?attr/colorPrimary"
+                app:indicatorSize="34dp" />
+        </FrameLayout>
 
-		<TextView
-			android:id="@+id/textView_title"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:ellipsize="end"
-			android:singleLine="true"
-			android:textAppearance="?attr/textAppearanceTitleSmall"
-			tools:text="@tools:sample/lorem[15]" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-		<TextView
-			android:id="@+id/textView_description"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:layout_marginTop="2dp"
-			android:drawablePadding="4dp"
-			android:ellipsize="end"
-			android:gravity="center_vertical"
-			android:maxLines="3"
-			android:textAppearance="?attr/textAppearanceBodySmall"
-			android:textColor="?attr/colorOnSurfaceVariant"
-			tools:text="Indonesia • 1.6.8 • KEI" />
+            <TextView
+                android:id="@+id/textView_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                tools:text="MangaDex" />
 
-	</LinearLayout>
+            <TextView
+                android:id="@+id/textView_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                tools:text="English · v1.8.3 · Keiyoushi" />
 
-	<LinearLayout
-		android:id="@+id/buttonGroup_actions"
-		android:layout_width="wrap_content"
-		android:layout_height="wrap_content"
-		android:layout_marginEnd="8dp"
-		android:gravity="center_vertical"
-		android:orientation="horizontal">
+            <TextView
+                android:id="@+id/textView_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_extension_store_kind"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp"
+                android:textAppearance="?attr/textAppearanceLabelSmall"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                tools:text="Installed" />
+        </LinearLayout>
+    </LinearLayout>
 
-		<com.google.android.material.button.MaterialButton
-			android:id="@+id/imageView_hide"
-			style="?attr/materialIconButtonStyle"
-			android:layout_width="@dimen/extension_action_button_size"
-			android:layout_height="@dimen/extension_action_button_size"
-			android:contentDescription="@string/hide"
-			android:insetBottom="0dp"
-			android:insetLeft="0dp"
-			android:insetRight="0dp"
-			android:insetTop="0dp"
-			android:minWidth="0dp"
-			android:minHeight="0dp"
-			android:padding="0dp"
-			android:tooltipText="@string/hide"
-			android:visibility="gone"
-			app:icon="@drawable/ic_eye"
-			app:iconGravity="textStart"
-			app:iconPadding="0dp"
-			app:iconSize="21dp" />
+    <LinearLayout
+        android:id="@+id/buttonGroup_actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="end|center_vertical"
+        android:orientation="horizontal">
 
-		<com.google.android.material.button.MaterialButton
-			android:id="@+id/imageView_settings"
-			style="?attr/materialIconButtonStyle"
-			android:layout_width="@dimen/extension_action_button_size"
-			android:layout_height="@dimen/extension_action_button_size"
-			android:layout_marginStart="2dp"
-			android:contentDescription="@string/settings"
-			android:insetBottom="0dp"
-			android:insetLeft="0dp"
-			android:insetRight="0dp"
-			android:insetTop="0dp"
-			android:minWidth="0dp"
-			android:minHeight="0dp"
-			android:padding="0dp"
-			android:tooltipText="@string/settings"
-			android:visibility="gone"
-			app:icon="@drawable/ic_settings"
-			app:iconGravity="textStart"
-			app:iconPadding="0dp"
-			app:iconSize="21dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/imageView_add"
+            style="?attr/materialButtonFilledTonalStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:contentDescription="@string/add"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:insetTop="0dp"
+            android:minHeight="40dp"
+            android:minWidth="96dp"
+            android:paddingHorizontal="12dp"
+            android:textAllCaps="false"
+            app:icon="@drawable/ic_add"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="20dp"
+            tools:text="Install" />
 
-		<com.google.android.material.button.MaterialButton
-			android:id="@+id/imageView_add"
-			style="?attr/materialIconButtonFilledTonalStyle"
-			android:layout_width="@dimen/extension_action_button_size"
-			android:layout_height="@dimen/extension_action_button_size"
-			android:layout_marginStart="2dp"
-			android:contentDescription="@string/add"
-			android:insetBottom="0dp"
-			android:insetLeft="0dp"
-			android:insetRight="0dp"
-			android:insetTop="0dp"
-			android:minWidth="0dp"
-			android:minHeight="0dp"
-			android:padding="0dp"
-			android:tooltipText="@string/add"
-			app:icon="@drawable/ic_add"
-			app:iconGravity="textStart"
-			app:iconPadding="0dp"
-			app:iconSize="21dp" />
-	</LinearLayout>
-
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/imageView_more"
+            style="?attr/materialIconButtonStyle"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:contentDescription="@string/more"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:insetTop="0dp"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:padding="0dp"
+            android:visibility="gone"
+            app:icon="@drawable/ic_more_vert"
+            app:iconPadding="0dp"
+            app:iconSize="22dp" />
+    </LinearLayout>
 </LinearLayout>
