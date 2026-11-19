@@ -17,10 +17,17 @@
         android:padding="@dimen/margin_normal">
 
         <TextView
+            android:id="@+id/button_expand_tint"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackground"
+            android:contentDescription="@string/reader_custom_color_filter"
+            android:drawableEnd="@drawable/ic_expand_more"
+            android:drawableTint="?attr/colorOnSurfaceVariant"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="8dp"
             android:text="@string/reader_custom_color_filter"
-            android:textAppearance="?textAppearanceTitleMedium" />
+            android:textAppearance="?attr/textAppearanceTitleMedium" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/switch_custom_tint"
@@ -30,6 +37,13 @@
             android:text="@string/reader_custom_tint_enable"
             android:textAppearance="?textAppearanceBodyMedium" />
         
+        <LinearLayout
+            android:id="@+id/custom_advanced_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -203,5 +217,6 @@
             android:checkable="true"
             android:text="@string/reader_tint_mode_burn" />
         </com.google.android.material.chip.ChipGroup>
+        </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

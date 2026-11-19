@@ -14,20 +14,14 @@
 		tools:navigationIcon="@drawable/abc_ic_clear_material"
 		tools:title="@string/color_correction">
 
-		<com.google.android.material.button.MaterialButton
-			android:id="@+id/button_done"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
-			android:layout_gravity="end"
-			android:layout_marginHorizontal="@dimen/toolbar_button_margin"
-			android:text="@string/done" />
 
 	</com.google.android.material.appbar.MaterialToolbar>
 
 	<ScrollView
 		android:id="@+id/scrollView"
 		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
+		android:layout_height="0dp"
+        android:layout_weight="1"
 		android:clipToPadding="false"
 		android:overScrollMode="ifContentScrolls">
 
@@ -262,17 +256,36 @@
 
 			</com.google.android.material.card.MaterialCardView>
 
-			<com.google.android.material.button.MaterialButton
-				android:id="@+id/button_reset"
-				style="?materialButtonOutlinedStyle"
-				android:layout_width="wrap_content"
-				android:layout_height="wrap_content"
-				android:layout_gravity="end"
-				android:layout_marginTop="@dimen/margin_normal"
-				android:text="@string/reset" />
 
 		</LinearLayout>
 
 	</ScrollView>
+
+    <!-- Actions remain visible below the scroll region, never over image controls. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/margin_normal"
+        android:paddingVertical="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_reset"
+            style="?materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:minHeight="48dp"
+            android:text="@string/reset" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_done"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:minHeight="48dp"
+            android:text="@string/apply" />
+    </LinearLayout>
 
 </LinearLayout>

@@ -243,6 +243,7 @@ fun SheetSegmentedSelector(
 	selectedIndex: Int,
 	onSelect: (Int) -> Unit,
 	modifier: Modifier = Modifier,
+	compact: Boolean = false,
 ) {
 	if (options.isEmpty()) {
 		return
@@ -255,8 +256,8 @@ fun SheetSegmentedSelector(
 		Box(
 			modifier = Modifier
 				.fillMaxWidth()
-				.height(112.dp)
-				.padding(8.dp),
+				.height(if (compact) 76.dp else 112.dp)
+				.padding(if (compact) 6.dp else 8.dp),
 		) {
 			// Bias runs -1 (first) .. 1 (last), so the pill lands centred on the chosen segment.
 			val lastIndex = (options.size - 1).coerceAtLeast(1)
@@ -304,10 +305,10 @@ fun SheetSegmentedSelector(
 							Icon(
 								painter = option.icon,
 								contentDescription = null,
-								modifier = Modifier.size(34.dp),
+								modifier = Modifier.size(if (compact) 24.dp else 34.dp),
 								tint = contentColor,
 							)
-							Spacer(Modifier.height(8.dp))
+							Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
 							Text(
 								text = option.label,
 								style = MaterialTheme.typography.titleSmall,

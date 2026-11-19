@@ -802,4 +802,7 @@
     <string name="chapter_download_renamed_refresh">Nama file diubah. Segarkan Detail Manga untuk memperbarui daftar chapter.</string>
     <string name="chapter_download_rename_conflict">Nama file chapter itu sudah ada atau sedang diunduh. Pilih nama lain.</string>
     <string name="chapter_download_rename_failed">Nama file chapter tidak dapat diubah. Segarkan Detail Manga dan coba lagi.</string>
+    <string name="reader_tools">Alat</string>
+    <string name="reader_advanced_options">Opsi pembaca lanjutan</string>
+    <string name="auto_double_foldable">Otomatis dua halaman di perangkat lipat</string>
 </resources>
