@@ -108,6 +108,7 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.lnreader.model.absoluteUrl
+import org.koitharu.kotatsu.core.fonts.AppFontHolder
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
@@ -2614,6 +2615,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val base = when {
 			activePublisherStyle -> Typeface.SERIF
 			activeFontFamily == EPUB_FONT_CUSTOM -> customReaderTypeface()
+			// "App font" is an explicit font choice: the book follows whichever
+			// Font Pack is active app-wide, and falls back to serif when none is.
+			activeFontFamily == EPUB_FONT_APP -> AppFontHolder.baseTypeface ?: Typeface.SERIF
 			else -> Typeface.create(activeFontFamily.substringBefore(',').trim().trim('\'', '"'), Typeface.NORMAL)
 		}
 		if (activePublisherStyle) return base
@@ -2887,6 +2891,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		private const val EPUB_THEME_CUSTOM = "custom"
 		private const val EPUB_THEME_SEPIA = "sepia"
 		private const val EPUB_FONT_CUSTOM = "custom"
+		private const val EPUB_FONT_APP = "app"
 		private const val MAX_SEARCH_RESULTS = 100
 		private const val PROGRESS_INTERVAL_MS = 50L
 		private const val PROGRESS_PERSIST_DEBOUNCE_MS = 450L

@@ -973,6 +973,10 @@ class AppRouter private constructor(
             Intent(context, SettingsActivity::class.java)
                 .setAction(ACTION_PRIVATE_EXTENSIONS_SETTINGS)
 
+        fun appFontSettingsIntent(context: Context) =
+            Intent(context, SettingsActivity::class.java)
+                .setAction(ACTION_APP_FONT_SETTINGS)
+
         fun readerSettingsIntent(context: Context) =
             Intent(context, SettingsActivity::class.java)
                 .setAction(ACTION_READER)
@@ -1063,6 +1067,7 @@ class AppRouter private constructor(
 
         const val ACTION_PRIVATE_FAVOURITES_SETTINGS = "${BuildConfig.APPLICATION_ID}.action.MANAGE_PRIVATE_FAVOURITES"
         const val ACTION_PRIVATE_EXTENSIONS_SETTINGS = "${BuildConfig.APPLICATION_ID}.action.MANAGE_PRIVATE_EXTENSIONS"
+        const val ACTION_APP_FONT_SETTINGS = "${BuildConfig.APPLICATION_ID}.action.APP_FONT_SETTINGS"
         const val ACTION_MANAGE_DOWNLOADS = "${BuildConfig.APPLICATION_ID}.action.MANAGE_DOWNLOADS"
         const val ACTION_MANGA_EXPLORE = "${BuildConfig.APPLICATION_ID}.action.EXPLORE_MANGA"
         const val ACTION_PROXY = "${BuildConfig.APPLICATION_ID}.action.MANAGE_PROXY"
