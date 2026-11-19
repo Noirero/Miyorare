@@ -1,40 +1,44 @@
-## Miyorare v1.4.26
+## Miyorare v1.4.27
 
-This release focuses on Downloads and Details: the release calendar is now always within reach, large download libraries open faster, and bulk removal reports exactly what happened.
+This release is about making Miyorare yours: Font Packs let you restyle the whole app with downloadable fonts, Indonesian sources get the full source Settings page, and the settings and reader surfaces have been refreshed throughout.
 
 ### ✨ What's New
 
-- **Release calendar in Details** — The release calendar is now always available from a manga's Details, even when no release prediction can be calculated. Without a prediction it opens a navigable calendar for the current month — no invented dates — and for online manga you can check the source for the latest chapters right from the calendar; if new chapters are found, you can reload the chapter list on the spot.
+- **Font Packs** — Download font packs and apply one across the whole app from **Settings → Appearance → App font**. The catalog launches with 15 packs — including Literata, Inter, Atkinson Hyperlegible, Lora, and EB Garamond — each verified before install, with the built-in font always available as a fallback. EPUB books can join in per book: choose **App font** under Reading → Font and the book follows whichever pack is active.
+- **Full source Settings for Indonesian sources** — Indonesian sources now open the same complete Settings page as Global sources — Site address, Test source, Reset source session, Request handling, and Source Pack info — covering 65 sources in the Indonesian pack.
 
 ### 🚀 Improvements
 
-- **Faster Downloads with large histories** — The Downloads screen builds and updates its list much faster when you have hundreds of downloaded groups, so opening Downloads and watching progress no longer stalls on large libraries.
-- **Collapsible Personal Notes** — Notes on the Details screen now start as a compact four-line preview, with an expand/collapse control when a note is longer. Long notes no longer push the rest of Details down, while the text stays selectable and links stay tappable.
-- **Clearer download destination in Settings** — Settings now shows the download folder that is actually in effect, so you can confirm where your downloads are stored before changing storage options.
+- **Sources & Extensions settings, redesigned** — The source catalog, extension stores, and repository managers now use grouped, theme-aware cards, so state and actions are easier to scan and everything follows your theme. The App font screen got the same treatment, with a typography showcase for each pack.
+- **Reader options, polished** — The Manga Reader options sheet refines its Read Mode and Tools sections, making the controls you reach for mid-chapter clearer and quicker to adjust.
+- **Calmer bottom navigation** — The glow around the selected tab is now a single soft halo instead of several stacked rings, for a flatter, cleaner bar.
 
 ### 🐞 Fixes
 
-- **Bulk removal reports its results** — Removing many downloads at once now tells you which groups were removed and which were skipped. One problematic item no longer cancels the whole batch silently — the rest still finish, and partial results are reported.
-- **Downloaded sizes and chapter status stay correct** — Chapter sizes are now tied to the storage destination where the download was recorded, and sizes and expanded chapter status refresh properly when the download storage changes, instead of showing stale or mismatched information.
+- **Shinigami works again** — Shinigami moved to a new site and API; the source now points at the new home, lists chapters with the new pagination (long series show every chapter), and loads genres again.
+- **Broken sources say so** — CosmicScans, Comicaso, and SekteKomik can no longer deliver chapter images from their sites, so they are now marked as broken instead of failing silently in the reader.
+- **Indonesian source icons** — Most Indonesian sources that showed a blank or dead icon now display the proper site icon.
 
 <details>
 <summary><strong>🇮🇩 Bahasa Indonesia</strong></summary>
 
-Rilis ini berfokus pada Unduhan dan Details: kalender rilis kini selalu bisa dibuka, pustaka unduhan besar terbuka lebih cepat, dan penghapusan massal melaporkan hasilnya dengan jelas.
+Rilis ini tentang menjadikan Miyorare milikmu: Font Pack memungkinkanmu mengganti gaya seluruh aplikasi dengan font yang bisa diunduh, source Indonesia mendapat halaman Settings source yang lengkap, dan permukaan pengaturan serta reader diperbarui menyeluruh.
 
 ### ✨ Yang Baru
 
-- **Kalender rilis di Details** — Kalender rilis kini selalu tersedia dari Details sebuah manga, bahkan ketika prediksi rilis tidak dapat dihitung. Tanpa prediksi, kalender menampilkan bulan berjalan yang bisa dijelajahi — tanpa tanggal karangan — dan untuk manga online kamu bisa memeriksa chapter terbaru langsung dari kalender ke sumbernya; jika ada chapter baru, daftar chapter bisa dimuat ulang saat itu juga.
+- **Font Pack** — Unduh paket font dan terapkan ke seluruh aplikasi dari **Pengaturan → Tampilan → Font aplikasi**. Katalog dibuka dengan 15 paket — termasuk Literata, Inter, Atkinson Hyperlegible, Lora, dan EB Garamond — masing-masing diverifikasi sebelum dipasang, dengan font bawaan yang selalu tersedia sebagai cadangan. Buku EPUB bisa ikut per buku: pilih **App font** di Reading → Font dan buku akan mengikuti paket yang sedang aktif.
+- **Settings source lengkap untuk source Indonesia** — Source Indonesia kini membuka halaman Settings lengkap yang sama seperti source Global — Alamat situs, Uji source, Reset sesi source, Penanganan request, dan Info Source Pack — mencakup 65 source dalam pack Indonesia.
 
 ### 🚀 Peningkatan
 
-- **Unduhan lebih cepat untuk riwayat besar** — Layar Unduhan kini menyusun dan memperbarui daftarnya jauh lebih cepat ketika kamu punya ratusan grup unduhan, jadi membuka Unduhan dan memantau progres tidak lagi tersendat pada pustaka besar.
-- **Catatan Pribadi bisa dilipat** — Catatan di layar Details kini tampil mulai sebagai pratinjau ringkas empat baris, dengan tombol buka/tutup bila catatan lebih panjang. Catatan panjang tidak lagi mendorong isi Details lainnya ke bawah, sementara teks tetap bisa dipilih dan tautan tetap bisa diketuk.
-- **Tujuan unduhan lebih jelas di Pengaturan** — Pengaturan kini menampilkan folder unduhan yang benar-benar berlaku, jadi kamu bisa memastikan tempat unduhan tersimpan sebelum mengubah opsi penyimpanan.
+- **Pengaturan Sources & Extensions, didesain ulang** — Katalog source, toko ekstensi, dan pengelola repositori kini memakai kartu berkelompok yang mengikuti tema, sehingga status dan aksi lebih mudah dipindai dan semuanya mengikuti temamu. Layar Font aplikasi mendapat perlakuan yang sama, dengan etalase tipografi untuk tiap paket.
+- **Opsi reader, dipoles** — Lembar opsi Manga Reader memperhalus bagian Read Mode dan Tools, membuat kontrol yang kamu butuhkan di tengah chapter lebih jelas dan lebih cepat diatur.
+- **Navigasi bawah lebih tenang** — Cahaya di sekitar tab terpilih kini berupa satu halo lembut, bukan beberapa lingkaran bertumpuk, sehingga bar-nya terasa lebih rata dan bersih.
 
 ### 🐞 Perbaikan
 
-- **Penghapusan massal melaporkan hasilnya** — Menghapus banyak unduhan sekaligus kini memberi tahu grup mana yang terhapus dan mana yang dilewati. Satu item bermasalah tidak lagi membatalkan seluruh batch secara diam-diam — sisanya tetap selesai, dan hasil parsial tetap dilaporkan.
-- **Ukuran unduhan dan status chapter tetap benar** — Ukuran chapter kini terikat pada tujuan penyimpanan tempat unduhan dicatat, dan ukuran serta status chapter yang diperluas diperbarui dengan benar ketika penyimpanan unduhan berubah, bukan lagi menampilkan informasi lama atau tertukar.
+- **Shinigami berfungsi lagi** — Shinigami pindah ke situs dan API baru; source kini menunjuk ke rumah barunya, menampilkan chapter dengan paginasi baru (seri panjang menampilkan semua chapter), dan memuat genre lagi.
+- **Source rusak kini ditandai jelas** — CosmicScans, Comicaso, dan SekteKomik tidak lagi bisa mengirim gambar chapter dari situs mereka, jadi kini ditandai sebagai rusak alih-alih gagal diam-diam di reader.
+- **Ikon source Indonesia** — Sebagian besar source Indonesia yang sebelumnya menampilkan ikon kosong atau mati kini menampilkan ikon situs yang benar.
 
 </details>
