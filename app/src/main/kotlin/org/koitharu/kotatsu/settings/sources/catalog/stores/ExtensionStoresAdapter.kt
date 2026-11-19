@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
@@ -83,8 +84,13 @@ class ExtensionStoresAdapter(
 				binding.textKind.setTextColor(palette.onSurfaceVariant)
 			}
 			val name = labels[item.store.id] ?: item.store.displayName
-			// Empty while the store is still being checked or is unreachable — no "(0)" in that case.
-			binding.textTitle.text = if (item.catalog.isEmpty()) name else "$name (${item.catalog.size})"
+			binding.textTitle.text = name
+			binding.textUrl.text = item.store.indexUrl
+			// Counts are shown only for a successfully refreshed catalog, never as stale "0".
+			binding.textCount.isVisible = item.health == StoreHealth.AVAILABLE && item.catalog.isNotEmpty()
+			if (binding.textCount.isVisible) {
+				binding.textCount.text = binding.root.context.getString(R.string.store_card_extension_count, item.catalog.size)
+			}
 
 			binding.textKind.isVisible = true
 			binding.textKind.setText(item.contentType.kindLabelRes())
@@ -105,23 +111,35 @@ class ExtensionStoresAdapter(
 				)
 			}
 			binding.storeStatus.backgroundTintList = ColorStateList.valueOf(color)
-			binding.storeStatus.contentDescription = binding.root.context.getString(
-				when (item.health) {
-					StoreHealth.AVAILABLE -> R.string.store_available
-					StoreHealth.UNAVAILABLE -> R.string.store_unavailable
-					StoreHealth.CHECKING -> R.string.loading_
-				},
-			)
-			binding.buttonEdit.isVisible = true
-			binding.buttonRetry.isVisible = item.health == StoreHealth.UNAVAILABLE
+			val healthLabel = when (item.health) {
+				StoreHealth.AVAILABLE -> R.string.store_available
+				StoreHealth.UNAVAILABLE -> R.string.store_unavailable
+				StoreHealth.CHECKING -> R.string.loading_
+			}
+			binding.storeStatus.contentDescription = binding.root.context.getString(healthLabel)
+			binding.textStatus.setText(healthLabel)
+			binding.textStatus.setTextColor(color)
 			binding.buttonWebsite.isVisible = !item.store.website.isNullOrBlank()
-			binding.buttonDiscord.isVisible = !item.store.discord.isNullOrBlank()
 			binding.buttonEdit.setOnClickListener { listener.onEdit(item) }
-			binding.buttonCopy.setOnClickListener { listener.onCopy(item) }
-			binding.buttonRetry.setOnClickListener { listener.onRetry() }
 			binding.buttonWebsite.setOnClickListener { item.store.website?.let(listener::onOpenLink) }
-			binding.buttonDiscord.setOnClickListener { item.store.discord?.let(listener::onOpenLink) }
-			binding.buttonRemove.setOnClickListener { listener.onRemove(item) }
+			binding.buttonMore.setOnClickListener { anchor ->
+				PopupMenu(anchor.context, anchor).apply {
+					menu.add(0, 1, 0, R.string.copy_store_url)
+					if (item.health == StoreHealth.UNAVAILABLE) menu.add(0, 2, 1, R.string.retry)
+					if (!item.store.discord.isNullOrBlank()) menu.add(0, 3, 2, R.string.discord)
+					menu.add(0, 4, 3, R.string.remove_store)
+					setOnMenuItemClickListener { option ->
+						when (option.itemId) {
+							1 -> listener.onCopy(item)
+							2 -> listener.onRetry()
+							3 -> item.store.discord?.let(listener::onOpenLink)
+							4 -> listener.onRemove(item)
+							else -> return@setOnMenuItemClickListener false
+						}
+						true
+					}
+				}.show()
+			}
 			binding.dragHandle.setOnTouchListener { _, event ->
 				event.actionMasked == MotionEvent.ACTION_DOWN && listener.onDrag(this)
 			}
