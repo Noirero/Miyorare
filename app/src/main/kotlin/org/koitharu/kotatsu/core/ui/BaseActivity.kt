@@ -83,6 +83,9 @@ abstract class BaseActivity<B : ViewBinding> :
 		// Resolve the active Font Pack before any view inflation happens, so
 		// AppFontHolder is populated when the inflater factory starts working.
 		entryPoint.fontPackRepository
+		// Same for the active Icon Pack: constructing the repository loads the
+		// pack's rendered glyphs into IconPackHolder for the settings screens.
+		entryPoint.iconPackRepository
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
 			AppCompatDelegate.setApplicationLocales(entryPoint.settings.appLocales)
 		}

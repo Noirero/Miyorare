@@ -76,6 +76,7 @@ import org.koitharu.kotatsu.settings.compose.MiyorareChoiceSettingsItem
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.fonts.FontSettingsFragment
+import org.koitharu.kotatsu.settings.icons.IconSettingsFragment
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SliderSettingsItem
@@ -177,6 +178,13 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
                             isFromRoot = false,
                         )
                     },
+                    onOpenIcons = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            IconSettingsFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
                     onPickCustomBackground = ::pickCustomBackground,
                     onRemoveCustomBackground = ::removeCustomBackground,
                     onResetAppearance = ::resetAppearance,
@@ -272,6 +280,7 @@ private fun AppearanceScreen(
     onOpenFeed: () -> Unit,
     onOpenAdvanced: () -> Unit,
     onOpenFonts: () -> Unit,
+    onOpenIcons: () -> Unit,
     onPickCustomBackground: () -> Unit,
     onRemoveCustomBackground: () -> Unit,
     onResetAppearance: () -> Unit,
@@ -794,6 +803,15 @@ private fun AppearanceScreen(
                         icon = R.drawable.ic_font,
                         shape = pos.shape,
                         onClick = onOpenFonts,
+                    )
+                }
+                item { pos ->
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.icon_title),
+                        subtitle = stringResource(R.string.icon_settings_summary),
+                        icon = R.drawable.ic_palette,
+                        shape = pos.shape,
+                        onClick = onOpenIcons,
                     )
                 }
             }

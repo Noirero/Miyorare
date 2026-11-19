@@ -33,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
+import org.koitharu.kotatsu.core.icons.IconPackHolder
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -246,6 +248,45 @@ internal fun MiyorareVisualPalette.forSettingsIconSurface(colors: ColorScheme): 
 		borderHighlight = colors.outlineVariant,
 	)
 
+/**
+ * Renders one settings glyph. When the active Icon Pack provides artwork for
+ * [iconRes] (keyed by the drawable's entry name) and the caller wants the
+ * glyph tinted, the pack artwork is drawn instead of the built-in drawable.
+ * A null [colorFilter] means the caller wants the artwork's own colors, so
+ * monochrome pack glyphs never replace full-color icons.
+ */
+@Composable
+internal fun PackAwareSettingsIcon(
+	@DrawableRes iconRes: Int,
+	modifier: Modifier,
+	colorFilter: ColorFilter?,
+	alpha: Float = 1f,
+) {
+	val context = LocalContext.current
+	val glyphs by IconPackHolder.glyphs.collectAsState()
+	val key = remember(iconRes) {
+		runCatching { context.resources.getResourceEntryName(iconRes) }.getOrNull()
+	}
+	val bitmap = if (colorFilter != null) key?.let { glyphs[it] } else null
+	if (bitmap != null) {
+		androidx.compose.foundation.Image(
+			bitmap = bitmap,
+			contentDescription = null,
+			modifier = modifier,
+			colorFilter = colorFilter,
+			alpha = alpha,
+		)
+	} else {
+		androidx.compose.foundation.Image(
+			painter = rememberAnyDrawablePainter(iconRes),
+			contentDescription = null,
+			modifier = modifier,
+			colorFilter = colorFilter,
+			alpha = alpha,
+		)
+	}
+}
+
 @Composable
 internal fun SettingsIconModern(
 	@DrawableRes iconRes: Int,
@@ -264,9 +305,8 @@ internal fun SettingsIconModern(
 			.miyorareIconSurface(palette = iconSurfacePalette, shape = shape, alpha = alpha),
 		contentAlignment = Alignment.Center,
 	) {
-		androidx.compose.foundation.Image(
-			painter = rememberAnyDrawablePainter(iconRes),
-			contentDescription = null,
+		PackAwareSettingsIcon(
+			iconRes = iconRes,
 			modifier = Modifier.size(21.dp),
 			colorFilter = if (tintIcon) {
 				ColorFilter.tint((tintOverride ?: if (palette.isModern) lerp(palette.primary, palette.secondary, 0.18f) else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = alpha))
@@ -293,9 +333,8 @@ internal fun SettingsIconBubble(
 			.background(containerColor),
 		contentAlignment = Alignment.Center,
 	) {
-		androidx.compose.foundation.Image(
-			painter = rememberAnyDrawablePainter(iconRes),
-			contentDescription = null,
+		PackAwareSettingsIcon(
+			iconRes = iconRes,
 			modifier = Modifier.size(if (tintIcon) 22.dp else 24.dp),
 			colorFilter = if (tintIcon) ColorFilter.tint(colors.onContainer.copy(alpha = contentAlpha)) else null,
 		)
@@ -315,9 +354,8 @@ internal fun SettingsIconPlain(
 		modifier = Modifier.size(44.dp),
 		contentAlignment = Alignment.Center,
 	) {
-		androidx.compose.foundation.Image(
-			painter = rememberAnyDrawablePainter(iconRes),
-			contentDescription = null,
+		PackAwareSettingsIcon(
+			iconRes = iconRes,
 			modifier = Modifier.size(24.dp),
 			colorFilter = if (tintIcon) ColorFilter.tint(tint) else null,
 			alpha = if (applyImageAlpha && !enabled) 0.5f else 1f,
