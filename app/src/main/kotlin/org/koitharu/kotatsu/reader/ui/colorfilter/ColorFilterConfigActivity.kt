@@ -10,6 +10,7 @@ import android.widget.CompoundButton
 import android.widget.ImageView
 import androidx.activity.viewModels
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import coil3.ImageLoader
 import coil3.asDrawable
 import coil3.request.ErrorResult
@@ -55,6 +56,7 @@ class ColorFilterConfigActivity :
     private var updatingUi = false
     private var uiLoading = true
     private var customEnabled = false
+    private var advancedExpanded = false
 
     private val blendIds = mapOf(
         R.id.chip_blend_default to ReaderTintBlendMode.DEFAULT,
@@ -73,6 +75,12 @@ class ColorFilterConfigActivity :
 		viewBinding.sliderBrightness.addOnChangeListener(this)
 		viewBinding.sliderContrast.addOnChangeListener(this)
         val custom = viewBinding.customFilterControls
+        advancedExpanded = savedInstanceState?.getBoolean(KEY_ADVANCED_EXPANDED) ?: false
+        custom.buttonExpandTint.setOnClickListener {
+            advancedExpanded = !advancedExpanded
+            updateAdvancedVisibility()
+        }
+        updateAdvancedVisibility()
         custom.sliderTintRed.addOnChangeListener(this)
         custom.sliderTintGreen.addOnChangeListener(this)
         custom.sliderTintBlue.addOnChangeListener(this)
@@ -105,6 +113,17 @@ class ColorFilterConfigActivity :
 		}
 		loadPreview(viewModel.preview)
 	}
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(KEY_ADVANCED_EXPANDED, advancedExpanded)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun updateAdvancedVisibility() {
+        val custom = viewBinding.customFilterControls
+        custom.customAdvancedContent.isVisible = advancedExpanded
+        custom.buttonExpandTint.isSelected = advancedExpanded
+    }
 
 	override fun onResume() {
 		super.onResume()
@@ -297,6 +316,10 @@ class ColorFilterConfigActivity :
         blendIds.keys.forEach { id ->
             custom.groupBlendModes.findViewById<View>(id)?.isEnabled = enabled
         }
+    }
+
+    private companion object {
+        const val KEY_ADVANCED_EXPANDED = "color_studio_advanced_expanded"
     }
 
 	private class PercentLabelFormatter(resources: Resources) : LabelFormatter {
