@@ -62,7 +62,7 @@ internal fun ReadModeSection(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SheetSegmentedSelector(
             options = modes.map { (_, pair) ->
@@ -70,6 +70,7 @@ internal fun ReadModeSection(
             },
             selectedIndex = selectedIndex,
             onSelect = { index -> onModeSelected(modes[index].first) },
+            compact = true,
         )
 
         Text(
@@ -104,8 +105,8 @@ internal fun DoublePageConfigSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             // Toggle 1: Use two pages in landscape
             Row(
@@ -113,7 +114,7 @@ internal fun DoublePageConfigSection(
                     .fillMaxWidth()
                     .clickable(enabled = isModeStandardOrReversed) { onDoubleOnLandscapeChange(!isDoubleOnLandscape) }
                     .alpha(sectionAlpha)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -155,7 +156,7 @@ internal fun DoublePageConfigSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(enabled = isModeStandardOrReversed && isDoubleOnLandscape) { onDoubleOnFoldableChange(!isDoubleOnFoldable) }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Spacer(modifier = Modifier.width(28.dp)) // dependent control indentation
@@ -176,7 +177,7 @@ internal fun DoublePageConfigSection(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -203,7 +204,7 @@ internal fun DoublePageConfigSection(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Spacer(modifier = Modifier.width(28.dp))
