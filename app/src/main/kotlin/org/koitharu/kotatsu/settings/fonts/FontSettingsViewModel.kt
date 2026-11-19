@@ -30,12 +30,12 @@ class FontSettingsViewModel @Inject constructor(
 	private val _errorMessage = MutableStateFlow<String?>(null)
 	val errorMessage = _errorMessage.asStateFlow()
 
+	private val _catalogLoading = MutableStateFlow(false)
+	val catalogLoading = _catalogLoading.asStateFlow()
+
 	init {
 		refreshCatalog()
 	}
-
-	private val _catalogLoading = MutableStateFlow(false)
-	val catalogLoading = _catalogLoading.asStateFlow()
 
 	fun refreshCatalog() {
 		if (_catalogLoading.value) return
