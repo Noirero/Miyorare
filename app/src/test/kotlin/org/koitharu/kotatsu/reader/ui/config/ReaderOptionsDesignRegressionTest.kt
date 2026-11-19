@@ -25,6 +25,14 @@ class ReaderOptionsDesignRegressionTest {
         assertTrue(sheet.contains("EpubConfigContent()"))
         assertTrue(sheet.contains("ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed"))
         assertTrue(sheet.contains("expandToContent()"))
+        // The same capsule is reused by EPUB with three explicit, localized tabs.
+        // Preserve its optional tabs parameter instead of hiding EPUB navigation.
+        assertTrue(sheet.contains("tabs: List<Triple<String, Int, Int>>? = null"))
+        assertTrue(sheet.contains("val visibleTabs = tabs ?: listOf("))
+        assertTrue(sheet.contains("visibleTabs.forEach"))
+        assertTrue(sheet.contains("Triple(stringResource(R.string.epub_text_tab)"))
+        assertTrue(sheet.contains("Triple(stringResource(R.string.epub_reading_tab)"))
+        assertTrue(sheet.contains("Triple(stringResource(R.string.epub_tools_tab)"))
     }
 
     @Test
