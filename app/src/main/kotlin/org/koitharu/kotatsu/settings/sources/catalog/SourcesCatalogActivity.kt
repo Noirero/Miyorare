@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -48,6 +49,8 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView.ChipModel
 import org.koitharu.kotatsu.core.util.LocaleComparator
@@ -382,11 +385,13 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		viewBinding.buttonScrollToTop.setOnClickListener {
 			currentRecyclerView()?.smoothScrollToTop()
 		}
+		applyModernCatalogPalette()
 		updateScrollToTopVisibility()
 	}
 
 	override fun onResume() {
 		super.onResume()
+		applyModernCatalogPalette()
 		refreshInstallerMethodUi()
 		val readyAction = pendingShizukuReadyAction
 		if (readyAction != null) {
@@ -397,6 +402,54 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				clearPendingShizukuActions()
 				viewBinding.root.post { showShizukuNotReadyDialog(readyAction, cancelAction) }
 			}
+		}
+	}
+
+	private fun applyModernCatalogPalette() {
+		// Views do not automatically inherit the active Modern Compose palette.
+		// Classic intentionally retains its own theme resources.
+		val palette = miyorareViewPaletteFromPreferences() ?: return
+		viewBinding.root.setBackgroundColor(palette.background)
+		viewBinding.appbar.setBackgroundColor(palette.background)
+		viewBinding.collapsingToolbarLayout.setContentScrimColor(palette.background)
+		viewBinding.collapsingToolbarLayout.setExpandedTitleColor(palette.onSurface)
+		viewBinding.collapsingToolbarLayout.setCollapsedTitleTextColor(palette.onSurface)
+		viewBinding.textTitleSearch.setTextColor(palette.onSurface)
+		viewBinding.toolbar.setTitleTextColor(palette.onSurface)
+		viewBinding.toolbar.navigationIcon?.mutate()?.setTint(palette.onSurface)
+		viewBinding.toolbar.overflowIcon?.mutate()?.setTint(palette.onSurfaceVariant)
+		viewBinding.tabsMedia.setTabTextColors(palette.onSurfaceVariant, palette.onPrimaryContainer)
+		val categoryBackground = ColorStateList(
+			arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
+			intArrayOf(palette.primaryContainer, android.graphics.Color.TRANSPARENT),
+		)
+		for (i in 0 until viewBinding.tabsMedia.tabCount) {
+			viewBinding.tabsMedia.getTabAt(i)?.view?.backgroundTintList = categoryBackground
+		}
+		viewBinding.tabs.setTabTextColors(palette.onSurfaceVariant, palette.primary)
+		viewBinding.tabs.setSelectedTabIndicatorColor(palette.primary)
+		viewBinding.buttonScrollToTop.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
+		viewBinding.buttonScrollToTop.imageTintList = ColorStateList.valueOf(palette.onSurfaceVariant)
+		applyModernFilterChipColors(palette)
+	}
+
+	private fun applyModernFilterChipColors(palette: MiyorareViewPalette) {
+		val backgrounds = ColorStateList(
+			arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+			intArrayOf(palette.primaryContainer, palette.surfaceContainerHigh),
+		)
+		val foregrounds = ColorStateList(
+			arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+			intArrayOf(palette.onPrimaryContainer, palette.onSurfaceVariant),
+		)
+		for (i in 0 until viewBinding.chipsFilter.childCount) {
+			val chip = viewBinding.chipsFilter.getChildAt(i) as? Chip ?: continue
+			chip.chipBackgroundColor = backgrounds
+			chip.chipStrokeColor = ColorStateList.valueOf(palette.outlineVariant)
+			chip.setTextColor(foregrounds)
+			chip.checkedIconTint = ColorStateList.valueOf(palette.onPrimaryContainer)
+			chip.chipIconTint = ColorStateList.valueOf(palette.onSurfaceVariant)
+			chip.closeIconTint = ColorStateList.valueOf(palette.onSurfaceVariant)
 		}
 	}
 
@@ -509,6 +562,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			)
 		}
 		viewBinding.chipsFilter.setChips(chips)
+		miyorareViewPaletteFromPreferences()?.let(::applyModernFilterChipColors)
 	}
 
 	private fun showLocalesMenu(anchor: View) {
