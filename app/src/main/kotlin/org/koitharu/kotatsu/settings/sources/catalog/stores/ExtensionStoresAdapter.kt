@@ -116,8 +116,13 @@ class ExtensionStoresAdapter(
 				StoreHealth.UNAVAILABLE -> R.string.store_unavailable
 				StoreHealth.CHECKING -> R.string.loading_
 			}
+			val shortHealthLabel = when (item.health) {
+				StoreHealth.AVAILABLE -> R.string.store_card_available
+				StoreHealth.UNAVAILABLE -> R.string.store_card_unavailable
+				StoreHealth.CHECKING -> R.string.store_card_checking
+			}
 			binding.storeStatus.contentDescription = binding.root.context.getString(healthLabel)
-			binding.textStatus.setText(healthLabel)
+			binding.textStatus.setText(shortHealthLabel)
 			binding.textStatus.setTextColor(color)
 			binding.buttonWebsite.isVisible = !item.store.website.isNullOrBlank()
 			binding.buttonEdit.setOnClickListener { listener.onEdit(item) }
