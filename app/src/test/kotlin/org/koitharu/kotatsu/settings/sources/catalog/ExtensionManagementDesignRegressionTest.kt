@@ -36,7 +36,7 @@ class ExtensionManagementDesignRegressionTest {
             assertTrue(layout.contains("@+id/$it"))
         }
         listOf("listener.onEdit(item)", "listener.onCopy(item)", "listener.onRetry()",
-            "listener.onOpenLink", "listener.onRemove(item)", "listener.onDrag(this)").forEach {
+            "listener::onOpenLink", "listener.onRemove(item)", "listener.onDrag(this)").forEach {
             assertTrue("Missing action: $it", adapter.contains(it))
         }
         assertTrue(adapter.contains("item.health == StoreHealth.AVAILABLE && item.catalog.isNotEmpty()"))
