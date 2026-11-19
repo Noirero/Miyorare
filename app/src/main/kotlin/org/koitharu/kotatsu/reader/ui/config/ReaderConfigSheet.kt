@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -71,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
@@ -296,7 +298,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         }
         var currentMode by remember { mutableStateOf(mode) }
 
-        // Pager State for 2 pages (0: Options, 1: Info)
+        // Pager state: 0 = Read Mode, 1 = Tools. Actions and sheet ownership stay unchanged.
         val pagerState = rememberPagerState(pageCount = { 2 })
         val scope = rememberCoroutineScope()
 
@@ -469,8 +471,8 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         currentPage: Int,
         onTabClick: (Int) -> Unit,
         tabs: List<Triple<String, Int, Int>> = listOf(
-            Triple("Read Mode", R.drawable.ic_book_page, 0),
-            Triple("Tools", R.drawable.ic_grid, 1),
+            Triple(stringResource(R.string.read_mode), R.drawable.ic_book_page, 0),
+            Triple(stringResource(R.string.reader_tools), R.drawable.ic_grid, 1),
         ),
         modifier: Modifier = Modifier,
     ) {
@@ -523,10 +525,11 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .clickable(
-                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                        indication = null,
-                                    ) { onTabClick(index) },
+                                    .selectable(
+                                        selected = isSelected,
+                                        role = Role.Tab,
+                                        onClick = { onTabClick(index) },
+                                    ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Row(
@@ -1715,7 +1718,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                 ToolWideCard(
                     icon = R.drawable.ic_settings,
                     title = stringResource(R.string.settings),
-                    subtitle = "Advanced reader options",
+                    subtitle = stringResource(R.string.reader_advanced_options),
                     onClick = onSettingsClick,
                     modifier = Modifier
                         .weight(1f)
@@ -1729,8 +1732,11 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     modifier = Modifier
                         .fillMaxHeight()
                         .aspectRatio(1f),
-                    shape = CircleShape,
-                    iconSize = 42.dp,
+                    shape = RoundedCornerShape(20.dp),
+                    iconSize = 30.dp,
+                    contentDescription = stringResource(
+                        if (isBookmarkAdded) R.string.bookmark_remove else R.string.bookmark_add,
+                    ),
                 )
             }
         }
@@ -1768,7 +1774,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             shape = RoundedCornerShape(24.dp),
             color = containerColor,
             contentColor = contentColor,
-            modifier = modifier.heightIn(min = 96.dp),
+            modifier = modifier.heightIn(min = 88.dp),
         ) {
             Row(
                 modifier = Modifier
@@ -1819,6 +1825,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         modifier: Modifier = Modifier,
         shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
         iconSize: androidx.compose.ui.unit.Dp = 32.dp,
+        contentDescription: String? = label,
     ) {
         val containerColor = if (checked) {
             MaterialTheme.colorScheme.primaryContainer
@@ -1843,7 +1850,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             shape = shape,
             color = containerColor,
             contentColor = contentColor,
-            modifier = modifier.heightIn(min = 96.dp),
+            modifier = modifier.heightIn(min = 88.dp),
         ) {
             Column(
                 modifier = Modifier
@@ -1854,7 +1861,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             ) {
                 Icon(
                     painter = painterResource(icon),
-                    contentDescription = label,
+                    contentDescription = contentDescription,
                     modifier = Modifier.size(iconSize),
                     tint = iconColor,
                 )
@@ -1882,10 +1889,10 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     ) {
         Surface(
             onClick = onClick,
-            shape = RoundedCornerShape(48.dp),
+            shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            modifier = modifier.heightIn(min = 96.dp),
+            modifier = modifier.heightIn(min = 88.dp),
         ) {
             Box(
                 modifier = Modifier
