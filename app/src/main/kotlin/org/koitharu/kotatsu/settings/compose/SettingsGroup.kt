@@ -66,6 +66,8 @@ fun SettingsGroup(
 	title: String? = null,
 	titleIcon: Int? = null,
 	titleColor: Color? = null,
+	// Opt-in connected rows for compact management screens. Default Modern cards are unchanged.
+	connectedModernRows: Boolean = false,
 	content: SettingsGroupScope.() -> Unit,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -120,11 +122,11 @@ fun SettingsGroup(
 		}
 		val total = scope.items.size
 		scope.items.forEachIndexed { i, render ->
-			render(GroupItemPosition(index = i, total = total, modern = modern))
+			render(GroupItemPosition(index = i, total = total, modern = modern && !connectedModernRows))
 			if (i < total - 1) {
 				Spacer(
 					Modifier.height(
-						if (modern) MiyorareVisualTokens.SPACING_S_DP.dp else 2.dp,
+						if (modern && !connectedModernRows) MiyorareVisualTokens.SPACING_S_DP.dp else 2.dp,
 					),
 				)
 			}
