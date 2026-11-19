@@ -148,8 +148,8 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/button_website"
-                style="?attr/materialButtonOutlinedStyle"
-                android:layout_width="wrap_content"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:layout_marginStart="8dp"
                 android:contentDescription="@string/website"
@@ -159,11 +159,9 @@
                 android:insetTop="0dp"
                 android:minHeight="40dp"
                 android:minWidth="0dp"
-                android:text="@string/website"
-                android:textAllCaps="false"
                 app:icon="@drawable/ic_open_external"
-                app:iconPadding="6dp"
-                app:iconSize="18dp" />
+                app:iconPadding="0dp"
+                app:iconSize="20dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/button_more"
