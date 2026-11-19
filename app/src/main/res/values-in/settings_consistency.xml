@@ -21,4 +21,11 @@
     <string name="settings_user_agent_custom_label">User-Agent kustom</string>
     <string name="settings_user_agent_randomize_again">Acak ulang</string>
     <string name="settings_apply">Terapkan</string>
+    <string name="sources_section_library">Pustaka sumber</string>
+    <string name="sources_section_maintenance">Instalasi &amp; pemeliharaan</string>
+    <string name="sources_section_display">Tampilan</string>
+    <string name="sources_section_privacy">Konten &amp; privasi</string>
+    <string name="sources_section_updates">Pembaruan</string>
+    <string name="sources_screen_intro">Kelola sumber bacaan, ekstensi, dan perilaku pembaruan.</string>
+    <string name="sources_auto_update_unavailable">Pilih metode pemasangan yang mendukung pembaruan otomatis.</string>
 </resources>
