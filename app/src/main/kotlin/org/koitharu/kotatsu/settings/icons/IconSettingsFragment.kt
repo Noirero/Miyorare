@@ -117,7 +117,7 @@ private fun IconSettingsScreen(viewModel: IconSettingsViewModel) {
 						onClick = { viewModel.activate(null) },
 					)
 				}
-				items(installed, key = { it.pack.id }) { pack ->
+				items(installed, key = { "installed-${it.pack.id}" }) { pack ->
 					InstalledPackRow(
 						pack = pack,
 						selected = activePack?.pack?.id == pack.pack.id,
@@ -159,7 +159,7 @@ private fun IconSettingsScreen(viewModel: IconSettingsViewModel) {
 						)
 					}
 
-					else -> items(catalog, key = { it.id }) { pack ->
+					else -> items(catalog, key = { "catalog-${it.id}" }) { pack ->
 						CatalogPackRow(
 							pack = pack,
 							isInstalled = pack.id in installedIds,
