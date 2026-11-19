@@ -1637,7 +1637,6 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         onSettingsClick: () -> Unit,
         modifier: Modifier = Modifier,
     ) {
-        // Determine rotation values
         val rotationTitle = if (isAutoRotationEnabled) {
             R.string.lock_screen_rotation
         } else {
@@ -1648,93 +1647,125 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         } else {
             R.drawable.ic_screen_rotation
         }
-        // Rows share the page height equally so this page matches the Read Mode page exactly.
+
+        // Three intrinsic-height rows rather than weighted, fill-height tiles.
+        // Only Manga calls this section. EPUB keeps its original settings layout.
         Column(
             modifier = modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Row 1: Save Page, Rotation (Pills) - not applicable to EPUB text chapters
             if (showPageTools) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ToolPillCard(
+                    ReaderQuickToolCard(
                         icon = R.drawable.ic_save,
                         label = stringResource(R.string.save_page),
                         onClick = onSaveClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                        modifier = Modifier.weight(1f),
                     )
-                    ToolPillCard(
+                    ReaderQuickToolCard(
                         icon = rotationIcon,
                         label = stringResource(rotationTitle),
                         onClick = onOrientationClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
 
-            // Row 2: Scroll Timer, Color correction (Squares)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ToolGridCard(
+                ReaderQuickToolCard(
                     icon = R.drawable.ic_timer,
                     label = stringResource(R.string.automatic_scroll),
                     onClick = onScrollTimerClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f),
                 )
-                ToolGridCard(
+                ReaderQuickToolCard(
                     icon = R.drawable.ic_appearance,
                     label = stringResource(R.string.color_correction),
                     onClick = onColorFilterClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f),
                 )
             }
 
-            // Row 3: Settings Card (Wide) | Bookmark Button (Round)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 ToolWideCard(
                     icon = R.drawable.ic_settings,
                     title = stringResource(R.string.settings),
                     subtitle = stringResource(R.string.reader_advanced_options),
                     onClick = onSettingsClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f),
                 )
-                ToolGridCard(
+                ReaderQuickToolCard(
                     icon = if (isBookmarkAdded) R.drawable.ic_bookmark_checked else R.drawable.ic_bookmark,
                     label = null,
                     checked = isBookmarkAdded,
                     onClick = onBookmarkClick,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .aspectRatio(1f),
-                    shape = RoundedCornerShape(20.dp),
-                    iconSize = 30.dp,
+                    modifier = Modifier.size(76.dp),
                     contentDescription = stringResource(
                         if (isBookmarkAdded) R.string.bookmark_remove else R.string.bookmark_add,
                     ),
                 )
+            }
+        }
+    }
+
+    @Composable
+    private fun ReaderQuickToolCard(
+        icon: Int,
+        label: String?,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
+        checked: Boolean = false,
+        contentDescription: String? = label,
+    ) {
+        val background = if (checked) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        }
+        val foreground = if (checked) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(20.dp),
+            color = background,
+            contentColor = foreground,
+            modifier = modifier.heightIn(min = 76.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(24.dp),
+                    tint = if (checked) foreground else MaterialTheme.colorScheme.primary,
+                )
+                if (label != null) {
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
             }
         }
     }
