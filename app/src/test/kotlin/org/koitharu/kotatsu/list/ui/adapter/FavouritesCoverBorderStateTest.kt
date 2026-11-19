@@ -22,15 +22,12 @@ class FavouritesCoverBorderStateTest {
 		assertFalse(state.isPending)
 	}
 
-	@Test fun interceptorCopyCompletesTheActiveRequestByTokenNotRequestObject() {
+	@Test fun matchingRequestTokenCompletesActiveLoading() {
 		val state = FavouritesCoverBorderState()
 		state.bind("cover")
 		val token = Any()
-		val originalRequest = Any()
-		val rewrittenRequest = Any()
-		assertNotSame(originalRequest, rewrittenRequest)
 		state.start("cover", state.requestBindingIdentity, token)
-		// Coil's interceptor may rewrite ImageRequest while preserving its extras token.
+		assertTrue(state.isPending)
 		state.finish(token)
 		assertFalse(state.isPending)
 	}
