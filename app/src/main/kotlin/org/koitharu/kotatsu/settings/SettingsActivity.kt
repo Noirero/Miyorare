@@ -50,6 +50,7 @@ import org.koitharu.kotatsu.databinding.ActivitySettingsBinding
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
 import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
+import org.koitharu.kotatsu.settings.fonts.FontSettingsFragment
 import org.koitharu.kotatsu.settings.search.SettingsItem
 import org.koitharu.kotatsu.settings.search.SettingsSearchFragment
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
@@ -253,6 +254,7 @@ class SettingsActivity :
 		val fragment = when (intent?.action) {
 			AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS -> PrivateFavouritesSettingsFragment()
 			AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS -> ExtensionsSettingsFragment()
+			AppRouter.ACTION_APP_FONT_SETTINGS -> FontSettingsFragment()
 			AppRouter.ACTION_READER -> ReaderSettingsFragment()
 			AppRouter.ACTION_SUGGESTIONS -> SuggestionsSettingsFragment()
 			AppRouter.ACTION_TRACKER -> TrackerSettingsFragment()

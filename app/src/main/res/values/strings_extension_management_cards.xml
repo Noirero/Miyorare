@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="store_card_available">Available</string>
+    <string name="store_card_unavailable">Unavailable</string>
+    <string name="store_card_checking">Checking</string>
+    <string name="store_card_extension_count">%1$d extensions</string>
+</resources>

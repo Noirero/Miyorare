@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -61,7 +62,7 @@ internal fun ReadModeSection(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SheetSegmentedSelector(
             options = modes.map { (_, pair) ->
@@ -69,6 +70,7 @@ internal fun ReadModeSection(
             },
             selectedIndex = selectedIndex,
             onSelect = { index -> onModeSelected(modes[index].first) },
+            compact = true,
         )
 
         Text(
@@ -90,13 +92,12 @@ internal fun DoublePageConfigSection(
     sensitivity: Float,
     onSensitivityChange: (Float) -> Unit,
 ) {
-    val sectionAlpha = if (isModeStandardOrReversed) 1f else 0.38f
+    val sectionAlpha = if (isModeStandardOrReversed) 1f else 0.55f
 
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-        shadowElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f)),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
@@ -104,28 +105,28 @@ internal fun DoublePageConfigSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .alpha(sectionAlpha)
-                .padding(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             // Toggle 1: Use two pages in landscape
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(enabled = isModeStandardOrReversed) { onDoubleOnLandscapeChange(!isDoubleOnLandscape) }
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                    .alpha(sectionAlpha)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_split_horizontal),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(20.dp),
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
                     text = stringResource(R.string.use_two_pages_landscape),
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
@@ -136,27 +137,32 @@ internal fun DoublePageConfigSection(
                 )
             }
 
-            // Sub-options
-            val subOptionsAlpha = if (isModeStandardOrReversed && isDoubleOnLandscape) 1f else 0.38f
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
+            )
+
+            // Keep dependent options visible, but readable and genuinely disabled.
+            val subOptionsAlpha = if (isModeStandardOrReversed && isDoubleOnLandscape) 1f else 0.55f
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .alpha(subOptionsAlpha),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 // Toggle 2: Auto double on foldable
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(enabled = isModeStandardOrReversed && isDoubleOnLandscape) { onDoubleOnFoldableChange(!isDoubleOnFoldable) }
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Spacer(modifier = Modifier.width(38.dp)) // indentation for sub-option
+                    Spacer(modifier = Modifier.width(28.dp)) // dependent control indentation
                     Text(
                         text = stringResource(R.string.auto_double_foldable),
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
@@ -171,33 +177,37 @@ internal fun DoublePageConfigSection(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Spacer(modifier = Modifier.width(38.dp))
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Spacer(modifier = Modifier.width(28.dp))
                             Text(
                                 text = stringResource(R.string.two_page_scroll_sensitivity),
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
                             )
                         }
                         Text(
                             text = "${sensitivity.roundToInt()}%",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = if (isModeStandardOrReversed && isDoubleOnLandscape) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                            color = if (isModeStandardOrReversed && isDoubleOnLandscape) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Spacer(modifier = Modifier.width(38.dp))
+                        Spacer(modifier = Modifier.width(28.dp))
                         Slider(
                             value = sensitivity,
                             onValueChange = onSensitivityChange,

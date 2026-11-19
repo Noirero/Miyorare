@@ -7,6 +7,12 @@ small first-party parser overlays from extensions/miyorare-sources/overlays/gekk
 the disposable Gekkoushi checkout. This keeps staging and release builds on the exact same path.
 Matching-language runtime source keys are exposed unless curated UMA already supplies the same key;
 other compiled Gekkoushi sources remain internal support entries.
+
+A pack may also declare "excludeSources" in packs.json: runtime source keys that must not ship in
+that pack at all (for example Indonesian sources whose sites are permanently gone). Before source
+discovery, the builder deletes every upstream parser file whose declared keys are all excluded,
+and likewise deletes an upstream file when a Miyorare overlay re-declares its key (the overlay is
+the replacement). A file that mixes wanted and unwanted keys aborts the build for manual review.
 """
 
 from __future__ import annotations
@@ -155,6 +161,69 @@ def parse_source(arguments: str, relative: Path) -> tuple[str, str]:
     return name, locale
 
 
+def declared_names(content: str, relative: Path) -> list[str]:
+    """Return the runtime source keys one Kotlin file declares (empty for support files)."""
+    return [
+        parse_source(arguments, relative)[0]
+        for arguments in annotation_blocks(content, relative.as_posix())
+    ]
+
+
+def prune_unwanted_sources(
+    site_root: Path,
+    pack_name: str,
+    overlay_files: list[str],
+    excluded: set[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """Delete upstream parser files that must not ship in this pack.
+
+    A file is deleted when every runtime source key it declares is either excluded by the pack
+    or re-declared by a Miyorare overlay copied into the checkout (overlay = replacement). A
+    file mixing wanted and unwanted keys aborts the build: a human must split it upstream or
+    adjust the pack curation first. Returns (deleted files, matched exclusions, overrides).
+    """
+    overlay_targets = {
+        (site_root / pack_name / relative).resolve() for relative in overlay_files
+    }
+    overlay_names: set[str] = set()
+    for target in sorted(overlay_targets):
+        if target.is_file():
+            relative = target.relative_to(site_root)
+            overlay_names.update(declared_names(target.read_text(encoding="utf-8"), relative))
+
+    unwanted = excluded | overlay_names
+    deleted: list[str] = []
+    matched_excluded: set[str] = set()
+    overridden: set[str] = set()
+    for file in sorted(site_root.rglob("*.kt")):
+        if file.resolve() in overlay_targets:
+            continue
+        relative = file.relative_to(site_root)
+        names = declared_names(file.read_text(encoding="utf-8"), relative)
+        if not names:
+            continue
+        dropped = [name for name in names if name in unwanted]
+        if not dropped:
+            continue
+        if len(dropped) != len(names):
+            fail(
+                f"Parser file {relative.as_posix()} mixes wanted and unwanted sources "
+                f"({', '.join(names)}); refusing to prune it automatically"
+            )
+        file.unlink()
+        deleted.append(relative.as_posix())
+        matched_excluded.update(name for name in names if name in excluded)
+        overridden.update(name for name in names if name in overlay_names)
+
+    unknown = sorted(excluded - matched_excluded)
+    if unknown:
+        fail(
+            "packs.json excludeSources names no upstream Gekkoushi parser file declares: "
+            + ", ".join(unknown)
+        )
+    return deleted, sorted(matched_excluded), sorted(overridden)
+
+
 def collect_sources(
     site_root: Path,
 ) -> tuple[list[str], dict[str, str], dict[str, list[str]], dict[str, str]]:
@@ -217,8 +286,23 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     site_root = gekkoushi_upstream / "src/main/kotlin/tsuki/site"
     if not site_root.is_dir():
         fail(f"Gekkoushi site directory not found: {site_root}")
+
+    excluded_raw = pack.get("excludeSources") or []
+    if (
+        not isinstance(excluded_raw, list)
+        or any(not isinstance(name, str) or not name for name in excluded_raw)
+        or len(set(excluded_raw)) != len(excluded_raw)
+    ):
+        fail(f"Pack {pack_name} excludeSources must be a list of unique runtime source keys")
+    pruned_files, excluded_names, overridden_names = prune_unwanted_sources(
+        site_root, pack_name, overlay_files, set(excluded_raw)
+    )
+
     compiled_names, locales, parser_files, source_icons = collect_sources(site_root)
     compiled_set = set(compiled_names)
+    leaked = sorted((set(excluded_names) - set(overridden_names)) & compiled_set)
+    if leaked:
+        fail("Excluded sources are still compiled after pruning: " + ", ".join(leaked))
     target_names = {name for name, locale in locales.items() if locale == language}
     skipped_existing = target_names & uma_names
     exposed = target_names - uma_names
@@ -250,6 +334,9 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
         "upstreams": [gekkoushi_meta],
         "miyorareOverlayCount": len(overlay_files),
         "miyorareOverlayFiles": overlay_files,
+        "excludedSourceNames": excluded_names,
+        "excludedSourceFiles": pruned_files,
+        "overriddenSourceNames": overridden_names,
         "sourceFilesCount": len(set(parser_files.get(language, []))),
         "sourceCount": len(exposed),
         "sourceNames": sorted(exposed),
@@ -273,7 +360,9 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
         f"Prepared {pack['displayName']} Gekkoushi shard: {len(exposed)} exposed {language} sources, "
         f"{len(exposed_icons)} source icons, {len(overlay_files)} Miyorare overlay(s), "
         f"skipped {len(skipped_existing)} UMA-authoritative duplicates, "
-        f"kept {len(hidden)} compiled support sources"
+        f"kept {len(hidden)} compiled support sources, "
+        f"pruned {len(pruned_files)} unwanted parser file(s) "
+        f"({len(excluded_names)} excluded, {len(overridden_names)} overridden by overlays)"
     )
 
 

@@ -99,6 +99,7 @@ class TsukiPluginRuntime @Inject constructor(
 	}
 
 	fun getHandle(source: TsukiMangaSource): ParserHandle {
+		if (source.diagnosticTest) return createDiagnosticHandle(source)
 		val current = requireUsablePlugin(source.plugin)
 		val descriptor = current.sources.firstOrNull { it.name == source.descriptor.name && !it.isBroken }
 			?: error("Tsuki source ${source.descriptor.name} is no longer provided by ${current.displayName}")
@@ -107,6 +108,41 @@ class TsukiPluginRuntime @Inject constructor(
 		return synchronized(lock) {
 			parserCache[freshSource.name] ?: error("Tsuki parser cache lost ${freshSource.name}")
 		}.also { check(it.parser === parser) }
+	}
+
+	/**
+	 * Build a parser for a one-off diagnostic test of a broken source.
+	 *
+	 * Mirrors the official Global probe path ([createOfficialGlobalProbeParser]): the parser is
+	 * created straight from the loaded plugin and is deliberately kept out of [parserCache], so
+	 * a diagnostic parser can never leak into normal source resolution. Unlike [createParser],
+	 * the broken flag does not reject the source and no failure here marks the source or the
+	 * plugin broken — a dead site must fail as an ordinary network/parser error shown to the
+	 * user, which is exactly the evidence the test exists to produce.
+	 */
+	private fun createDiagnosticHandle(source: TsukiMangaSource): ParserHandle {
+		val current = requireUsablePlugin(source.plugin)
+		val descriptor = current.sources.firstOrNull { it.name == source.descriptor.name }
+			?: error("Tsuki source ${source.descriptor.name} is no longer provided by ${current.displayName}")
+		val diagnosticSource = TsukiMangaSource(current, descriptor, diagnosticTest = true)
+		val loaded = loadPlugin(current)
+		val rawSource = loaded.rawSources[descriptor.name]
+			?: error("Tsuki plugin ${current.displayName} has no source ${descriptor.name}")
+		val parser = try {
+			(loaded.factory.invoke(null, rawSource, loaded.context) as? MangaParser)
+				?: error("Tsuki factory returned an unexpected parser type")
+		} catch (e: InvocationTargetException) {
+			throw e.targetException ?: e
+		}
+		check(parser.source.name == rawSource.name) {
+			"Tsuki factory returned parser for ${parser.source.name} instead of ${rawSource.name}"
+		}
+		return ParserHandle(
+			source = diagnosticSource,
+			rawSource = rawSource,
+			parser = parser,
+			httpClient = loaded.httpClient,
+		)
 	}
 
 	internal fun createParser(plugin: TsukiPluginDescriptor, sourceName: String): MangaParser {

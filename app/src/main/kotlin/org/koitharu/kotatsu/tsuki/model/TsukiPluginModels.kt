@@ -117,6 +117,14 @@ data class TsukiSourceIdentity(
 data class TsukiMangaSource(
 	val plugin: TsukiPluginDescriptor,
 	val descriptor: TsukiSourceDescriptor,
+	/**
+	 * True only for a one-off diagnostic open of a broken source, created exclusively by
+	 * [org.koitharu.kotatsu.tsuki.TsukiPluginManager.resolveDiagnosticSource]. A diagnostic
+	 * source never enters catalogs, enabled sets or persisted state; the flag only lets the
+	 * runtime build a parser for an explicit user-requested test of a source upstream marked
+	 * broken, so the user can see whether its site is really gone.
+	 */
+	val diagnosticTest: Boolean = false,
 ) : MangaSource {
 	val identity = TsukiSourceIdentity(plugin.provider, plugin.pluginId, descriptor.name)
 

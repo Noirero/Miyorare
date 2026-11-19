@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -50,6 +51,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
@@ -95,7 +98,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.flow.MutableStateFlow
+import org.koitharu.kotatsu.core.fonts.InstalledFontPack
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.ui.BaseActivityEntryPoint
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -291,7 +298,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         }
         var currentMode by remember { mutableStateOf(mode) }
 
-        // Pager State for 2 pages (0: Options, 1: Info)
+        // Pager state: 0 = Read Mode, 1 = Tools. Actions and sheet ownership stay unchanged.
         val pagerState = rememberPagerState(pageCount = { 2 })
         val scope = rememberCoroutineScope()
 
@@ -324,8 +331,8 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // 1. Swipeable Pager Content
                 // No animateContentSize here: the sheet is fit-to-contents, so animating the body
@@ -357,7 +364,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                         .fillMaxWidth()
                                         .verticalScroll(rememberScrollState())
                                         .onSizeChanged { pagerHeightPx = it.height },
-                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     ReadModeSection(
                                         selectedMode = currentMode,
@@ -390,7 +397,6 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                         },
                                     )
 
-                                    Spacer(modifier = Modifier.height(84.dp))
                                 }
                             }
 
@@ -398,8 +404,9 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
                                         .padding(horizontal = 16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     ToolsGridSection(
                                         showPageTools = true,
@@ -430,24 +437,20 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                             router.openReaderSettings()
                                             dismissAllowingStateLoss()
                                         },
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier,
                                     )
 
-                                    Spacer(modifier = Modifier.height(84.dp))
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // 2. Bottom Floating Capsule Tab Switcher
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth(),
-            ) {
+                // The capsule follows the pager instead of overlapping empty spacer.
+                // Keep the pager pinned to Read Mode height during tab swipes; the
+                // adaptive sheet must not jump as the reader controls are used.
                 BottomPillTabBar(
+                    compact = true,
                     currentPage = pagerState.currentPage,
                     onTabClick = { index ->
                         scope.launch {
@@ -463,12 +466,15 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     private fun BottomPillTabBar(
         currentPage: Int,
         onTabClick: (Int) -> Unit,
-        tabs: List<Triple<String, Int, Int>> = listOf(
-            Triple("Read Mode", R.drawable.ic_book_page, 0),
-            Triple("Tools", R.drawable.ic_grid, 1),
-        ),
+        tabs: List<Triple<String, Int, Int>>? = null,
         modifier: Modifier = Modifier,
+        compact: Boolean = false,
     ) {
+        // Manga uses localized defaults; EPUB supplies its own three tabs.
+        val visibleTabs = tabs ?: listOf(
+            Triple(stringResource(R.string.read_mode), R.drawable.ic_book_page, 0),
+            Triple(stringResource(R.string.reader_tools), R.drawable.ic_grid, 1),
+        )
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -481,12 +487,12 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                 shadowElevation = 6.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                 modifier = Modifier
-                    .widthIn(max = if (tabs.size > 2) 336.dp else 280.dp)
+                    .widthIn(max = if (visibleTabs.size > 2) 336.dp else if (compact) 268.dp else 280.dp)
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(if (compact) 48.dp else 52.dp),
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    val targetBias = if (tabs.size == 1) 0f else currentPage * 2f / (tabs.size - 1) - 1f
+                    val targetBias = if (visibleTabs.size == 1) 0f else currentPage * 2f / (visibleTabs.size - 1) - 1f
                     val animatedBias by animateFloatAsState(
                         targetValue = targetBias,
                         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
@@ -496,7 +502,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .fillMaxWidth(1f / tabs.size)
+                            .fillMaxWidth(1f / visibleTabs.size)
                             .padding(4.dp)
                             .align(BiasAlignment(horizontalBias = animatedBias, verticalBias = 0f))
                             .clip(CircleShape)
@@ -507,7 +513,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                         modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        tabs.forEach { (title, iconRes, index) ->
+                        visibleTabs.forEach { (title, iconRes, index) ->
                             val isSelected = currentPage == index
                             val contentColor by animateColorAsState(
                                 targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -518,10 +524,11 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .clickable(
-                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                        indication = null,
-                                    ) { onTabClick(index) },
+                                    .selectable(
+                                        selected = isSelected,
+                                        role = Role.Tab,
+                                        onClick = { onTabClick(index) },
+                                    ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Row(
@@ -554,6 +561,16 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     @Composable
     private fun EpubConfigContent() {
         val customFontName = remember(customFontUiRevision) { epubSettings.customFontName }
+        val fontPackRepository = remember {
+            runCatching {
+                EntryPointAccessors.fromApplication<BaseActivityEntryPoint>(
+                    requireContext().applicationContext,
+                ).fontPackRepository
+            }.getOrNull()
+        }
+        val activeFontPack by remember(fontPackRepository) {
+            fontPackRepository?.activePack ?: MutableStateFlow<InstalledFontPack?>(null)
+        }.collectAsState()
         var perBookEnabled by remember { mutableStateOf(epubSettings.enabled) }
         var publisherStyleEnabled by remember { mutableStateOf(epubSettings.publisherStyle) }
         var bionicReadingEnabled by remember { mutableStateOf(epubSettings.bionicReading) }
@@ -649,11 +666,21 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     EpubFontSection(
                         selected = epubSettings.fontFamily,
                         customFontName = customFontName,
+                        appFontLabel = activeFontPack?.let { pack ->
+                            stringResource(R.string.font_title) + " \u00b7 " + pack.pack.name
+                        } ?: stringResource(R.string.font_title),
+                        appFontFamily = activeFontPack?.let { pack ->
+                            fontPackRepository?.composeFontFamily(pack)
+                        },
                         enabled = editable,
                         onChooseCustom = {
                             epubFontPicker.launch(EPUB_FONT_MIME_TYPES)
                         },
                         onRemoveCustom = ::removeEpubCustomFont,
+                        onOpenAppFontSettings = {
+                            startActivity(AppRouter.appFontSettingsIntent(requireContext()))
+                            dismiss()
+                        },
                     )
                     EpubFontWeightSection(enabled = editable)
                 } else {
@@ -950,9 +977,12 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     private fun EpubFontSection(
         selected: String,
         customFontName: String,
+        appFontLabel: String,
+        appFontFamily: androidx.compose.ui.text.font.FontFamily?,
         enabled: Boolean,
         onChooseCustom: () -> Unit,
         onRemoveCustom: () -> Unit,
+        onOpenAppFontSettings: () -> Unit,
     ) {
         var current by remember(selected, customFontName) { mutableStateOf(selected) }
         val choices = listOf(
@@ -960,6 +990,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             "sans-serif" to stringResource(R.string.epub_font_sans),
             "monospace" to stringResource(R.string.epub_font_mono),
             EPUB_FONT_CUSTOM to customFontName.substringBeforeLast('.').ifBlank { stringResource(R.string.epub_font_choose) },
+            EPUB_FONT_APP to appFontLabel,
         )
         EpubSettingCard(R.drawable.ic_title, stringResource(R.string.epub_font_family), null, enabled = enabled) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -992,6 +1023,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                         fontFamily = when (value) {
                                             "sans-serif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
                                             "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+                                            EPUB_FONT_APP -> appFontFamily
                                             EPUB_FONT_CUSTOM -> null
                                             else -> androidx.compose.ui.text.font.FontFamily.Serif
                                         },
@@ -1019,6 +1051,18 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                             }
                         }
                     }
+                }
+                TextButton(
+                    onClick = onOpenAppFontSettings,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_open_external),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.epub_font_app_settings))
                 }
             }
         }
@@ -1595,7 +1639,6 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         onSettingsClick: () -> Unit,
         modifier: Modifier = Modifier,
     ) {
-        // Determine rotation values
         val rotationTitle = if (isAutoRotationEnabled) {
             R.string.lock_screen_rotation
         } else {
@@ -1606,90 +1649,125 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         } else {
             R.drawable.ic_screen_rotation
         }
-        // Rows share the page height equally so this page matches the Read Mode page exactly.
+
+        // Three intrinsic-height rows rather than weighted, fill-height tiles.
+        // Only Manga calls this section. EPUB keeps its original settings layout.
         Column(
             modifier = modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Row 1: Save Page, Rotation (Pills) - not applicable to EPUB text chapters
             if (showPageTools) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ToolPillCard(
+                    ReaderQuickToolCard(
                         icon = R.drawable.ic_save,
                         label = stringResource(R.string.save_page),
                         onClick = onSaveClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                        modifier = Modifier.weight(1f),
                     )
-                    ToolPillCard(
+                    ReaderQuickToolCard(
                         icon = rotationIcon,
                         label = stringResource(rotationTitle),
                         onClick = onOrientationClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
 
-            // Row 2: Scroll Timer, Color correction (Squares)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ToolGridCard(
+                ReaderQuickToolCard(
                     icon = R.drawable.ic_timer,
                     label = stringResource(R.string.automatic_scroll),
                     onClick = onScrollTimerClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f),
                 )
-                ToolGridCard(
+                ReaderQuickToolCard(
                     icon = R.drawable.ic_appearance,
                     label = stringResource(R.string.color_correction),
                     onClick = onColorFilterClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f),
                 )
             }
 
-            // Row 3: Settings Card (Wide) | Bookmark Button (Round)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 ToolWideCard(
                     icon = R.drawable.ic_settings,
                     title = stringResource(R.string.settings),
-                    subtitle = "Advanced reader options",
+                    subtitle = stringResource(R.string.reader_advanced_options),
                     onClick = onSettingsClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f),
                 )
-                ToolGridCard(
+                ReaderQuickToolCard(
                     icon = if (isBookmarkAdded) R.drawable.ic_bookmark_checked else R.drawable.ic_bookmark,
                     label = null,
                     checked = isBookmarkAdded,
                     onClick = onBookmarkClick,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .aspectRatio(1f),
-                    shape = CircleShape,
-                    iconSize = 42.dp,
+                    modifier = Modifier.size(76.dp),
+                    contentDescription = stringResource(
+                        if (isBookmarkAdded) R.string.bookmark_remove else R.string.bookmark_add,
+                    ),
                 )
+            }
+        }
+    }
+
+    @Composable
+    private fun ReaderQuickToolCard(
+        icon: Int,
+        label: String?,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
+        checked: Boolean = false,
+        contentDescription: String? = label,
+    ) {
+        val background = if (checked) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        }
+        val foreground = if (checked) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(20.dp),
+            color = background,
+            contentColor = foreground,
+            modifier = modifier.heightIn(min = 76.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(24.dp),
+                    tint = if (checked) foreground else MaterialTheme.colorScheme.primary,
+                )
+                if (label != null) {
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
             }
         }
     }
@@ -1723,31 +1801,31 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 
         Surface(
             onClick = onClick,
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(20.dp),
             color = containerColor,
             contentColor = contentColor,
-            modifier = modifier.heightIn(min = 96.dp),
+            modifier = modifier.heightIn(min = 76.dp),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     painter = painterResource(icon),
                     contentDescription = null,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(24.dp),
                     tint = iconColor,
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
@@ -1760,7 +1838,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     painter = painterResource(R.drawable.ic_expand_more),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(20.dp)
+                        .size(16.dp)
                         .rotate(-90f),
                     tint = if (checked) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1777,6 +1855,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         modifier: Modifier = Modifier,
         shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
         iconSize: androidx.compose.ui.unit.Dp = 32.dp,
+        contentDescription: String? = label,
     ) {
         val containerColor = if (checked) {
             MaterialTheme.colorScheme.primaryContainer
@@ -1801,7 +1880,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             shape = shape,
             color = containerColor,
             contentColor = contentColor,
-            modifier = modifier.heightIn(min = 96.dp),
+            modifier = modifier.heightIn(min = 88.dp),
         ) {
             Column(
                 modifier = Modifier
@@ -1812,7 +1891,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             ) {
                 Icon(
                     painter = painterResource(icon),
-                    contentDescription = label,
+                    contentDescription = contentDescription,
                     modifier = Modifier.size(iconSize),
                     tint = iconColor,
                 )
@@ -1840,10 +1919,10 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     ) {
         Surface(
             onClick = onClick,
-            shape = RoundedCornerShape(48.dp),
+            shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            modifier = modifier.heightIn(min = 96.dp),
+            modifier = modifier.heightIn(min = 88.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -1878,6 +1957,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 
 	private companion object {
 		const val EPUB_FONT_CUSTOM = "custom"
+		const val EPUB_FONT_APP = "app"
 		const val EPUB_THEME_CUSTOM = "custom"
 		const val EPUB_THEME_SYSTEM = "system"
 		const val EPUB_COLOR_BACKGROUND = "background"

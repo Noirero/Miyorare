@@ -180,24 +180,26 @@ class SettingsSearchHelper @Inject constructor(
         }
 
         section(R.string.settings_sources_extensions) { sectionCrumbs ->
-            group(sectionCrumbs, R.string.settings_group_catalog) { crumbs ->
+            group(sectionCrumbs, R.string.sources_section_library) { crumbs ->
                 addItem("miyorare_source_packs", R.string.miyorare_source_packs_manage, R.string.miyorare_source_packs_manage_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem("sources_catalog", R.string.manage_extensions, R.string.manage_extensions_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem("extension_stores", R.string.manage_stores, R.string.manage_stores_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem("kotatsu_parsers", R.string.kotatsu_parsers, R.string.kotatsu_parsers_summary, crumbs, KotatsuParsersSettingsFragment::class.java)
                 addItem("tsuki_plugins", R.string.tsuki_plugins_manage, R.string.tsuki_plugins_manage_summary, crumbs, ExtensionsSettingsFragment::class.java)
+            }
+            group(sectionCrumbs, R.string.sources_section_maintenance) { crumbs ->
                 addItem("extension_installer_method", R.string.extension_installer_method, breadcrumbs = crumbs, fragmentClass = ExtensionsSettingsFragment::class.java)
                 addItem("migrate_broken_sources", R.string.migrate_broken_sources, R.string.migrate_broken_sources_summary, crumbs, ExtensionsSettingsFragment::class.java)
             }
-            group(sectionCrumbs, R.string.appearance) { crumbs ->
+            group(sectionCrumbs, R.string.sources_section_display) { crumbs ->
                 addItem(AppSettings.KEY_SOURCES_ORDER, R.string.sort_order, breadcrumbs = crumbs, fragmentClass = ExtensionsSettingsFragment::class.java)
                 addItem(AppSettings.KEY_SOURCES_GRID, R.string.show_in_grid_view, breadcrumbs = crumbs, fragmentClass = ExtensionsSettingsFragment::class.java)
             }
-            group(sectionCrumbs, R.string.filter) { crumbs ->
+            group(sectionCrumbs, R.string.sources_section_privacy) { crumbs ->
                 addItem(AppSettings.KEY_DISABLE_NSFW, R.string.disable_nsfw, R.string.disable_nsfw_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem(AppSettings.KEY_INCOGNITO_NSFW, R.string.incognito_for_nsfw, breadcrumbs = crumbs, fragmentClass = ExtensionsSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.incognito_nsfw_options))
             }
-            group(sectionCrumbs, R.string.auto_update) { crumbs ->
+            group(sectionCrumbs, R.string.sources_section_updates) { crumbs ->
                 addItem(AppSettings.KEY_AUTO_UPDATE_EXTENSIONS, R.string.ext_auto_update_title, R.string.ext_auto_update_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem(AppSettings.KEY_EXTENSION_UPDATE_NOTIFICATIONS, R.string.ext_update_notifications_title, R.string.ext_update_notifications_summary, crumbs, ExtensionsSettingsFragment::class.java)
             }

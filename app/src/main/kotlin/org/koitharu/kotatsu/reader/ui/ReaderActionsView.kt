@@ -19,12 +19,14 @@ import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.slider.LabelFormatter
 import com.google.android.material.slider.Slider
+import com.google.android.material.floatingtoolbar.FloatingToolbarLayout
 import dagger.hilt.android.AndroidEntryPoint
 import kotlin.math.roundToInt
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderControl
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
@@ -154,6 +156,7 @@ class ReaderActionsView @JvmOverloads constructor(
 
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
+		applyModernReaderBarPalette()
 		settings.subscribe(this)
 		context.contentResolver.registerContentObserver(
 			Settings.System.CONTENT_URI, true, rotationObserver,
@@ -246,11 +249,43 @@ class ReaderActionsView @JvmOverloads constructor(
 	}
 
 	fun setTimerActive(isActive: Boolean) {
+		val palette = context.miyorareViewPaletteFromPreferences()
 		binding.buttonTimer.iconTint = ColorStateList.valueOf(
-			context.getThemeColor(
-				if (isActive) appcompatR.attr.colorPrimary else materialR.attr.colorOnSurfaceVariant,
-			),
+			palette?.let { if (isActive) it.primary else it.onSurfaceVariant }
+				?: context.getThemeColor(
+					if (isActive) appcompatR.attr.colorPrimary else materialR.attr.colorOnSurfaceVariant,
+				),
 		)
+	}
+
+	/**
+	 * Reader dock and the Settings preview share this View. XML style attributes can
+	 * remain on the old purple Activity theme even when the Modern Compose palette
+	 * changes. Classic deliberately retains its native theme.
+	 *
+	 * Apply only presentation tints: visibility, ordering, slider seeking, and
+	 * accessibility callbacks remain owned by the existing ReaderActionsView.
+	 */
+	fun applyModernReaderBarPalette() {
+		val palette = context.miyorareViewPaletteFromPreferences() ?: return
+		(parent as? FloatingToolbarLayout)?.backgroundTintList =
+			ColorStateList.valueOf(palette.surfaceContainer)
+		val primary = ColorStateList.valueOf(palette.primary)
+		val foreground = ColorStateList.valueOf(palette.onSurfaceVariant)
+		for (button in arrayOf(
+			binding.buttonPrev, binding.buttonNext, binding.buttonSave,
+			binding.buttonOptions, binding.buttonScreenRotation,
+			binding.buttonPagesThumbs, binding.buttonWebview,
+			binding.buttonTimer, binding.buttonBookmark,
+		)) {
+			button.iconTint = foreground
+		}
+		binding.slider.trackActiveTintList = primary
+		binding.slider.trackInactiveTintList = ColorStateList.valueOf(palette.surfaceContainerHighest)
+		binding.slider.thumbTintList = primary
+		binding.slider.haloTintList = ColorStateList.valueOf(palette.primaryContainer)
+		binding.slider.tickActiveTintList = primary
+		binding.slider.tickInactiveTintList = ColorStateList.valueOf(palette.outlineVariant)
 	}
 
 	private fun switchChapterBy(delta: Int) {
