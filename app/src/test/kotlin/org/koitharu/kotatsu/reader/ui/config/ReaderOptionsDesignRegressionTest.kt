@@ -128,6 +128,45 @@ class ReaderOptionsDesignRegressionTest {
         assertTrue(tools.contains("MaterialTheme.colorScheme.surfaceContainerHigh"))
     }
 
+    @Test
+    fun `reader dock and Settings preview share active Modern colors without changing controls`() {
+        val dock = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActionsView.kt")
+        val preview = source("res/layout/view_reader_bar_preview.xml")
+        val settings = source("kotlin/org/koitharu/kotatsu/settings/reader/ReaderBarSettingsFragment.kt")
+        assertTrue(preview.contains("org.koitharu.kotatsu.reader.ui.ReaderActionsView"))
+        assertTrue(settings.contains("ReaderActionsView"))
+        assertTrue(dock.contains("applyModernReaderBarPalette()"))
+        assertTrue(dock.contains("context.miyorareViewPaletteFromPreferences() ?: return"))
+        assertTrue(dock.contains("FloatingToolbarLayout"))
+        assertTrue(dock.contains("ColorStateList.valueOf(palette.surfaceContainer)"))
+        assertTrue(dock.contains("binding.slider.trackActiveTintList = primary"))
+        assertTrue(dock.contains("binding.slider.thumbTintList = primary"))
+        assertTrue(dock.contains("binding.slider.trackInactiveTintList"))
+        assertTrue(dock.contains("if (isActive) it.primary else it.onSurfaceVariant"))
+        assertTrue(dock.contains("listener?.onSavePageClick()"))
+        assertTrue(dock.contains("listener?.onBookmarkClick()"))
+        assertTrue(dock.contains("AppSettings.KEY_READER_CONTROLS -> updateControlsVisibility()"))
+    }
+
+    @Test
+    fun `color filter chrome follows Modern scheme but preserves the actual filter`() {
+        val screen = source("kotlin/org/koitharu/kotatsu/reader/ui/colorfilter/ColorFilterConfigActivity.kt")
+        assertTrue(screen.contains("miyorareViewPaletteFromPreferences() ?: return"))
+        assertTrue(screen.contains("applyModernFilterColors(viewBinding.root, palette)"))
+        assertTrue(screen.contains("root.setCardBackgroundColor(palette.surfaceContainerHigh)"))
+        assertTrue(screen.contains("root.trackActiveTintList = primary"))
+        assertTrue(screen.contains("root.thumbTintList = primary"))
+        assertTrue(screen.contains("root.chipBackgroundColor = ColorStateList("))
+        assertTrue(screen.contains("root.trackTintList = ColorStateList("))
+        assertTrue(screen.contains("checkedState"))
+        assertTrue(screen.contains("root.id == R.id.button_reset"))
+        assertTrue(screen.contains("viewModel.setBrightness(value)"))
+        assertTrue(screen.contains("viewModel.setContrast(value)"))
+        assertTrue(screen.contains("viewModel.saveGlobally()"))
+        assertTrue(screen.contains("ReaderCustomTint.applyToImage(viewBinding.imageViewAfter"))
+        assertTrue(screen.contains("onLoadingChanged(isLoading: Boolean)"))
+    }
+
     private fun source(relativePath: String): String = sequenceOf(
         File("src/main", relativePath),
         File("app/src/main", relativePath),
