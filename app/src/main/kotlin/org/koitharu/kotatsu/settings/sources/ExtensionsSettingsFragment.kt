@@ -9,6 +9,9 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,11 +41,11 @@ import org.koitharu.kotatsu.extensions.install.shizukuInstallerStatusText
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
-import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
+import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
@@ -239,7 +242,6 @@ private fun ExtensionsScreen(
 	onOpenBrokenSourcesMigration: () -> Unit,
 ) {
 	val ctx = LocalContext.current
-	val colors = CategoryPalette.forKey("extensions")
 	val sortEntries = remember {
 		SourcesSortOrder.entries.map { ctx.getString(it.titleResId) }
 	}
@@ -270,29 +272,47 @@ private fun ExtensionsScreen(
 	}
 	val autoUpdateEnabled = installerUiState.selected && installerUiState.method != ExtensionInstallerMethod.SYSTEM
 
+	val autoUpdateSubtitle = if (autoUpdateEnabled) {
+		stringResource(R.string.ext_auto_update_summary)
+	} else {
+		stringResource(R.string.ext_auto_update_summary) + "\n" +
+			stringResource(R.string.sources_auto_update_unavailable)
+	}
+
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = stringResource(R.string.settings_group_catalog)) {
+			Text(
+				text = stringResource(R.string.sources_screen_intro),
+				style = MaterialTheme.typography.bodyMedium,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
+			)
+		}
+		item {
+			SettingsGroup(
+				title = stringResource(R.string.sources_section_library).uppercase(),
+				connectedModernRows = true,
+			) {
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.miyorare_source_packs_manage),
 						subtitle = stringResource(R.string.miyorare_source_packs_manage_summary),
-						icon = R.drawable.ic_download,
+						icon = R.drawable.ic_stacks,
 						shape = pos.shape,
 						onClick = onOpenMiyorareSourcePacks,
 					)
 				}
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.manage_extensions),
 						subtitle = stringResource(R.string.manage_extensions_summary),
-						icon = R.drawable.ic_download,
+						icon = R.drawable.ic_manga_source,
 						shape = pos.shape,
 						onClick = onOpenCatalog,
 					)
 				}
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.manage_stores),
 						subtitle = stringResource(R.string.manage_stores_summary),
 						icon = R.drawable.ic_storefront,
@@ -301,34 +321,42 @@ private fun ExtensionsScreen(
 					)
 				}
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.kotatsu_parsers),
 						subtitle = stringResource(R.string.kotatsu_parsers_summary),
-						icon = R.drawable.ic_manga_source,
+						icon = R.drawable.ic_storage,
 						shape = pos.shape,
 						onClick = onOpenKotatsuParsers,
 					)
 				}
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.tsuki_plugins_manage),
 						subtitle = stringResource(R.string.tsuki_plugins_manage_summary),
-						icon = R.drawable.ic_download,
+						icon = R.drawable.ic_plug_large,
 						shape = pos.shape,
 						onClick = onOpenTsukiPlugins,
 					)
 				}
+			}
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(
+				title = stringResource(R.string.sources_section_maintenance).uppercase(),
+				connectedModernRows = true,
+			) {
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.extension_installer_method),
 						subtitle = "$installerTitle\n$installerSummary",
-						icon = R.drawable.ic_auth_key_large,
+						icon = R.drawable.ic_shield,
 						shape = pos.shape,
 						onClick = onChooseInstallerMethod,
 					)
 				}
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.migrate_broken_sources),
 						subtitle = stringResource(R.string.migrate_broken_sources_summary),
 						icon = R.drawable.ic_migrate,
@@ -340,7 +368,10 @@ private fun ExtensionsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.appearance)) {
+			SettingsGroup(
+				title = stringResource(R.string.sources_section_display).uppercase(),
+				connectedModernRows = true,
+			) {
 				item { pos ->
 					ListSettingsItem(
 						title = stringResource(R.string.sort_order),
@@ -365,7 +396,10 @@ private fun ExtensionsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.filter)) {
+			SettingsGroup(
+				title = stringResource(R.string.sources_section_privacy).uppercase(),
+				connectedModernRows = true,
+			) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.disable_nsfw),
@@ -391,14 +425,17 @@ private fun ExtensionsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.auto_update)) {
+			SettingsGroup(
+				title = stringResource(R.string.sources_section_updates).uppercase(),
+				connectedModernRows = true,
+			) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.ext_auto_update_title),
-						subtitle = stringResource(R.string.ext_auto_update_summary),
+						subtitle = autoUpdateSubtitle,
 						checked = autoUpdateExtensions,
 						onCheckedChange = { autoUpdateExtensions = it },
-						icon = R.drawable.ic_updated,
+						icon = R.drawable.ic_refresh,
 						shape = pos.shape,
 						enabled = autoUpdateEnabled,
 					)
@@ -409,7 +446,7 @@ private fun ExtensionsScreen(
 						subtitle = stringResource(R.string.ext_update_notifications_summary),
 						checked = updateNotifications,
 						onCheckedChange = { updateNotifications = it },
-						icon = R.drawable.ic_updated,
+						icon = R.drawable.ic_notification,
 						shape = pos.shape,
 					)
 				}
