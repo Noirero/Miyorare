@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -11,10 +10,9 @@
         android:id="@+id/text_section"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp"
-        android:paddingTop="16dp"
-        android:paddingBottom="8dp"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="6dp"
         android:textAppearance="?attr/textAppearanceLabelLarge"
         android:textColor="?attr/colorPrimary"
         android:visibility="gone"
@@ -26,10 +24,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="12dp"
-        android:layout_marginVertical="4dp"
+        android:layout_marginVertical="3dp"
         android:background="@drawable/bg_settings_tile"
         android:orientation="vertical"
-        android:padding="14dp">
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="10dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -38,21 +37,15 @@
             android:orientation="horizontal">
 
             <ImageView
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="12dp"
+                android:id="@+id/store_icon"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginEnd="10dp"
                 android:background="@drawable/bg_extension_store_kind"
                 android:contentDescription="@null"
-                android:padding="9dp"
+                android:padding="8dp"
                 android:src="@drawable/ic_storefront"
                 app:tint="?attr/colorPrimary" />
-
-            <View
-                android:id="@+id/store_status"
-                android:layout_width="10dp"
-                android:layout_height="10dp"
-                android:layout_marginEnd="12dp"
-                android:background="@drawable/bg_store_status" />
 
             <TextView
                 android:id="@+id/text_title"
@@ -66,11 +59,11 @@
 
             <ImageView
                 android:id="@+id/drag_handle"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:background="?selectableItemBackgroundBorderless"
                 android:contentDescription="@string/reorder"
-                android:padding="12dp"
+                android:padding="10dp"
                 android:pointerIcon="grab"
                 android:src="@drawable/ic_reorder_handle"
                 app:tint="?attr/colorOnSurfaceVariant" />
@@ -80,37 +73,27 @@
             android:id="@+id/text_url"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginStart="46dp"
             android:ellipsize="middle"
             android:maxLines="1"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant"
-            tools:text="https://raw.githubusercontent.com/example/repo/index.pb" />
+            tools:text="https://raw.githubusercontent.com/example/index.pb" />
 
         <LinearLayout
+            android:id="@+id/store_actions"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="5dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/text_kind"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_extension_store_kind"
-                android:paddingHorizontal="9dp"
-                android:paddingVertical="4dp"
-                android:textAppearance="?attr/textAppearanceLabelSmall"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                tools:text="Manga" />
 
             <TextView
                 android:id="@+id/text_status"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:background="@drawable/bg_extension_store_kind"
-                android:paddingHorizontal="9dp"
+                android:paddingHorizontal="8dp"
                 android:paddingVertical="4dp"
                 android:textAppearance="?attr/textAppearanceLabelSmall"
                 android:textColor="?attr/colorOnSurfaceVariant"
@@ -120,23 +103,15 @@
                 android:id="@+id/text_count"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="6dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:gravity="end"
                 android:maxLines="1"
+                android:paddingEnd="4dp"
                 android:textAppearance="?attr/textAppearanceLabelSmall"
                 android:textColor="?attr/colorOnSurfaceVariant"
-                tools:text="138 extensions" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/store_actions"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="end|center_vertical"
-            android:orientation="horizontal">
+                tools:text="1711 extensions" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/button_edit"
@@ -150,35 +125,19 @@
                 android:insetTop="0dp"
                 android:minHeight="40dp"
                 android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
                 android:text="@string/edit"
                 android:textAllCaps="false"
                 app:icon="@drawable/ic_edit"
-                app:iconPadding="6dp"
-                app:iconSize="18dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/button_website"
-                style="?attr/materialIconButtonStyle"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/website"
-                android:insetBottom="0dp"
-                android:insetLeft="0dp"
-                android:insetRight="0dp"
-                android:insetTop="0dp"
-                android:minHeight="40dp"
-                android:minWidth="0dp"
-                app:icon="@drawable/ic_open_external"
-                app:iconPadding="0dp"
-                app:iconSize="20dp" />
+                app:iconPadding="4dp"
+                app:iconSize="16dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/button_more"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="2dp"
                 android:contentDescription="@string/more"
                 android:insetBottom="0dp"
                 android:insetLeft="0dp"
@@ -189,7 +148,7 @@
                 android:padding="0dp"
                 app:icon="@drawable/ic_more_vert"
                 app:iconPadding="0dp"
-                app:iconSize="22dp" />
+                app:iconSize="20dp" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
