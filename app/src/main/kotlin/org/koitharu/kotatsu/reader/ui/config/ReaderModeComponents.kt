@@ -183,7 +183,10 @@ internal fun DoublePageConfigSection(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Spacer(modifier = Modifier.width(28.dp))
                             Text(
                                 text = stringResource(R.string.two_page_scroll_sensitivity),
