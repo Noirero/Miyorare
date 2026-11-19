@@ -1522,4 +1522,11 @@
     <string name="font_catalog_loading">Loading the catalog\u2026</string>
     <string name="font_catalog_empty">The catalog is empty.</string>
     <string name="font_retry">Retry</string>
+    <string name="font_section_installed">Installed fonts</string>
+    <string name="font_active">Active</string>
+    <string name="font_preview_sentence">The quick brown fox jumps over the lazy dog</string>
+    <string name="font_download">Download</string>
+    <string name="font_catalog_load_failed">Unable to load font catalog.</string>
+    <string name="font_remove_title">Remove font?</string>
+    <string name="font_remove_confirmation">Remove %1$s from your device?</string>
 </resources>

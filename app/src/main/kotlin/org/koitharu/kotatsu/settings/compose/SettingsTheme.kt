@@ -76,7 +76,7 @@ private val miyorareShapes = Shapes(
  * every time a Compose settings fragment creates a new composition.
  */
 @OptIn(ExperimentalTextApi::class)
-private val googleSansRounded = FontFamily(
+internal val googleSansRounded = FontFamily(
 	Font(R.font.gflex_variable, weight = FontWeight.Normal, variationSettings = roundVariation(500)),
 	Font(R.font.gflex_variable, weight = FontWeight.Medium, variationSettings = roundVariation(600)),
 	Font(R.font.gflex_variable, weight = FontWeight.SemiBold, variationSettings = roundVariation(700)),
