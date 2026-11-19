@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.settings.sources.catalog
 
 import androidx.core.view.isVisible
-import android.content.res.ColorStateList
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.TooltipCompat
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
@@ -9,7 +8,6 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.parser.favicon.extensionPackageFaviconUri
 import org.koitharu.kotatsu.core.ui.image.FaviconDrawable
-import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.databinding.ItemEmptyCardBinding
@@ -80,11 +78,6 @@ fun sourceCatalogItemExtensionAD(
 			else -> item.action.titleRes
 		}
 		binding.textViewStatus.setText(statusRes)
-		context.miyorareViewPaletteFromPreferences()?.let { palette ->
-			binding.root.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
-			binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(palette.primaryContainer)
-			binding.textViewStatus.setTextColor(palette.onPrimaryContainer)
-		}
 		binding.imageViewAdd.setIconResource(item.action.iconRes)
 		val actionDescription = if (isInProgress) {
 			context.getString(R.string.in_progress)
