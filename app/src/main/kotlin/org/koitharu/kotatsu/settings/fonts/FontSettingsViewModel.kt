@@ -34,11 +34,23 @@ class FontSettingsViewModel @Inject constructor(
 		refreshCatalog()
 	}
 
+	private val _catalogLoading = MutableStateFlow(false)
+	val catalogLoading = _catalogLoading.asStateFlow()
+
 	fun refreshCatalog() {
+		if (_catalogLoading.value) return
+		_catalogLoading.value = true
 		viewModelScope.launch {
-			runCatching { repository.refreshCatalog() }
-				.onSuccess { _catalogLoaded.value = true }
-				.onFailure { _errorMessage.value = it.message ?: it.javaClass.simpleName }
+			try {
+				repository.refreshCatalog()
+				_catalogLoaded.value = true
+			} catch (error: Exception) {
+				if (error is kotlinx.coroutines.CancellationException) throw error
+				_catalogLoaded.value = false
+				_errorMessage.value = error.message ?: error.javaClass.simpleName
+			} finally {
+				_catalogLoading.value = false
+			}
 		}
 	}
 
