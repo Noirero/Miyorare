@@ -1529,4 +1529,6 @@
     <string name="font_catalog_load_failed">Unable to load font catalog.</string>
     <string name="font_remove_title">Remove font?</string>
     <string name="font_remove_confirmation">Remove %1$s from your device?</string>
+    <string name="reader_tools">Tools</string>
+    <string name="reader_advanced_options">Advanced reader options</string>
 </resources>
