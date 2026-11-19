@@ -95,17 +95,17 @@ class ExtensionManagementDesignRegressionTest {
         val extension = source("res/layout/item_source_catalog.xml")
         val repository = source("res/layout/item_extension_store.xml")
         listOf(extension to "imageView_add", repository to "button_edit").forEach { (layout, id) ->
-            val marker = "android:id=\\"@+id/$id\\""
+            val marker = "android:id=\"@+id/$id\""
             val start = layout.indexOf(marker)
             assertTrue("Missing primary action button $id", start >= 0)
             val end = layout.indexOf("/>", start)
             assertTrue("Unterminated button $id", end > start)
             val button = layout.substring(start, end)
-            assertTrue("$id must measure text height", button.contains("android:layout_height=\\"wrap_content\\""))
-            assertTrue("$id must have a 48dp minimum touch area", button.contains("android:minHeight=\\"48dp\\""))
-            assertTrue("$id must center the icon and label", button.contains("android:gravity=\\"center\\""))
-            assertTrue("$id must retain font ascenders/descenders", button.contains("android:includeFontPadding=\\"true\\""))
-            assertTrue("$id must have vertical breathing room", button.contains("android:paddingVertical=\\"8dp\\""))
+            assertTrue("$id must measure text height", button.contains("android:layout_height=\"wrap_content\""))
+            assertTrue("$id must have a 48dp minimum touch area", button.contains("android:minHeight=\"48dp\""))
+            assertTrue("$id must center the icon and label", button.contains("android:gravity=\"center\""))
+            assertTrue("$id must retain font ascenders/descenders", button.contains("android:includeFontPadding=\"true\""))
+            assertTrue("$id must have vertical breathing room", button.contains("android:paddingVertical=\"8dp\""))
         }
     }
 
