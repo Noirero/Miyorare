@@ -81,6 +81,53 @@ class ReaderOptionsDesignRegressionTest {
         }
     }
 
+    @Test
+    fun `quick deck reduces Manga sheet height without touching EPUB or reader state`() {
+        val sheet = source("kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderConfigSheet.kt")
+        val modes = source("kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderModeComponents.kt")
+        val selector = source("kotlin/org/koitharu/kotatsu/core/ui/sheet/ExpressiveSheet.kt")
+
+        val mangaStart = sheet.indexOf("private fun ReaderConfigContent()")
+        val mangaEnd = sheet.indexOf("private fun BottomPillTabBar(", mangaStart)
+        assertTrue(mangaStart >= 0 && mangaEnd > mangaStart)
+        val manga = sheet.substring(mangaStart, mangaEnd)
+        assertFalse(manga.contains("Spacer(modifier = Modifier.height(84.dp))"))
+        assertTrue(manga.contains("pagerHeightPx"))
+        assertTrue(manga.contains("Modifier.height(with(density) { pagerHeightPx.toDp() })"))
+        assertTrue(manga.contains("BottomPillTabBar("))
+        assertTrue(manga.contains("compact = true"))
+        assertTrue(manga.contains("modifier = Modifier,"))
+        assertTrue(manga.contains("verticalScroll(rememberScrollState())"))
+        assertTrue(manga.indexOf("BottomPillTabBar(") > manga.indexOf("HorizontalPager("))
+
+        assertTrue(modes.contains("compact = true"))
+        assertTrue(selector.contains("compact: Boolean = false"))
+        assertTrue(selector.contains("height(if (compact) 76.dp else 112.dp)"))
+        assertTrue(sheet.contains("height(if (compact) 48.dp else 52.dp)"))
+        assertTrue(sheet.contains("val visibleTabs = tabs ?: listOf("))
+        assertTrue(sheet.contains("Triple(stringResource(R.string.epub_tools_tab)"))
+    }
+
+    @Test
+    fun `compact tools retain six action callbacks and accessible bookmark`() {
+        val sheet = source("kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderConfigSheet.kt")
+        val start = sheet.indexOf("private fun ToolsGridSection(")
+        val end = sheet.indexOf("private fun ToolWideCard(", start)
+        assertTrue(start >= 0 && end > start)
+        val tools = sheet.substring(start, end)
+        listOf("onSaveClick", "onOrientationClick", "onScrollTimerClick",
+            "onColorFilterClick", "onBookmarkClick", "onSettingsClick").forEach {
+            assertTrue("Missing reader action $it", tools.contains(it))
+        }
+        assertTrue(tools.contains("ReaderQuickToolCard("))
+        assertTrue(tools.contains("heightIn(min = 76.dp)"))
+        assertTrue(tools.contains("modifier = Modifier.size(76.dp)"))
+        assertTrue(tools.contains("R.string.bookmark_remove else R.string.bookmark_add"))
+        assertFalse(tools.contains("modifier = Modifier.weight(1f),\\n                                    )"))
+        assertTrue(tools.contains("MaterialTheme.colorScheme.primaryContainer"))
+        assertTrue(tools.contains("MaterialTheme.colorScheme.surfaceContainerHigh"))
+    }
+
     private fun source(relativePath: String): String = sequenceOf(
         File("src/main", relativePath),
         File("app/src/main", relativePath),
