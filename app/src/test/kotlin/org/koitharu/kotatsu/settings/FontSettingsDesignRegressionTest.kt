@@ -39,6 +39,23 @@ class FontSettingsDesignRegressionTest {
         assertTrue(model.contains("_catalogLoading.value = false"))
     }
 
+    @Test
+    fun `catalog loading state is initialized before constructor starts refresh`() {
+        val model = source("kotlin/org/koitharu/kotatsu/settings/fonts/FontSettingsViewModel.kt")
+        val init = model.indexOf("init {")
+        val refresh = model.indexOf("refreshCatalog()", init)
+        val loading = model.indexOf("private val _catalogLoading = MutableStateFlow(false)")
+        val loaded = model.indexOf("private val _catalogLoaded = MutableStateFlow(false)")
+        val errors = model.indexOf("private val _errorMessage = MutableStateFlow<String?>(null)")
+
+        // Kotlin executes field initializers and init blocks in source order.
+        // Refreshing before _catalogLoading exists crashes immediately on screen entry.
+        assertTrue("Initial refresh must exist in the constructor", init >= 0 && refresh > init)
+        assertTrue("Loading flow must exist before initial refresh", loading >= 0 && loading < init)
+        assertTrue("Loaded flow must exist before initial refresh", loaded >= 0 && loaded < init)
+        assertTrue("Error flow must exist before initial refresh", errors >= 0 && errors < init)
+    }
+
     private fun source(relativePath: String): String = sequenceOf(
         File("src/main", relativePath),
         File("app/src/main", relativePath),
