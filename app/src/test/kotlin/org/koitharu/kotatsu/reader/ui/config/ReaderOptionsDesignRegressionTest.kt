@@ -199,7 +199,7 @@ class ReaderOptionsDesignRegressionTest {
         assertTrue(activity.contains("custom.buttonExpandTint.setOnClickListener"))
         assertTrue(activity.contains("custom.switchCustomTint.setOnCheckedChangeListener(this)"))
         assertTrue(activity.contains("if (!updatingUi) viewModel.setCustomEnabled(isChecked)"))
-        listOf("sliderTintRed", "sliderTintGreen", "sliderTintBlue", "sliderTintAlpha",
+        listOf("slider_tint_red", "slider_tint_green", "slider_tint_blue", "slider_tint_alpha",
             "chip_blend_default", "chip_blend_multiply", "chip_blend_screen",
             "chip_blend_overlay", "chip_blend_dodge", "chip_blend_burn").forEach {
             assertTrue("Lost Color Studio setting: $it", controls.contains(it))
