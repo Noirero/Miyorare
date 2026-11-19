@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings.sources.catalog
 
+import android.content.res.ColorStateList
 import androidx.core.view.isVisible
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.TooltipCompat
@@ -8,6 +9,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.parser.favicon.extensionPackageFaviconUri
 import org.koitharu.kotatsu.core.ui.image.FaviconDrawable
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.databinding.ItemEmptyCardBinding
@@ -71,13 +73,24 @@ fun sourceCatalogItemExtensionAD(
 			}.show()
 		}
 		binding.buttonGroupActions.isVisible = true
-		val statusRes = when {
-			isInProgress -> R.string.in_progress
-			item.action == SourceCatalogItem.Extension.Action.UPDATE -> R.string.update
-			item.action == SourceCatalogItem.Extension.Action.UNINSTALL -> R.string.installed
-			else -> item.action.titleRes
+		// The action button already communicates Update / Install / Enable / Disable.
+		// Show a separate badge only when it conveys different information.
+		binding.textViewStatus.isVisible = !isInProgress &&
+			item.action == SourceCatalogItem.Extension.Action.UNINSTALL
+		if (binding.textViewStatus.isVisible) binding.textViewStatus.setText(R.string.installed)
+		// The Android View theme may differ from Miyorare's active Modern color scheme.
+		// Bridge only in Modern; leave Classic's authored theme and components intact.
+		context.miyorareViewPaletteFromPreferences()?.let { palette ->
+			binding.root.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
+			binding.textViewTitle.setTextColor(palette.onSurface)
+			binding.textViewDescription.setTextColor(palette.onSurfaceVariant)
+			binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(palette.primaryContainer)
+			binding.textViewStatus.setTextColor(palette.onPrimaryContainer)
+			binding.imageViewAdd.backgroundTintList = ColorStateList.valueOf(palette.primary)
+			binding.imageViewAdd.setTextColor(palette.onPrimary)
+			binding.imageViewAdd.iconTint = ColorStateList.valueOf(palette.onPrimary)
+			binding.imageViewMore.iconTint = ColorStateList.valueOf(palette.onSurfaceVariant)
 		}
-		binding.textViewStatus.setText(statusRes)
 		binding.imageViewAdd.setIconResource(item.action.iconRes)
 		val actionDescription = if (isInProgress) {
 			context.getString(R.string.in_progress)
