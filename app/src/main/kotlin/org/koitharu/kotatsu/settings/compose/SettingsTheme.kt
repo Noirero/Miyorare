@@ -27,7 +27,9 @@ import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.core.fonts.FontPackEntryPoint
+import org.koitharu.kotatsu.core.fonts.InstalledFontPack
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
@@ -338,15 +340,27 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 			activeGradientEnd = Color(ColorUtils.blendARGB(activeStart, spec.accent, 0.22f)),
 		)
 	} else basePalette
+	// The repository is resolved opportunistically: isolated Compose tests
+	// render this theme without a Hilt component, and they must keep seeing
+	// the built-in typography. In the app the entry point always exists.
 	val fontPackRepository = remember {
-		EntryPointAccessors.fromApplication<FontPackEntryPoint>(
-			ctx.applicationContext,
-		).fontPackRepository
+		runCatching {
+			EntryPointAccessors.fromApplication<FontPackEntryPoint>(
+				ctx.applicationContext,
+			).fontPackRepository
+		}.getOrNull()
 	}
-	val activeFontPack by fontPackRepository.activePack.collectAsState()
-	val typography = remember(activeFontPack) {
-		activeFontPack?.let { bumpedTypography(fontPackRepository.composeFontFamily(it)) }
-			?: miyorareTypography
+	val activeFontPack by remember(fontPackRepository) {
+		fontPackRepository?.activePack ?: MutableStateFlow<InstalledFontPack?>(null)
+	}.collectAsState()
+	val typography = remember(activeFontPack, fontPackRepository) {
+		val pack = activeFontPack
+		val repository = fontPackRepository
+		if (pack != null && repository != null) {
+			bumpedTypography(repository.composeFontFamily(pack))
+		} else {
+			miyorareTypography
+		}
 	}
 	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
 	CompositionLocalProvider(
