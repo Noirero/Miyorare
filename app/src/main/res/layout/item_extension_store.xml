@@ -1,162 +1,187 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
-	xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto"
-	xmlns:tools="http://schemas.android.com/tools"
-	android:layout_width="match_parent"
-	android:layout_height="wrap_content"
-	android:orientation="vertical">
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
 
-	<TextView
-		android:id="@+id/text_section"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:paddingStart="20dp"
-		android:paddingEnd="20dp"
-		android:paddingTop="14dp"
-		android:paddingBottom="5dp"
-		android:textAppearance="?attr/textAppearanceTitleSmall"
-		android:textColor="?attr/colorOnSurfaceVariant"
-		android:visibility="gone"
-		tools:text="Repositori manga"
-		tools:visibility="visible" />
+    <TextView
+        android:id="@+id/text_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp"
+        android:textAppearance="?attr/textAppearanceLabelLarge"
+        android:textColor="?attr/colorPrimary"
+        android:visibility="gone"
+        tools:text="Manga repositories"
+        tools:visibility="visible" />
 
-	<androidx.constraintlayout.widget.ConstraintLayout
-		android:id="@+id/tile_root"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_marginHorizontal="12dp"
-		android:layout_marginVertical="3dp"
-		android:background="@drawable/bg_settings_tile"
-		android:minHeight="?attr/listPreferredItemHeightSmall"
-		android:paddingStart="14dp"
-		android:paddingTop="6dp"
-		android:paddingEnd="6dp"
-		android:paddingBottom="6dp">
+    <LinearLayout
+        android:id="@+id/tile_root"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginVertical="4dp"
+        android:background="@drawable/bg_settings_tile"
+        android:orientation="vertical"
+        android:padding="14dp">
 
-		<View
-			android:id="@+id/store_status"
-			android:layout_width="8dp"
-			android:layout_height="8dp"
-			android:background="@drawable/bg_store_status"
-			app:layout_constraintBottom_toBottomOf="@id/text_title"
-			app:layout_constraintStart_toStartOf="parent"
-			app:layout_constraintTop_toTopOf="@id/text_title" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-		<TextView
-			android:id="@+id/text_title"
-			android:layout_width="0dp"
-			android:layout_height="wrap_content"
-			android:layout_marginStart="12dp"
-			android:ellipsize="end"
-			android:maxLines="1"
-			android:textAppearance="?attr/textAppearanceBodyLarge"
-			app:layout_constraintEnd_toStartOf="@id/drag_handle"
-			app:layout_constraintStart_toEndOf="@id/store_status"
-			app:layout_constraintTop_toTopOf="parent"
-			tools:text="KEI (1396)" />
+            <View
+                android:id="@+id/store_status"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/bg_store_status" />
 
-		<LinearLayout
-			android:id="@+id/store_actions"
-			android:layout_width="0dp"
-			android:layout_height="40dp"
-			android:layout_marginStart="12dp"
-			android:gravity="center_vertical"
-			android:orientation="horizontal"
-			app:layout_constraintEnd_toStartOf="@id/drag_handle"
-			app:layout_constraintStart_toEndOf="@id/store_status"
-			app:layout_constraintTop_toBottomOf="@id/text_title">
+            <TextView
+                android:id="@+id/text_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                tools:text="Keiyoushi" />
 
-			<TextView
-				android:id="@+id/text_kind"
-				android:layout_width="wrap_content"
-				android:layout_height="wrap_content"
-				android:layout_marginEnd="4dp"
-				android:background="@drawable/bg_extension_store_kind"
-				android:ellipsize="end"
-				android:maxLines="1"
-				android:paddingHorizontal="8dp"
-				android:paddingVertical="2dp"
-				android:textAppearance="?attr/textAppearanceLabelSmall"
-				android:textColor="?attr/colorOnSurfaceVariant"
-				tools:text="Manga" />
+            <ImageView
+                android:id="@+id/drag_handle"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?selectableItemBackgroundBorderless"
+                android:contentDescription="@string/reorder"
+                android:padding="12dp"
+                android:pointerIcon="grab"
+                android:src="@drawable/ic_reorder_handle"
+                app:tint="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
 
-			<ImageButton
-				android:id="@+id/button_copy"
-				android:layout_width="40dp"
-				android:layout_height="40dp"
-				android:background="?selectableItemBackgroundBorderless"
-				android:contentDescription="@string/copy_store_url"
-				android:padding="10dp"
-				app:srcCompat="@drawable/ic_content_copy"
-				app:tint="?attr/colorOnSurfaceVariant" />
+        <TextView
+            android:id="@+id/text_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="middle"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="https://raw.githubusercontent.com/example/repo/index.pb" />
 
-			<ImageButton
-				android:id="@+id/button_edit"
-				android:layout_width="40dp"
-				android:layout_height="40dp"
-				android:background="?selectableItemBackgroundBorderless"
-				android:contentDescription="@string/edit_store"
-				android:padding="10dp"
-				app:srcCompat="@drawable/ic_edit"
-				app:tint="?attr/colorOnSurfaceVariant" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-			<ImageButton
-				android:id="@+id/button_retry"
-				android:layout_width="40dp"
-				android:layout_height="40dp"
-				android:background="?selectableItemBackgroundBorderless"
-				android:contentDescription="@string/retry"
-				android:padding="10dp"
-				app:srcCompat="@drawable/ic_sync"
-				app:tint="?attr/colorOnSurfaceVariant" />
+            <TextView
+                android:id="@+id/text_kind"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_extension_store_kind"
+                android:paddingHorizontal="9dp"
+                android:paddingVertical="4dp"
+                android:textAppearance="?attr/textAppearanceLabelSmall"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                tools:text="Manga" />
 
-			<ImageButton
-				android:id="@+id/button_website"
-				android:layout_width="40dp"
-				android:layout_height="40dp"
-				android:background="?selectableItemBackgroundBorderless"
-				android:contentDescription="@string/website"
-				android:padding="10dp"
-				app:srcCompat="@drawable/ic_language"
-				app:tint="?attr/colorOnSurfaceVariant" />
+            <TextView
+                android:id="@+id/text_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_extension_store_kind"
+                android:paddingHorizontal="9dp"
+                android:paddingVertical="4dp"
+                android:textAppearance="?attr/textAppearanceLabelSmall"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                tools:text="Available" />
 
-			<ImageButton
-				android:id="@+id/button_discord"
-				android:layout_width="40dp"
-				android:layout_height="40dp"
-				android:background="?selectableItemBackgroundBorderless"
-				android:contentDescription="@string/discord"
-				android:padding="10dp"
-				app:srcCompat="@drawable/ic_discord"
-				app:tint="?attr/colorOnSurfaceVariant" />
+            <TextView
+                android:id="@+id/text_count"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:gravity="end"
+                android:maxLines="1"
+                android:textAppearance="?attr/textAppearanceLabelSmall"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                tools:text="138 extensions" />
+        </LinearLayout>
 
-			<ImageButton
-				android:id="@+id/button_remove"
-				android:layout_width="40dp"
-				android:layout_height="40dp"
-				android:background="?selectableItemBackgroundBorderless"
-				android:contentDescription="@string/remove_store"
-				android:padding="10dp"
-				app:srcCompat="@drawable/ic_delete"
-				app:tint="?attr/colorOnSurfaceVariant" />
+        <LinearLayout
+            android:id="@+id/store_actions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="end|center_vertical"
+            android:orientation="horizontal">
 
-		</LinearLayout>
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_edit"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:contentDescription="@string/edit_store"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:insetTop="0dp"
+                android:minHeight="40dp"
+                android:minWidth="0dp"
+                android:text="@string/edit"
+                android:textAllCaps="false"
+                app:icon="@drawable/ic_edit"
+                app:iconPadding="6dp"
+                app:iconSize="18dp" />
 
-		<ImageView
-			android:id="@+id/drag_handle"
-			android:layout_width="48dp"
-			android:layout_height="48dp"
-			android:background="?selectableItemBackgroundBorderless"
-			android:contentDescription="@string/reorder"
-			android:padding="14dp"
-			android:pointerIcon="grab"
-			android:src="@drawable/ic_reorder_handle"
-			app:layout_constraintBottom_toBottomOf="parent"
-			app:layout_constraintEnd_toEndOf="parent"
-			app:layout_constraintTop_toTopOf="parent"
-			app:tint="?attr/colorOnSurfaceVariant" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_website"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@string/website"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:insetTop="0dp"
+                android:minHeight="40dp"
+                android:minWidth="0dp"
+                android:text="@string/website"
+                android:textAllCaps="false"
+                app:icon="@drawable/ic_open_external"
+                app:iconPadding="6dp"
+                app:iconSize="18dp" />
 
-	</androidx.constraintlayout.widget.ConstraintLayout>
-
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_more"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@string/more"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:insetTop="0dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:padding="0dp"
+                app:icon="@drawable/ic_more_vert"
+                app:iconPadding="0dp"
+                app:iconSize="22dp" />
+        </LinearLayout>
+    </LinearLayout>
 </LinearLayout>
