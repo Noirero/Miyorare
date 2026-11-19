@@ -88,6 +88,27 @@ class ExtensionManagementDesignRegressionTest {
         assertFalse(selector.contains("#"))
     }
 
+    @Test
+    fun `extension and repository action labels have space for font descenders`() {
+        // Both Update and Uninstall use imageView_add; Edit uses button_edit.
+        // Fixed 40dp controls clipped the active app font on the owner's device.
+        val extension = source("res/layout/item_source_catalog.xml")
+        val repository = source("res/layout/item_extension_store.xml")
+        listOf(extension to "imageView_add", repository to "button_edit").forEach { (layout, id) ->
+            val marker = "android:id=\\"@+id/$id\\""
+            val start = layout.indexOf(marker)
+            assertTrue("Missing primary action button $id", start >= 0)
+            val end = layout.indexOf("/>", start)
+            assertTrue("Unterminated button $id", end > start)
+            val button = layout.substring(start, end)
+            assertTrue("$id must measure text height", button.contains("android:layout_height=\\"wrap_content\\""))
+            assertTrue("$id must have a 48dp minimum touch area", button.contains("android:minHeight=\\"48dp\\""))
+            assertTrue("$id must center the icon and label", button.contains("android:gravity=\\"center\\""))
+            assertTrue("$id must retain font ascenders/descenders", button.contains("android:includeFontPadding=\\"true\\""))
+            assertTrue("$id must have vertical breathing room", button.contains("android:paddingVertical=\\"8dp\\""))
+        }
+    }
+
     private fun source(relativePath: String): String = sequenceOf(
         File("src/main", relativePath),
         File("app/src/main", relativePath),
