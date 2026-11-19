@@ -450,6 +450,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                 // Keep the pager pinned to Read Mode height during tab swipes; the
                 // adaptive sheet must not jump as the reader controls are used.
                 BottomPillTabBar(
+                    compact = true,
                     currentPage = pagerState.currentPage,
                     onTabClick = { index ->
                         scope.launch {
@@ -467,6 +468,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         onTabClick: (Int) -> Unit,
         tabs: List<Triple<String, Int, Int>>? = null,
         modifier: Modifier = Modifier,
+        compact: Boolean = false,
     ) {
         // Manga uses localized defaults; EPUB supplies its own three tabs.
         val visibleTabs = tabs ?: listOf(
@@ -485,9 +487,9 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                 shadowElevation = 6.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                 modifier = Modifier
-                    .widthIn(max = if (visibleTabs.size > 2) 336.dp else 280.dp)
+                    .widthIn(max = if (visibleTabs.size > 2) 336.dp else if (compact) 268.dp else 280.dp)
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(if (compact) 48.dp else 52.dp),
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val targetBias = if (visibleTabs.size == 1) 0f else currentPage * 2f / (visibleTabs.size - 1) - 1f
@@ -1799,31 +1801,31 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 
         Surface(
             onClick = onClick,
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(20.dp),
             color = containerColor,
             contentColor = contentColor,
-            modifier = modifier.heightIn(min = 88.dp),
+            modifier = modifier.heightIn(min = 76.dp),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     painter = painterResource(icon),
                     contentDescription = null,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(24.dp),
                     tint = iconColor,
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
@@ -1836,7 +1838,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     painter = painterResource(R.drawable.ic_expand_more),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(20.dp)
+                        .size(16.dp)
                         .rotate(-90f),
                     tint = if (checked) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
