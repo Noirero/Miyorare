@@ -1,8 +1,10 @@
 package org.koitharu.kotatsu.settings.sources.catalog
 
 import android.content.Context
+import android.content.res.ColorStateList
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.list.fastscroll.FastScroller
 import org.koitharu.kotatsu.databinding.ItemExtensionUpdateFooterBinding
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
@@ -55,5 +57,14 @@ private fun updateAllFooterAD(
 		val info = installerMethodInfo()
 		binding.buttonMethod.text = info.title
 		binding.textMethodSummary.text = info.summary
+		binding.root.context.miyorareViewPaletteFromPreferences()?.let { palette ->
+			binding.root.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
+			binding.textMethodSummary.setTextColor(palette.onSurfaceVariant)
+			binding.buttonMethod.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainerHigh)
+			binding.buttonMethod.strokeColor = ColorStateList.valueOf(palette.outlineVariant)
+			binding.buttonMethod.setTextColor(palette.onSurface)
+			binding.button.backgroundTintList = ColorStateList.valueOf(palette.primary)
+			binding.button.setTextColor(palette.onPrimary)
+		}
 	}
 }

@@ -21,4 +21,11 @@
     <string name="settings_user_agent_custom_label">Custom User-Agent</string>
     <string name="settings_user_agent_randomize_again">Randomize again</string>
     <string name="settings_apply">Apply</string>
+    <string name="sources_section_library">Source library</string>
+    <string name="sources_section_maintenance">Installation &amp; maintenance</string>
+    <string name="sources_section_display">Display</string>
+    <string name="sources_section_privacy">Content &amp; privacy</string>
+    <string name="sources_section_updates">Updates</string>
+    <string name="sources_screen_intro">Manage reading sources, extensions, and update behavior.</string>
+    <string name="sources_auto_update_unavailable">Choose an installer method that supports automatic updates.</string>
 </resources>
