@@ -79,11 +79,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:background="@drawable/bg_extension_store_kind"
+                android:background="@drawable/bg_extension_status_badge"
                 android:paddingHorizontal="10dp"
                 android:paddingVertical="4dp"
                 android:textAppearance="?attr/textAppearanceLabelSmall"
-                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textColor="?attr/colorOnPrimaryContainer"
                 tools:text="Installed" />
         </LinearLayout>
     </LinearLayout>
