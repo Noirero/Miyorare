@@ -118,11 +118,6 @@ class ExtensionStoresAdapter(
 					com.google.android.material.R.attr.colorOnSurfaceVariant,
 				)
 			}
-			val healthLabel = when (item.health) {
-				StoreHealth.AVAILABLE -> R.string.store_available
-				StoreHealth.UNAVAILABLE -> R.string.store_unavailable
-				StoreHealth.CHECKING -> R.string.loading_
-			}
 			val shortHealthLabel = when (item.health) {
 				StoreHealth.AVAILABLE -> R.string.store_card_available
 				StoreHealth.UNAVAILABLE -> R.string.store_card_unavailable
@@ -155,12 +150,6 @@ class ExtensionStoresAdapter(
 				event.actionMasked == MotionEvent.ACTION_DOWN && listener.onDrag(this)
 			}
 		}
-	}
-
-	private fun ExtensionStoreContentType.kindLabelRes(): Int = when (this) {
-		ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
-		ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
-		ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
 	}
 
 	private fun ExtensionStoreContentType.sectionLabelRes(): Int = when (this) {
