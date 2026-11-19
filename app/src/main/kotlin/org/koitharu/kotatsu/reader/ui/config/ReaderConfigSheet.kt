@@ -50,6 +50,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,7 +96,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.flow.MutableStateFlow
+import org.koitharu.kotatsu.core.fonts.InstalledFontPack
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.ui.BaseActivityEntryPoint
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -554,6 +559,16 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     @Composable
     private fun EpubConfigContent() {
         val customFontName = remember(customFontUiRevision) { epubSettings.customFontName }
+        val fontPackRepository = remember {
+            runCatching {
+                EntryPointAccessors.fromApplication<BaseActivityEntryPoint>(
+                    requireContext().applicationContext,
+                ).fontPackRepository
+            }.getOrNull()
+        }
+        val activeFontPack by remember(fontPackRepository) {
+            fontPackRepository?.activePack ?: MutableStateFlow<InstalledFontPack?>(null)
+        }.collectAsState()
         var perBookEnabled by remember { mutableStateOf(epubSettings.enabled) }
         var publisherStyleEnabled by remember { mutableStateOf(epubSettings.publisherStyle) }
         var bionicReadingEnabled by remember { mutableStateOf(epubSettings.bionicReading) }
@@ -649,11 +664,21 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     EpubFontSection(
                         selected = epubSettings.fontFamily,
                         customFontName = customFontName,
+                        appFontLabel = activeFontPack?.let { pack ->
+                            stringResource(R.string.font_title) + " \u00b7 " + pack.pack.name
+                        } ?: stringResource(R.string.font_title),
+                        appFontFamily = activeFontPack?.let { pack ->
+                            fontPackRepository?.composeFontFamily(pack)
+                        },
                         enabled = editable,
                         onChooseCustom = {
                             epubFontPicker.launch(EPUB_FONT_MIME_TYPES)
                         },
                         onRemoveCustom = ::removeEpubCustomFont,
+                        onOpenAppFontSettings = {
+                            startActivity(AppRouter.appFontSettingsIntent(requireContext()))
+                            dismiss()
+                        },
                     )
                     EpubFontWeightSection(enabled = editable)
                 } else {
@@ -950,9 +975,12 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     private fun EpubFontSection(
         selected: String,
         customFontName: String,
+        appFontLabel: String,
+        appFontFamily: androidx.compose.ui.text.font.FontFamily?,
         enabled: Boolean,
         onChooseCustom: () -> Unit,
         onRemoveCustom: () -> Unit,
+        onOpenAppFontSettings: () -> Unit,
     ) {
         var current by remember(selected, customFontName) { mutableStateOf(selected) }
         val choices = listOf(
@@ -960,6 +988,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             "sans-serif" to stringResource(R.string.epub_font_sans),
             "monospace" to stringResource(R.string.epub_font_mono),
             EPUB_FONT_CUSTOM to customFontName.substringBeforeLast('.').ifBlank { stringResource(R.string.epub_font_choose) },
+            EPUB_FONT_APP to appFontLabel,
         )
         EpubSettingCard(R.drawable.ic_title, stringResource(R.string.epub_font_family), null, enabled = enabled) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -992,6 +1021,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                         fontFamily = when (value) {
                                             "sans-serif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
                                             "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+                                            EPUB_FONT_APP -> appFontFamily
                                             EPUB_FONT_CUSTOM -> null
                                             else -> androidx.compose.ui.text.font.FontFamily.Serif
                                         },
@@ -1019,6 +1049,18 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                             }
                         }
                     }
+                }
+                TextButton(
+                    onClick = onOpenAppFontSettings,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_open_external),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.epub_font_app_settings))
                 }
             }
         }
@@ -1878,6 +1920,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 
 	private companion object {
 		const val EPUB_FONT_CUSTOM = "custom"
+		const val EPUB_FONT_APP = "app"
 		const val EPUB_THEME_CUSTOM = "custom"
 		const val EPUB_THEME_SYSTEM = "system"
 		const val EPUB_COLOR_BACKGROUND = "background"

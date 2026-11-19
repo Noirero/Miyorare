@@ -543,6 +543,7 @@
 	<string name="epub_font_mono">Mono</string>
 	<string name="epub_font_custom">Custom</string>
 	<string name="epub_font_choose">Choose font</string>
+	<string name="epub_font_app_settings">App font settings</string>
 	<string name="epub_font_invalid">That file is not a compatible font.</string>
 	<string name="epub_line_height">Line spacing</string>
 	<string name="epub_paragraph_spacing">Paragraph spacing</string>
