@@ -470,9 +470,11 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     private fun BottomPillTabBar(
         currentPage: Int,
         onTabClick: (Int) -> Unit,
+        tabs: List<Triple<String, Int, Int>>? = null,
         modifier: Modifier = Modifier,
     ) {
-        val tabs = listOf(
+        // Manga uses localized defaults; EPUB supplies its own three tabs.
+        val visibleTabs = tabs ?: listOf(
             Triple(stringResource(R.string.read_mode), R.drawable.ic_book_page, 0),
             Triple(stringResource(R.string.reader_tools), R.drawable.ic_grid, 1),
         )
@@ -488,12 +490,12 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                 shadowElevation = 6.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                 modifier = Modifier
-                    .widthIn(max = if (tabs.size > 2) 336.dp else 280.dp)
+                    .widthIn(max = if (visibleTabs.size > 2) 336.dp else 280.dp)
                     .fillMaxWidth()
                     .height(52.dp),
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    val targetBias = if (tabs.size == 1) 0f else currentPage * 2f / (tabs.size - 1) - 1f
+                    val targetBias = if (visibleTabs.size == 1) 0f else currentPage * 2f / (visibleTabs.size - 1) - 1f
                     val animatedBias by animateFloatAsState(
                         targetValue = targetBias,
                         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
@@ -503,7 +505,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .fillMaxWidth(1f / tabs.size)
+                            .fillMaxWidth(1f / visibleTabs.size)
                             .padding(4.dp)
                             .align(BiasAlignment(horizontalBias = animatedBias, verticalBias = 0f))
                             .clip(CircleShape)
@@ -514,7 +516,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                         modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        tabs.forEach { (title, iconRes, index) ->
+                        visibleTabs.forEach { (title, iconRes, index) ->
                             val isSelected = currentPage == index
                             val contentColor by animateColorAsState(
                                 targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
