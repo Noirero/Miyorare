@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="store_card_available">Tersedia</string>
+    <string name="store_card_unavailable">Tidak tersedia</string>
+    <string name="store_card_checking">Memeriksa</string>
+    <string name="store_card_extension_count">%1$d ekstensi</string>
+</resources>
