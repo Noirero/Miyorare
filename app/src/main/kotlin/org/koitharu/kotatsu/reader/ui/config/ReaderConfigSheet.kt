@@ -470,12 +470,12 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     private fun BottomPillTabBar(
         currentPage: Int,
         onTabClick: (Int) -> Unit,
-        tabs: List<Triple<String, Int, Int>> = listOf(
-            Triple(stringResource(R.string.read_mode), R.drawable.ic_book_page, 0),
-            Triple(stringResource(R.string.reader_tools), R.drawable.ic_grid, 1),
-        ),
         modifier: Modifier = Modifier,
     ) {
+        val tabs = listOf(
+            Triple(stringResource(R.string.read_mode), R.drawable.ic_book_page, 0),
+            Triple(stringResource(R.string.reader_tools), R.drawable.ic_grid, 1),
+        )
         Box(
             modifier = modifier
                 .fillMaxWidth()
