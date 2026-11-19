@@ -331,8 +331,8 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // 1. Swipeable Pager Content
                 // No animateContentSize here: the sheet is fit-to-contents, so animating the body
@@ -364,7 +364,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                         .fillMaxWidth()
                                         .verticalScroll(rememberScrollState())
                                         .onSizeChanged { pagerHeightPx = it.height },
-                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     ReadModeSection(
                                         selectedMode = currentMode,
@@ -397,7 +397,6 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                         },
                                     )
 
-                                    Spacer(modifier = Modifier.height(84.dp))
                                 }
                             }
 
@@ -405,8 +404,9 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
                                         .padding(horizontal = 16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     ToolsGridSection(
                                         showPageTools = true,
@@ -437,23 +437,18 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                             router.openReaderSettings()
                                             dismissAllowingStateLoss()
                                         },
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier,
                                     )
 
-                                    Spacer(modifier = Modifier.height(84.dp))
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // 2. Bottom Floating Capsule Tab Switcher
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth(),
-            ) {
+                // The capsule follows the pager instead of overlapping empty spacer.
+                // Keep the pager pinned to Read Mode height during tab swipes; the
+                // adaptive sheet must not jump as the reader controls are used.
                 BottomPillTabBar(
                     currentPage = pagerState.currentPage,
                     onTabClick = { index ->
