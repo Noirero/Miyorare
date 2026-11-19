@@ -167,6 +167,45 @@ class ReaderOptionsDesignRegressionTest {
         assertTrue(screen.contains("onLoadingChanged(isLoading: Boolean)"))
     }
 
+    @Test
+    fun `Color Studio keeps native preview and saves while docking actions`() {
+        val screen = source("res/layout/activity_color_filter.xml")
+        val activity = source("kotlin/org/koitharu/kotatsu/reader/ui/colorfilter/ColorFilterConfigActivity.kt")
+        val vm = source("kotlin/org/koitharu/kotatsu/reader/ui/colorfilter/ColorFilterConfigViewModel.kt")
+        assertTrue(screen.contains("@+id/imageView_before"))
+        assertTrue(screen.contains("@+id/imageView_after"))
+        assertTrue(screen.contains("android:layout_weight=\"1\""))
+        assertTrue(screen.indexOf("@+id/button_reset") > screen.indexOf("</ScrollView>"))
+        assertTrue(screen.indexOf("@+id/button_done") > screen.indexOf("</ScrollView>"))
+        assertTrue(activity.contains("loadPreview(viewModel.preview)"))
+        assertTrue(activity.contains("ReaderCustomTint.applyToImage(viewBinding.imageViewAfter"))
+        assertTrue(activity.contains("R.id.button_done -> showSaveConfirmation()"))
+        assertTrue(activity.contains("R.id.button_reset -> viewModel.reset()"))
+        assertTrue(activity.contains("viewModel.saveGlobally()"))
+        assertTrue(activity.contains("viewModel.save()"))
+        assertTrue(vm.contains("mangaDataRepository.resetColorFilters()"))
+    }
+
+    @Test
+    fun `Custom Tint expansion is independent of filter enablement and restores state`() {
+        val controls = source("res/layout/reader_custom_filter_controls.xml")
+        val activity = source("kotlin/org/koitharu/kotatsu/reader/ui/colorfilter/ColorFilterConfigActivity.kt")
+        assertTrue(controls.contains("@+id/button_expand_tint"))
+        assertTrue(controls.contains("@+id/custom_advanced_content"))
+        assertTrue(controls.contains("android:visibility=\"gone\""))
+        assertTrue(activity.contains("savedInstanceState?.getBoolean(KEY_ADVANCED_EXPANDED)"))
+        assertTrue(activity.contains("outState.putBoolean(KEY_ADVANCED_EXPANDED, advancedExpanded)"))
+        assertTrue(activity.contains("custom.customAdvancedContent.isVisible = advancedExpanded"))
+        assertTrue(activity.contains("custom.buttonExpandTint.setOnClickListener"))
+        assertTrue(activity.contains("custom.switchCustomTint.setOnCheckedChangeListener(this)"))
+        assertTrue(activity.contains("if (!updatingUi) viewModel.setCustomEnabled(isChecked)"))
+        listOf("sliderTintRed", "sliderTintGreen", "sliderTintBlue", "sliderTintAlpha",
+            "chip_blend_default", "chip_blend_multiply", "chip_blend_screen",
+            "chip_blend_overlay", "chip_blend_dodge", "chip_blend_burn").forEach {
+            assertTrue("Lost Color Studio setting: $it", controls.contains(it))
+        }
+    }
+
     private fun source(relativePath: String): String = sequenceOf(
         File("src/main", relativePath),
         File("app/src/main", relativePath),
