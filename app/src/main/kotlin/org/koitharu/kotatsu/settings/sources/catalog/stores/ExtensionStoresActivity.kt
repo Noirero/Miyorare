@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.settings.sources.catalog.stores
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -11,7 +12,6 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.dialog.setEditText
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.databinding.ActivityExtensionStoresBinding
@@ -45,6 +46,7 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		setContentView(ActivityExtensionStoresBinding.inflate(layoutInflater))
 		title = getString(R.string.manage_stores)
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
+		applyModernPalette()
 		adapter = ExtensionStoresAdapter(this)
 		viewBinding.recyclerView.adapter = adapter
 		reorderHelper = ItemTouchHelper(ReorderCallback()).also {
@@ -59,6 +61,25 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		handleAddStoreIntent(intent)
 	}
 
+	override fun onResume() {
+		super.onResume()
+		applyModernPalette()
+	}
+
+	private fun applyModernPalette() {
+		// The active Modern scheme comes from the same resolver used by Compose.
+		// Classic keeps its authored XML widget colors.
+		val palette = miyorareViewPaletteFromPreferences() ?: return
+		viewBinding.root.setBackgroundColor(palette.background)
+		viewBinding.appbar.setBackgroundColor(palette.background)
+		viewBinding.toolbar.setTitleTextColor(palette.onSurface)
+		viewBinding.toolbar.navigationIcon?.mutate()?.setTint(palette.onSurface)
+		viewBinding.toolbar.overflowIcon?.mutate()?.setTint(palette.onSurfaceVariant)
+		viewBinding.fabAdd.backgroundTintList = ColorStateList.valueOf(palette.primary)
+		viewBinding.fabAdd.setTextColor(palette.onPrimary)
+		viewBinding.fabAdd.iconTint = ColorStateList.valueOf(palette.onPrimary)
+	}
+
 	override fun onNewIntent(intent: Intent) {
 		super.onNewIntent(intent)
 		setIntent(intent)
@@ -70,9 +91,6 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		viewBinding.recyclerView.updatePadding(left = bars.left, right = bars.right)
 		viewBinding.content.updatePadding(bottom = bars.bottom)
 		viewBinding.appbar.updatePadding(left = bars.left, right = bars.right, top = bars.top)
-		viewBinding.fabAdd.updateLayoutParams<androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams> {
-			bottomMargin = bars.bottom + resources.getDimensionPixelOffset(R.dimen.margin_normal)
-		}
 		return WindowInsetsCompat.Builder(insets)
 			.setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
 			.build()

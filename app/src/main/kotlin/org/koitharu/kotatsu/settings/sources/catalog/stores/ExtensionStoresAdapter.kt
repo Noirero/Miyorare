@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
@@ -76,18 +77,31 @@ class ExtensionStoresAdapter(
 
 		@SuppressLint("ClickableViewAccessibility")
 		fun bind(item: ExtensionStoreState, position: Int) {
-			// Only card and kind-pill tones: health/status tint below remains source-owned.
+			// Modern Views use the same semantic palette as Compose; Classic keeps XML theming.
 			binding.root.context.miyorareViewPaletteFromPreferences()?.let { palette ->
 				binding.tileRoot.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
-				binding.textKind.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainerHighest)
-				binding.textKind.setTextColor(palette.onSurfaceVariant)
+				binding.storeIcon.backgroundTintList = ColorStateList.valueOf(palette.primaryContainer)
+				binding.storeIcon.imageTintList = ColorStateList.valueOf(palette.onPrimaryContainer)
+				binding.textSection.setTextColor(palette.primary)
+				binding.textTitle.setTextColor(palette.onSurface)
+				binding.textUrl.setTextColor(palette.onSurfaceVariant)
+				binding.textCount.setTextColor(palette.onSurfaceVariant)
+				binding.textStatus.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainerHigh)
+				binding.dragHandle.imageTintList = ColorStateList.valueOf(palette.onSurfaceVariant)
+				binding.buttonEdit.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainerHigh)
+				binding.buttonEdit.strokeColor = ColorStateList.valueOf(palette.outlineVariant)
+				binding.buttonEdit.setTextColor(palette.primary)
+				binding.buttonEdit.iconTint = ColorStateList.valueOf(palette.primary)
+				binding.buttonMore.iconTint = ColorStateList.valueOf(palette.onSurfaceVariant)
 			}
 			val name = labels[item.store.id] ?: item.store.displayName
-			// Empty while the store is still being checked or is unreachable — no "(0)" in that case.
-			binding.textTitle.text = if (item.catalog.isEmpty()) name else "$name (${item.catalog.size})"
-
-			binding.textKind.isVisible = true
-			binding.textKind.setText(item.contentType.kindLabelRes())
+			binding.textTitle.text = name
+			binding.textUrl.text = item.store.indexUrl
+			// Counts are shown only for a successfully refreshed catalog, never as stale "0".
+			binding.textCount.isVisible = item.health == StoreHealth.AVAILABLE && item.catalog.isNotEmpty()
+			if (binding.textCount.isVisible) {
+				binding.textCount.text = binding.root.context.getString(R.string.store_card_extension_count, item.catalog.size)
+			}
 
 			val isFirstOfSection = position == 0 || items.getOrNull(position - 1)?.contentType != item.contentType
 			binding.textSection.isVisible = isFirstOfSection
@@ -104,34 +118,38 @@ class ExtensionStoresAdapter(
 					com.google.android.material.R.attr.colorOnSurfaceVariant,
 				)
 			}
-			binding.storeStatus.backgroundTintList = ColorStateList.valueOf(color)
-			binding.storeStatus.contentDescription = binding.root.context.getString(
-				when (item.health) {
-					StoreHealth.AVAILABLE -> R.string.store_available
-					StoreHealth.UNAVAILABLE -> R.string.store_unavailable
-					StoreHealth.CHECKING -> R.string.loading_
-				},
-			)
-			binding.buttonEdit.isVisible = true
-			binding.buttonRetry.isVisible = item.health == StoreHealth.UNAVAILABLE
-			binding.buttonWebsite.isVisible = !item.store.website.isNullOrBlank()
-			binding.buttonDiscord.isVisible = !item.store.discord.isNullOrBlank()
+			val shortHealthLabel = when (item.health) {
+				StoreHealth.AVAILABLE -> R.string.store_card_available
+				StoreHealth.UNAVAILABLE -> R.string.store_card_unavailable
+				StoreHealth.CHECKING -> R.string.store_card_checking
+			}
+			binding.textStatus.setText(shortHealthLabel)
+			binding.textStatus.setTextColor(color)
 			binding.buttonEdit.setOnClickListener { listener.onEdit(item) }
-			binding.buttonCopy.setOnClickListener { listener.onCopy(item) }
-			binding.buttonRetry.setOnClickListener { listener.onRetry() }
-			binding.buttonWebsite.setOnClickListener { item.store.website?.let(listener::onOpenLink) }
-			binding.buttonDiscord.setOnClickListener { item.store.discord?.let(listener::onOpenLink) }
-			binding.buttonRemove.setOnClickListener { listener.onRemove(item) }
+			binding.buttonMore.setOnClickListener { anchor ->
+				PopupMenu(anchor.context, anchor).apply {
+					if (!item.store.website.isNullOrBlank()) menu.add(0, 1, 0, R.string.website)
+					menu.add(0, 2, 1, R.string.copy_store_url)
+					if (item.health == StoreHealth.UNAVAILABLE) menu.add(0, 3, 2, R.string.retry)
+					if (!item.store.discord.isNullOrBlank()) menu.add(0, 4, 3, R.string.discord)
+					menu.add(0, 5, 4, R.string.remove_store)
+					setOnMenuItemClickListener { option ->
+						when (option.itemId) {
+							1 -> item.store.website?.let(listener::onOpenLink)
+							2 -> listener.onCopy(item)
+							3 -> listener.onRetry()
+							4 -> item.store.discord?.let(listener::onOpenLink)
+							5 -> listener.onRemove(item)
+							else -> return@setOnMenuItemClickListener false
+						}
+						true
+					}
+				}.show()
+			}
 			binding.dragHandle.setOnTouchListener { _, event ->
 				event.actionMasked == MotionEvent.ACTION_DOWN && listener.onDrag(this)
 			}
 		}
-	}
-
-	private fun ExtensionStoreContentType.kindLabelRes(): Int = when (this) {
-		ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
-		ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
-		ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
 	}
 
 	private fun ExtensionStoreContentType.sectionLabelRes(): Int = when (this) {

@@ -1,20 +1,20 @@
 package org.koitharu.kotatsu.settings.sources.catalog
 
+import android.content.res.ColorStateList
 import androidx.core.view.isVisible
-import androidx.core.view.updatePaddingRelative
+import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.TooltipCompat
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.parser.favicon.extensionPackageFaviconUri
 import org.koitharu.kotatsu.core.ui.image.FaviconDrawable
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.drawableStart
-import org.koitharu.kotatsu.core.util.ext.getThemeDimensionPixelOffset
 import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.databinding.ItemEmptyCardBinding
 import org.koitharu.kotatsu.databinding.ItemSourceCatalogBinding
 import org.koitharu.kotatsu.list.ui.model.ListModel
-import androidx.appcompat.R as appcompatR
 
 interface ExtensionActionListener {
 	fun onExtensionActionClick(item: SourceCatalogItem.Extension)
@@ -35,20 +35,9 @@ fun sourceCatalogItemExtensionAD(
 	binding.imageViewAdd.setOnClickListener {
 		listener.onExtensionActionClick(item)
 	}
-	binding.imageViewSettings.setOnClickListener {
-		listener.onExtensionSettingsClick(item)
-	}
-	binding.imageViewHide.setOnClickListener {
-		listener.onExtensionHideClick(item)
-	}
 	binding.root.setOnClickListener {
 		listener.onExtensionItemClick(item)
 	}
-	val basePadding = context.getThemeDimensionPixelOffset(
-		appcompatR.attr.listPreferredItemPaddingEnd,
-		binding.root.paddingStart,
-	)
-	val compactEndPadding = (basePadding - context.resources.getDimensionPixelOffset(R.dimen.margin_small)).coerceAtLeast(0)
 	bind {
 		val isInProgress = item.isInProgress
 		val isPrivateMode = item.isPrivateMode
@@ -65,21 +54,43 @@ fun sourceCatalogItemExtensionAD(
 		} else {
 			item.action != SourceCatalogItem.Extension.Action.INSTALL
 		}
-		binding.imageViewSettings.isVisible = isInstalled && item.sourceName != null
-		binding.imageViewSettings.isEnabled = !isInProgress
-		binding.imageViewSettings.alpha = if (isInProgress) 0.45f else 1f
-		binding.imageViewHide.isVisible = isInstalled
-		binding.imageViewHide.isEnabled = !isInProgress
-		binding.imageViewHide.alpha = if (isInProgress) 0.45f else 1f
-		if (isInstalled) {
-			val hideButton = binding.imageViewHide
-			hideButton.setIconResource(if (item.isHidden) R.drawable.ic_eye_off else R.drawable.ic_eye)
-			val hideDescription = context.getString(if (item.isHidden) R.string.unhide else R.string.hide)
-			hideButton.contentDescription = hideDescription
-			TooltipCompat.setTooltipText(hideButton, hideDescription)
+		// Keep the primary install/update/uninstall action visible, but place secondary
+		// settings and Explore visibility controls in one accessible overflow menu.
+		binding.imageViewMore.isVisible = isInstalled
+		binding.imageViewMore.isEnabled = !isInProgress
+		binding.imageViewMore.setOnClickListener { anchor ->
+			PopupMenu(context, anchor).apply {
+				if (item.sourceName != null) menu.add(0, 1, 0, R.string.settings)
+				menu.add(0, 2, 1, if (item.isHidden) R.string.unhide else R.string.hide)
+				setOnMenuItemClickListener { option ->
+					when (option.itemId) {
+						1 -> listener.onExtensionSettingsClick(item)
+						2 -> listener.onExtensionHideClick(item)
+						else -> return@setOnMenuItemClickListener false
+					}
+					true
+				}
+			}.show()
 		}
 		binding.buttonGroupActions.isVisible = true
-		binding.root.updatePaddingRelative(end = compactEndPadding)
+		// The action button already communicates Update / Install / Enable / Disable.
+		// Show a separate badge only when it conveys different information.
+		binding.textViewStatus.isVisible = !isInProgress &&
+			item.action == SourceCatalogItem.Extension.Action.UNINSTALL
+		if (binding.textViewStatus.isVisible) binding.textViewStatus.setText(R.string.installed)
+		// The Android View theme may differ from Miyorare's active Modern color scheme.
+		// Bridge only in Modern; leave Classic's authored theme and components intact.
+		context.miyorareViewPaletteFromPreferences()?.let { palette ->
+			binding.root.backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
+			binding.textViewTitle.setTextColor(palette.onSurface)
+			binding.textViewDescription.setTextColor(palette.onSurfaceVariant)
+			binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(palette.primaryContainer)
+			binding.textViewStatus.setTextColor(palette.onPrimaryContainer)
+			binding.imageViewAdd.backgroundTintList = ColorStateList.valueOf(palette.primary)
+			binding.imageViewAdd.setTextColor(palette.onPrimary)
+			binding.imageViewAdd.iconTint = ColorStateList.valueOf(palette.onPrimary)
+			binding.imageViewMore.iconTint = ColorStateList.valueOf(palette.onSurfaceVariant)
+		}
 		binding.imageViewAdd.setIconResource(item.action.iconRes)
 		val actionDescription = if (isInProgress) {
 			context.getString(R.string.in_progress)
@@ -87,6 +98,7 @@ fun sourceCatalogItemExtensionAD(
 			context.getString(item.action.titleRes)
 		}
 		binding.imageViewAdd.contentDescription = actionDescription
+		binding.imageViewAdd.text = actionDescription
 		TooltipCompat.setTooltipText(binding.imageViewAdd, actionDescription)
 		binding.textViewTitle.text = item.title
 		binding.textViewDescription.text = item.subtitle
