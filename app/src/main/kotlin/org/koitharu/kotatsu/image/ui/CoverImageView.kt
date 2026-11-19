@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.withStyledAttributes
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.toDrawable
+import coil3.Extras
 import coil3.network.HttpException
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
@@ -51,6 +52,11 @@ import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
+/** A request-scoped token that survives Coil interceptor request copies. */
+internal class CoverBorderRequestToken(val bindingIdentity: Any)
+
+internal val coverBorderRequestTokenKey = Extras.Key<CoverBorderRequestToken?>(null)
+
 class CoverImageView @JvmOverloads constructor(
 	context: Context,
 	attrs: AttributeSet? = null,
@@ -61,6 +67,9 @@ class CoverImageView @JvmOverloads constructor(
 	private var aspectRationWidth: Int = 0
 	private var aspectRatioOverride: Float? = null
 	var trimImage: Boolean = false
+
+	/** Only Normal Favourites opts into border request tracking. */
+	internal var coverBorderBindingIdentity: Any? = null
 
 	private val hasAspectRatio: Boolean
 		get() = aspectRationHeight > 0 && aspectRationWidth > 0
@@ -179,6 +188,9 @@ class CoverImageView @JvmOverloads constructor(
 	)
 
 	override fun newRequestBuilder() = super.newRequestBuilder().apply {
+		coverBorderBindingIdentity?.let { binding ->
+			extras[coverBorderRequestTokenKey] = CoverBorderRequestToken(binding)
+		}
 		if (trimImage) {
 			transformations(listOf(TrimTransformation()))
 		}
