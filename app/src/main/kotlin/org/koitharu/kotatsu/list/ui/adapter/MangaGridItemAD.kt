@@ -41,6 +41,7 @@ import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemMangaGridBinding
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.image.ui.coverBorderRequestTokenKey
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback.Companion.PAYLOAD_PROGRESS_CHANGED
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
@@ -207,17 +208,23 @@ fun mangaGridItemAD(
 		// One listener per holder. A payload rebind can reuse the current Coil request.
 		binding.imageViewCover.addImageRequestListener(object : ImageRequest.Listener {
 			override fun onStart(request: ImageRequest) {
-				coverBorderState.start(request.data, request)
+				val token = request.extras[coverBorderRequestTokenKey]
+				coverBorderState.start(request.data, token?.bindingIdentity, token)
 				syncLoadingBorder()
 			}
 
 			override fun onSuccess(request: ImageRequest, result: SuccessResult) {
-				coverBorderState.finish(request)
+				coverBorderState.finish(request.extras[coverBorderRequestTokenKey])
 				syncLoadingBorder()
 			}
 
 			override fun onError(request: ImageRequest, result: ErrorResult) {
-				coverBorderState.finish(request)
+				coverBorderState.finish(request.extras[coverBorderRequestTokenKey])
+				syncLoadingBorder()
+			}
+
+			override fun onCancel(request: ImageRequest) {
+				coverBorderState.cancel(request.extras[coverBorderRequestTokenKey])
 				syncLoadingBorder()
 			}
 		})
@@ -348,6 +355,7 @@ fun mangaGridItemAD(
 
 	bind { payloads ->
 		coverBorderState?.bind(item.coverUrl)
+		binding.imageViewCover.coverBorderBindingIdentity = coverBorderState?.requestBindingIdentity
 		itemView.setTooltipCompat(item.getSummary(context))
 		val visualScaleProvider = gridVisualScaleProvider
 		val visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
