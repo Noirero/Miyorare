@@ -337,20 +337,11 @@ fun FloatingNavBar(
 			)
 			Modifier.drawBehind {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
+				// One soft bloom complements the Surface border without drawing nested neon rails.
 				drawRoundRect(
 					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
 					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 12.dp.toPx()),
-				)
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 6.5.dp.toPx()),
-				)
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 2.dp.toPx()),
+					style = Stroke(width = 6.dp.toPx()),
 				)
 			}
 		} else {
@@ -520,20 +511,11 @@ private fun FloatingNavItem(
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected && showSelectionChrome) {
 		Modifier.drawBehind {
 			val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
+			// Limit the bloom to 2dp outside the item, leaving space to the navbar outline.
 			drawRoundRect(
 				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 				cornerRadius = CornerRadius(radius, radius),
-				style = Stroke(width = 12.dp.toPx()),
-			)
-			drawRoundRect(
-				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_MID_HALO_ALPHA),
-				cornerRadius = CornerRadius(radius, radius),
-				style = Stroke(width = 6.5.dp.toPx()),
-			)
-			drawRoundRect(
-				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_NEAR_HALO_ALPHA),
-				cornerRadius = CornerRadius(radius, radius),
-				style = Stroke(width = 2.2.dp.toPx()),
+				style = Stroke(width = 4.dp.toPx()),
 			)
 			drawRoundRect(
 				color = selectedCore.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),

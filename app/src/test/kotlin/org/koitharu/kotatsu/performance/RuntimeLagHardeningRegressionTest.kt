@@ -281,6 +281,13 @@ class RuntimeLagHardeningRegressionTest {
 		assertFalse(legacyNav.contains("BOTTOM_NAV_SELECTED_GLOW_ALPHA"))
 		assertFalse(floatingNav.contains("BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA"))
 		assertFalse(floatingNav.contains("BOTTOM_NAV_SELECTED_GLOW_ALPHA"))
+		// The normal navbar has one outer bloom and one selected-item bloom plus its crisp edge.
+		assertFalse(floatingNav.contains("BOTTOM_NAV_MID_GLOW_ALPHA"))
+		assertFalse(floatingNav.contains("BOTTOM_NAV_NEAR_GLOW_ALPHA"))
+		assertFalse(floatingNav.contains("BOTTOM_NAV_SELECTED_MID_HALO_ALPHA"))
+		assertFalse(floatingNav.contains("BOTTOM_NAV_SELECTED_NEAR_HALO_ALPHA"))
+		assertTrue(floatingNav.contains("style=Stroke(width=6.dp.toPx())"))
+		assertTrue(floatingNav.contains("style=Stroke(width=4.dp.toPx())"))
 	}
 
 	@Test
