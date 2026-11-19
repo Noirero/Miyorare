@@ -76,7 +76,7 @@ fun sourceCatalogItemExtensionAD(
 		val statusRes = when {
 			isInProgress -> R.string.in_progress
 			item.action == SourceCatalogItem.Extension.Action.UPDATE -> R.string.update
-			isInstalled -> R.string.installed
+			item.action == SourceCatalogItem.Extension.Action.UNINSTALL -> R.string.installed
 			else -> item.action.titleRes
 		}
 		binding.textViewStatus.setText(statusRes)
