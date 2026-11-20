@@ -165,6 +165,7 @@ private fun IconSettingsScreen(viewModel: IconSettingsViewModel) {
 	val installed by viewModel.installed.collectAsState()
 	val activePack by viewModel.activePack.collectAsState()
 	val busy by viewModel.busyPackIds.collectAsState()
+	val installProgress by viewModel.installProgress.collectAsState()
 	val catalogLoaded by viewModel.catalogLoaded.collectAsState()
 	val catalogLoading by viewModel.catalogLoading.collectAsState()
 	val error by viewModel.errorMessage.collectAsState()
@@ -256,6 +257,7 @@ private fun IconSettingsScreen(viewModel: IconSettingsViewModel) {
 									CatalogPackCard(
 										entry = entry,
 										isBusy = entry.id in busy,
+										progress = installProgress[entry.id],
 										onClick = { selectedPackId = entry.id },
 										onDownload = { entry.catalogPack?.let { viewModel.install(it) } },
 									)
@@ -293,6 +295,7 @@ private fun IconSettingsScreen(viewModel: IconSettingsViewModel) {
 				entry = entry,
 				isActive = activePack?.pack?.id == entry.id,
 				isBusy = entry.id in busy,
+				progress = installProgress[entry.id],
 				viewModel = viewModel,
 				onDownload = { entry.catalogPack?.let { viewModel.install(it) } },
 				onUse = {
@@ -566,6 +569,7 @@ private fun InstalledPackCard(
 private fun CatalogPackCard(
 	entry: PackEntry,
 	isBusy: Boolean,
+	progress: Pair<Int, Int>?,
 	onClick: () -> Unit,
 	onDownload: () -> Unit,
 ) {
@@ -588,7 +592,17 @@ private fun CatalogPackCard(
 			}
 			Spacer(Modifier.width(12.dp))
 			if (isBusy) {
-				CircularProgressIndicator(modifier = Modifier.size(24.dp))
+				Row(verticalAlignment = Alignment.CenterVertically) {
+					CircularProgressIndicator(modifier = Modifier.size(20.dp))
+					if (progress != null) {
+						Spacer(Modifier.width(8.dp))
+						Text(
+							text = "${progress.first}/${progress.second}",
+							style = MaterialTheme.typography.labelMedium,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+					}
+				}
 			} else {
 				Button(onClick = onDownload) {
 					Text(stringResource(R.string.icon_download))
@@ -604,6 +618,7 @@ private fun PackDetailSheet(
 	entry: PackEntry,
 	isActive: Boolean,
 	isBusy: Boolean,
+	progress: Pair<Int, Int>?,
 	viewModel: IconSettingsViewModel,
 	onDownload: () -> Unit,
 	onUse: () -> Unit,
@@ -668,7 +683,18 @@ private fun PackDetailSheet(
 			horizontalArrangement = Arrangement.spacedBy(8.dp),
 		) {
 			when {
-				isBusy -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
+				isBusy -> Row(verticalAlignment = Alignment.CenterVertically) {
+					CircularProgressIndicator(modifier = Modifier.size(20.dp))
+					if (progress != null) {
+						Spacer(Modifier.width(10.dp))
+						Text(
+							text = stringResource(R.string.icon_downloading, progress.first, progress.second),
+							style = MaterialTheme.typography.labelLarge,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+					}
+				}
+
 				isActive -> StatusBadge(
 					text = stringResource(R.string.icon_badge_in_use),
 					color = accent,
