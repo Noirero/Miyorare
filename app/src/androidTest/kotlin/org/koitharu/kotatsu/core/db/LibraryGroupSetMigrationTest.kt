@@ -224,13 +224,16 @@ class LibraryGroupSetMigrationTest {
             raw.setForeignKeyConstraintsEnabled(false)
             raw.beginTransaction()
             try {
+                val triggerNames = ArrayList<String>()
                 raw.rawQuery(
                     "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'library_group_%'",
                     null,
                 ).use { cursor ->
-                    while (cursor.moveToNext()) {
-                        raw.execSQL("DROP TRIGGER IF EXISTS \\"${cursor.getString(0)}\\"")
-                    }
+                    while (cursor.moveToNext()) triggerNames += cursor.getString(0)
+                }
+                for (triggerName in triggerNames) {
+                    check(triggerName.startsWith("library_group_"))
+                    raw.execSQL("DROP TRIGGER IF EXISTS $triggerName")
                 }
                 raw.execSQL("""
                     CREATE TABLE library_groups_v55 (
