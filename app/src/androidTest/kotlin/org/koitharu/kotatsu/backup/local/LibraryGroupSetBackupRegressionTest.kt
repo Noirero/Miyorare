@@ -494,7 +494,7 @@ class LibraryGroupSetBackupRegressionTest {
             error
         }
         assertNotNull("Expected SQL owner trigger to reject remote Set tombstone", failure)
-        val messages = generateSequence(failure) { it.cause }
+        val messages = generateSequence<Throwable>(failure) { it.cause }
             .mapNotNull { it.message }.joinToString(" | ")
         assertTrue("Expected Set ownership trigger, actual: $messages",
             messages.contains("Set still owns library groups"))
