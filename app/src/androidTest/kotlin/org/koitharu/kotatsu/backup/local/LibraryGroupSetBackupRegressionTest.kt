@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -23,6 +24,7 @@ import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.groups.data.*
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
+import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.data.model.SyncContent
 import org.koitharu.kotatsu.sync.data.model.SyncSnapshot
 import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
@@ -45,14 +47,22 @@ class LibraryGroupSetBackupRegressionTest {
     @Inject lateinit var codec: LibraryGroupBackupCodec
     @Inject lateinit var privateSecurity: PrivateFavouritesSecurityStore
     @Inject lateinit var driveSync: GoogleDriveSyncRepository
+    @Inject lateinit var syncSettings: SyncSettings
+
+    private var previousDeletionSyncDisabled = true
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val memberIds = listOf(831001L, 831002L)
 
     @Before fun setUp() {
         hiltRule.inject()
+        previousDeletionSyncDisabled = syncSettings.isDeletionSyncDisabled
         resetFixtureDatabase()
         privateSecurity.includePrivateInBackup = false
+    }
+
+    @After fun tearDown() {
+        syncSettings.isDeletionSyncDisabled = previousDeletionSyncDisabled
     }
 
     @Test fun normalGroupBackupPreservesSetOwnershipAcrossRemappedIds() = runTest {
@@ -473,6 +483,10 @@ class LibraryGroupSetBackupRegressionTest {
     }
 
     private suspend fun deletedRemoteSet(ownerKey: String): SyncSnapshot {
+        // The user-facing deletion-sync protection is enabled by default; this
+        // fixture explicitly tests opt-in propagation of a remote tombstone.
+        syncSettings.isDeletionSyncDisabled = false
+        assertFalse(syncSettings.isDeletionSyncDisabled)
         val sets = driveSync.localCategorySets()
         assertEquals(1, sets.count { it.syncKey == ownerKey })
         return SyncSnapshot(
