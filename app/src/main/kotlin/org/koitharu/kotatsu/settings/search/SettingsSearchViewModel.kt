@@ -11,6 +11,8 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.list.ui.model.ListHeader
+import org.koitharu.kotatsu.list.ui.model.ListModel
 import java.text.Normalizer
 import javax.inject.Inject
 
@@ -30,7 +32,7 @@ class SettingsSearchViewModel @Inject constructor(
 		} else {
 			val normalizedQuery = q.normalizeSearchText()
 			if (normalizedQuery.isBlank()) {
-				allSettings
+				buildBrowseList()
 			} else {
 				val tokens = normalizedQuery.split(' ').filter { it.isNotBlank() }
 				allSettings.asSequence()
@@ -73,6 +75,22 @@ class SettingsSearchViewModel @Inject constructor(
 	fun navigateToPreference(item: SettingsItem) {
 		discardSearch()
 		onNavigateToPreference.call(item)
+	}
+
+	private fun buildBrowseList(): List<ListModel> {
+		val result = ArrayList<ListModel>(allSettings.size + 16)
+		var currentSection: String? = null
+		for (item in allSettings) {
+			val section = item.breadcrumbs.firstOrNull().orEmpty()
+			if (section != currentSection) {
+				currentSection = section
+				if (section.isNotEmpty()) {
+					result.add(ListHeader(section))
+				}
+			}
+			result.add(item)
+		}
+		return result
 	}
 
 	private fun SettingsItem.matchScore(query: String, tokens: List<String>): Int? {
