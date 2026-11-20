@@ -60,6 +60,9 @@ class SettingsSearchHelper @Inject constructor(
         val result = ArrayList<SettingsItem>()
         val ctx = context
 
+        var sectionIconRes = 0
+        var sectionPaletteKey = ""
+
         fun addItem(
             key: String,
             titleRes: Int,
@@ -88,9 +91,6 @@ class SettingsSearchHelper @Inject constructor(
                 ),
             )
         }
-
-        var sectionIconRes = 0
-        var sectionPaletteKey = ""
 
         fun section(
             @StringRes titleRes: Int,
