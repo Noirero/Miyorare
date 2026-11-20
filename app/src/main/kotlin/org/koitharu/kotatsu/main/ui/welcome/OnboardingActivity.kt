@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.SplashThemeController
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.databinding.ActivityOnboardingBinding
@@ -162,6 +163,7 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                         onThemeChange = { mode ->
                             if (viewModel.selectedTheme.value != mode) {
                                 viewModel.setTheme(mode)
+                                SplashThemeController.sync(this@OnboardingActivity, mode)
                                 AppCompatDelegate.setDefaultNightMode(mode)
                             }
                         },

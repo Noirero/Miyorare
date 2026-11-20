@@ -95,6 +95,8 @@ abstract class BaseActivity<B : ViewBinding> :
 		// Register before super restores fragments, so created events are observable on API 26+.
 		PerformanceDiagnostics.registerFragments(this)
 		val settings = entryPoint.settings
+		// The platform remembers this override for the next cold-start splash (API 31+).
+		SplashThemeController.sync(this, settings.theme)
 		isAmoledTheme = settings.isAmoledTheme
 		setTheme(settings.colorScheme.styleResId)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {

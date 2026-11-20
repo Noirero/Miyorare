@@ -39,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.SplashThemeController
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.ListMode
@@ -116,7 +117,10 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener listener@ { _, key ->
         if (isResettingAppearance && key in APPEARANCE_RESET_KEYS) return@listener
         when (key) {
-            AppSettings.KEY_THEME -> AppCompatDelegate.setDefaultNightMode(settings.theme)
+            AppSettings.KEY_THEME -> {
+                SplashThemeController.sync(requireActivity(), settings.theme)
+                AppCompatDelegate.setDefaultNightMode(settings.theme)
+            }
             AppSettings.KEY_COLOR_THEME,
             AppSettings.KEY_THEME_AMOLED,
             AppSettings.KEY_UI_SCALE,
@@ -239,6 +243,8 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
             .apply()
         settings.resetMiyorareAppearance()
         val resetTheme = settings.theme
+        // Reset suppresses the preference listener, so clear the persisted override here.
+        SplashThemeController.sync(requireActivity(), resetTheme)
         if (previousTheme != resetTheme) {
             AppCompatDelegate.setDefaultNightMode(resetTheme)
         } else {
