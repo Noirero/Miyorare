@@ -1,8 +1,8 @@
 package org.koitharu.kotatsu.settings.compose
 
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
@@ -39,7 +41,7 @@ import org.koitharu.kotatsu.core.ui.miyorareIconSurface
 import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
-import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
+
 
 /**
  * A settings row that hosts a Slider directly inline (no dialog). The slider sits below
@@ -158,21 +160,48 @@ private fun SettingsIconForInline(
 ) {
     val visualPalette = LocalMiyorareVisualPalette.current
     val modern = visualPalette.isModern
+    // Explicit colors win; otherwise inherit the screen's category.
+    val effectiveColors = colors ?: LocalSettingsCategoryColors.current
     if (modern) {
         val alpha = if (enabled) 1f else 0.5f
+        val shape = RoundedCornerShape(13.dp)
+        if (effectiveColors != null) {
+            // Same category treatment as SettingsIconModern.
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(shape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                effectiveColors.container.copy(alpha = alpha),
+                                effectiveColors.container.copy(alpha = alpha * 0.8f),
+                            ),
+                        ),
+                    )
+                    .border(1.dp, effectiveColors.onContainer.copy(alpha = 0.10f * alpha), shape),
+                contentAlignment = Alignment.Center,
+            ) {
+                PackAwareSettingsIcon(
+                    iconRes = iconRes,
+                    modifier = Modifier.size(21.dp),
+                    colorFilter = ColorFilter.tint(effectiveColors.onContainer.copy(alpha = alpha)),
+                )
+            }
+            return
+        }
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .miyorareIconSurface(
                     palette = visualPalette,
-                    shape = RoundedCornerShape(13.dp),
+                    shape = shape,
                     alpha = alpha,
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Image(
-                painter = rememberAnyDrawablePainter(iconRes),
-                contentDescription = null,
+            PackAwareSettingsIcon(
+                iconRes = iconRes,
                 modifier = Modifier.size(21.dp),
                 colorFilter = ColorFilter.tint(visualPalette.primary.copy(alpha = alpha)),
             )
@@ -180,30 +209,28 @@ private fun SettingsIconForInline(
         return
     }
 
-    if (colors != null) {
+    if (effectiveColors != null) {
         Box(
             modifier = Modifier
                 .size(44.dp)
                 .background(
-                    color = colors.container.copy(alpha = if (enabled) 1f else 0.4f),
+                    color = effectiveColors.container.copy(alpha = if (enabled) 1f else 0.4f),
                     shape = CircleShape,
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Image(
-                painter = rememberAnyDrawablePainter(iconRes),
-                contentDescription = null,
+            PackAwareSettingsIcon(
+                iconRes = iconRes,
                 modifier = Modifier.size(22.dp),
                 colorFilter = ColorFilter.tint(
-                    colors.onContainer.copy(alpha = if (enabled) 1f else 0.58f),
+                    effectiveColors.onContainer.copy(alpha = if (enabled) 1f else 0.58f),
                 ),
             )
         }
     } else {
         Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-            Image(
-                painter = rememberAnyDrawablePainter(iconRes),
-                contentDescription = null,
+            PackAwareSettingsIcon(
+                iconRes = iconRes,
                 modifier = Modifier.size(24.dp),
                 colorFilter = ColorFilter.tint(
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(

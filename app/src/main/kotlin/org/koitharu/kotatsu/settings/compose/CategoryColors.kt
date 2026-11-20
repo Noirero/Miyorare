@@ -3,7 +3,16 @@ package org.koitharu.kotatsu.settings.compose
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+
+/**
+ * The category colors of the settings screen currently being composed.
+ * Provided once per screen (see MiyorareSettingsTheme) so every row inside
+ * the screen inherits the screen's category identity; rows that pass their
+ * own colors explicitly take precedence. Null outside settings screens.
+ */
+val LocalSettingsCategoryColors = compositionLocalOf<CategoryIconColors?> { null }
 
 /**
  * Background + foreground tint pair used for the circular icon container on each

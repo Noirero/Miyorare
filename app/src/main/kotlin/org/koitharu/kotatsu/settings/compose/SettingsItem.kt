@@ -302,7 +302,10 @@ internal fun SettingsIconModern(
 ) {
 	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
-	if (colors != null) {
+	// Explicit row colors win; otherwise the row inherits the category of
+	// the settings screen it sits on (provided via MiyorareSettingsTheme).
+	val effectiveColors = colors ?: LocalSettingsCategoryColors.current
+	if (effectiveColors != null) {
 		// Category treatment: the bubble takes the section's own category
 		// colors and the glyph is drawn in the paired on-container color at
 		// full strength, instead of bubble and glyph both coming from the
@@ -315,19 +318,19 @@ internal fun SettingsIconModern(
 				.background(
 					Brush.linearGradient(
 						listOf(
-							colors.container.copy(alpha = alpha),
-							colors.container.copy(alpha = alpha * 0.8f),
+							effectiveColors.container.copy(alpha = alpha),
+							effectiveColors.container.copy(alpha = alpha * 0.8f),
 						),
 					),
 				)
-				.border(1.dp, colors.onContainer.copy(alpha = 0.10f * alpha), shape),
+				.border(1.dp, effectiveColors.onContainer.copy(alpha = 0.10f * alpha), shape),
 			contentAlignment = Alignment.Center,
 		) {
 			PackAwareSettingsIcon(
 				iconRes = iconRes,
 				modifier = Modifier.size(21.dp),
 				colorFilter = if (tintIcon) {
-					ColorFilter.tint(colors.onContainer.copy(alpha = alpha))
+					ColorFilter.tint(effectiveColors.onContainer.copy(alpha = alpha))
 				} else null,
 				alpha = if (applyImageAlpha) alpha else 1f,
 			)

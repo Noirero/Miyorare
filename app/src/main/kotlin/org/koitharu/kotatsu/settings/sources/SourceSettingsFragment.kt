@@ -62,7 +62,7 @@ import org.koitharu.kotatsu.mihon.MihonMangaRepository
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.EditTextSettingsItem
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
@@ -129,7 +129,7 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 		}
 
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("extensions") {
 				val officialGlobalState by viewModel.officialGlobalState.collectAsState()
 				SourceSettingsScreen(
 					isValidSource = isValidSource,

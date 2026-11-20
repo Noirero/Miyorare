@@ -34,7 +34,7 @@ import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.EditTextSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
@@ -59,7 +59,7 @@ class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.s
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            MiyorareTheme {
+            MiyorareSettingsTheme("storage") {
                 val usage by viewModel.storageUsage.collectAsState(null)
                 StorageSettingsScreen(
                     usage = usage,
@@ -98,7 +98,7 @@ class NetworkSettingsFragment : BaseComposeSettingsFragment(R.string.settings_ne
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            MiyorareTheme {
+            MiyorareSettingsTheme("storage") {
                 NetworkSettingsScreen(
                     onOpenProxy = {
                         (activity as? SettingsActivity)?.openFragment(

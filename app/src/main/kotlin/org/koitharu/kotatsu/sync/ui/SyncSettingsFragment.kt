@@ -64,7 +64,7 @@ import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.ConfirmDialog
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
@@ -94,7 +94,7 @@ class SyncSettingsFragment : BaseComposeSettingsFragment(R.string.google_drive_s
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("sync") {
 				val state by viewModel.uiState.collectAsState()
 				val isSyncing by viewModel.isSyncing.collectAsState()
 				SyncScreen(

@@ -69,7 +69,7 @@ import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.ColorSchemePickerRow
 import org.koitharu.kotatsu.settings.compose.ConfirmDialog
 import org.koitharu.kotatsu.settings.compose.MiyorarePalettePickerRow
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.MiyorareVisualThemePickerRow
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.MiyorareChoiceSettingsItem
@@ -141,7 +141,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            MiyorareTheme {
+            MiyorareSettingsTheme("appearance") {
                 AppearanceScreen(
                     onOpenDetailsAppearance = {
                         (activity as? SettingsActivity)?.openFragment(

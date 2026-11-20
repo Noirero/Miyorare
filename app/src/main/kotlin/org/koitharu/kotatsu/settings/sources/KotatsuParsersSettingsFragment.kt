@@ -27,7 +27,7 @@ import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeUpdater
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
@@ -51,7 +51,7 @@ class KotatsuParsersSettingsFragment : BaseComposeSettingsFragment(R.string.kota
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("extensions") {
 				KotatsuParsersScreen(
 					state = uiState,
 					onAutoUpdateChanged = ::setAutoUpdateEnabled,
