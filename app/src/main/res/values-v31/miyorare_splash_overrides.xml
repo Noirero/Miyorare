@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fixed colors are intentional: the Android 12+ starting window is drawn
+         before AppCompat applies the app's saved night mode. -->
+    <color name="miyorare_splash_fixed_light">#FFF8FC</color>
+    <color name="miyorare_splash_fixed_dark">#09060E</color>
+
+    <!-- Stable style names: Android persists the name of the selected splash theme. -->
+    <style name="Theme.Miyorare.Splash.Light" parent="Theme.Miyorare.Splash">
+        <item name="android:windowBackground">@color/miyorare_splash_fixed_light</item>
+        <item name="android:windowSplashScreenBackground">@color/miyorare_splash_fixed_light</item>
+    </style>
+
+    <style name="Theme.Miyorare.Splash.Dark" parent="Theme.Miyorare.Splash">
+        <item name="android:windowBackground">@color/miyorare_splash_fixed_dark</item>
+        <item name="android:windowSplashScreenBackground">@color/miyorare_splash_fixed_dark</item>
+    </style>
+</resources>
