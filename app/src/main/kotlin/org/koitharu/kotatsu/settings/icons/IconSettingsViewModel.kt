@@ -24,6 +24,10 @@ class IconSettingsViewModel @Inject constructor(
 	private val _busyPackIds = MutableStateFlow<Set<String>>(emptySet())
 	val busyPackIds = _busyPackIds.asStateFlow()
 
+	/** Per-pack install progress: pack id to (glyphs done, glyphs total). */
+	private val _installProgress = MutableStateFlow<Map<String, Pair<Int, Int>>>(emptyMap())
+	val installProgress = _installProgress.asStateFlow()
+
 	private val _catalogLoaded = MutableStateFlow(false)
 	val catalogLoaded = _catalogLoaded.asStateFlow()
 
@@ -57,10 +61,15 @@ class IconSettingsViewModel @Inject constructor(
 	fun install(pack: IconPack) {
 		if (pack.id in _busyPackIds.value) return
 		_busyPackIds.value += pack.id
+		_installProgress.value += pack.id to (0 to pack.files.size)
 		viewModelScope.launch {
-			runCatching { repository.install(pack) }
-				.onFailure { _errorMessage.value = it.message ?: it.javaClass.simpleName }
+			runCatching {
+				repository.install(pack) { done, total ->
+					_installProgress.value += pack.id to (done to total)
+				}
+			}.onFailure { _errorMessage.value = it.message ?: it.javaClass.simpleName }
 			_busyPackIds.value -= pack.id
+			_installProgress.value -= pack.id
 		}
 	}
 

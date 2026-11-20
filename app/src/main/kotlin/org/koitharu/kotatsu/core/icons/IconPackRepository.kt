@@ -14,8 +14,12 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -24,6 +28,7 @@ import org.koitharu.kotatsu.core.fonts.FontPackHashes
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
@@ -105,22 +110,37 @@ class IconPackRepository @Inject constructor(
 	 * Downloads every glyph of [pack], verifies size and SHA-256, checks the
 	 * SVG is a safe static glyph, renders it to a bitmap, and only then moves
 	 * the pack into place. Any failure leaves nothing installed.
+	 *
+	 * Glyphs are independent of each other, so they are fetched, verified and
+	 * rendered in parallel (bounded by [MAX_PARALLEL_GLYPHS]) instead of one
+	 * at a time; a failure cancels the remaining work and the staging
+	 * directory is discarded, keeping the install all-or-nothing.
+	 * [onProgress] reports how many glyphs are fully done, out of the total.
 	 */
-	suspend fun install(pack: IconPack) {
+	suspend fun install(pack: IconPack, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }) {
 		withContext(Dispatchers.IO) {
 			rootDir.mkdirs()
 			val tmpDir = File(rootDir, ".tmp-${pack.id}")
 			tmpDir.deleteRecursively()
 			check(tmpDir.mkdirs()) { "Cannot create a staging directory for ${pack.id}" }
 			try {
-				for (file in pack.files) {
-					val svgFile = File(tmpDir, file.svgFileName)
-					download(file.url, svgFile)
-					check(svgFile.length() == file.sizeBytes) { "Size mismatch for ${file.key}" }
-					check(FontPackHashes.sha256(svgFile) == file.sha256) { "Hash mismatch for ${file.key}" }
-					val svgText = svgFile.readText()
-					check(IconPackSvg.isSafeGlyph(svgText)) { "Unsafe or malformed SVG: ${file.key}" }
-					renderGlyph(svgFile, File(tmpDir, file.pngFileName))
+				val completed = AtomicInteger(0)
+				val semaphore = Semaphore(MAX_PARALLEL_GLYPHS)
+				coroutineScope {
+					for (file in pack.files) {
+						launch {
+							semaphore.withPermit {
+								val svgFile = File(tmpDir, file.svgFileName)
+								download(file.url, svgFile)
+								check(svgFile.length() == file.sizeBytes) { "Size mismatch for ${file.key}" }
+								check(FontPackHashes.sha256(svgFile) == file.sha256) { "Hash mismatch for ${file.key}" }
+								val svgText = svgFile.readText()
+								check(IconPackSvg.isSafeGlyph(svgText)) { "Unsafe or malformed SVG: ${file.key}" }
+								renderGlyph(svgFile, File(tmpDir, file.pngFileName))
+								onProgress(completed.incrementAndGet(), pack.files.size)
+							}
+						}
+					}
 				}
 				File(tmpDir, PACK_JSON).writeText(pack.rawJson)
 				val dir = File(rootDir, pack.id)
@@ -215,5 +235,6 @@ class IconPackRepository @Inject constructor(
 		private const val ICONS_DIR = "icons"
 		private const val PACK_JSON = "pack.json"
 		private const val RENDER_SIZE_PX = 96
+		private const val MAX_PARALLEL_GLYPHS = 8
 	}
 }

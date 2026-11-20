@@ -1545,6 +1545,10 @@
     <string name="icon_catalog_load_failed">Unable to load icon catalog.</string>
     <string name="icon_retry">Retry</string>
     <string name="icon_pack_meta">%1$d icons \u00b7 v%2$s</string>
+    <string name="icon_badge_in_use">In use</string>
+    <string name="icon_downloading">Downloading %1$d/%2$d</string>
+    <string name="icon_use_pack">Use this pack</string>
+    <string name="icon_model_other">Other packs</string>
     <string name="reader_tools">Tools</string>
     <string name="reader_advanced_options">Advanced reader options</string>
 </resources>
