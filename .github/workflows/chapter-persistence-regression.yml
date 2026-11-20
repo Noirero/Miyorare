@@ -1,6 +1,11 @@
 name: Chapter Persistence Regression
 
 on:
+  push:
+    branches:
+      - agent/set-scoped-groups-migration-55-56-20261120
+    paths:
+      - '.github/workflows/chapter-persistence-regression.yml'
   pull_request:
     branches:
       - beta
@@ -71,6 +76,7 @@ concurrency:
 jobs:
   regression:
     if: >-
+      github.event_name != 'push' &&
       (github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120') &&
       (github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/')))
     name: Verify chapter cache survives process-style reopen
@@ -254,7 +260,7 @@ jobs:
   historical-v55-compatibility:
     name: Upgrade authentic historical Room v55 database on Android 15
     if: >-
-      github.event_name == 'workflow_dispatch' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push') &&
       github.ref == 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
     runs-on: ubuntu-latest
     timeout-minutes: 75
