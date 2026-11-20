@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.fonts.AppFontHolder
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.util.ext.drawableStart
@@ -98,6 +99,11 @@ fun chapterListItemAD(
 			binding.textViewDescription.typeface = Typeface.DEFAULT
 			binding.textViewTitle.textSize = 16f
 		}
+		// The explicit DEFAULT/DEFAULT_BOLD above encodes the read-state weight;
+		// re-point both texts at the active Font Pack keeping that weight. With
+		// no pack active this is a no-op and the system typefaces stay.
+		AppFontHolder.applyTo(binding.textViewTitle)
+		AppFontHolder.applyTo(binding.textViewDescription)
 		binding.imageViewBookmarked.isVisible = item.isBookmarked
 		binding.imageViewPersonal.bind(
 			item.personalMetadata,

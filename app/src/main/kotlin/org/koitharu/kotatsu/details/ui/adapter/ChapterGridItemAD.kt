@@ -4,6 +4,7 @@ import android.content.res.ColorStateList
 import android.graphics.Typeface
 import androidx.core.view.isVisible
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
+import org.koitharu.kotatsu.core.fonts.AppFontHolder
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
@@ -63,6 +64,10 @@ fun chapterGridItemAD(
 				binding.textViewTitle.typeface = Typeface.DEFAULT
 			}
 		}
+		// The explicit DEFAULT/DEFAULT_BOLD above encodes the read-state weight;
+		// re-point the title at the active Font Pack keeping that weight. With
+		// no pack active this is a no-op and the system typeface stays.
+		AppFontHolder.applyTo(binding.textViewTitle)
 	}
 }
 

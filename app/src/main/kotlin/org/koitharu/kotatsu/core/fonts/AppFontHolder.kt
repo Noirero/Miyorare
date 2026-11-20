@@ -54,10 +54,13 @@ object AppFontHolder {
 		}
 	}
 
-	/** Re-points an inflated [textView] at the active pack font, keeping its style. */
-	fun applyTo(textView: TextView) {
-		val current = textView.typeface ?: return
-		if (base == null) return
+	/**
+	 * The active pack's version of [typeface], keeping its weight and slant,
+	 * or null when no pack is active (or [typeface] itself is null).
+	 */
+	fun styledLike(typeface: Typeface?): Typeface? {
+		val current = typeface ?: return null
+		if (base == null) return null
 		val weight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
 			current.weight
 		} else if (current.isBold) {
@@ -65,6 +68,12 @@ object AppFontHolder {
 		} else {
 			400
 		}
-		textView.typeface = styled(weight, current.isItalic)
+		return styled(weight, current.isItalic)
+	}
+
+	/** Re-points an inflated [textView] at the active pack font, keeping its style. */
+	fun applyTo(textView: TextView) {
+		val current = textView.typeface ?: return
+		textView.typeface = styledLike(current) ?: return
 	}
 }
