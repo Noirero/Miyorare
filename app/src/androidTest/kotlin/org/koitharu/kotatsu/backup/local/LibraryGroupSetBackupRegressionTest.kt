@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.backup.local.data.LibraryGroupBackupCodec
 import org.koitharu.kotatsu.backup.local.data.LocalBackupRepository
 import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
+import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupTimelineBackup
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntity
@@ -131,6 +132,9 @@ class LibraryGroupSetBackupRegressionTest {
 
         resetFixtureDatabase()
         val existing = seedGroup(FavouriteSpace.NORMAL, "backup-repro:collision:target", "Unrelated destination group")
+        // Resolve the incoming owner's portable key, so this actually exercises
+        // cross-Set ownership collision rather than the missing-owner guard.
+        insertSet(FavouriteSpace.NORMAL, "backup-repro:collision:source")
         val dao = database.getLibraryGroupsDao()
         val before = groupState(existing.groupId)
         val attempted = codec.restore(
@@ -145,6 +149,8 @@ class LibraryGroupSetBackupRegressionTest {
             "Expected owner collision rejection and full rollback; rejected=$rejected, preserved=$preserved, failures=${attempted.failures}",
             rejected && preserved,
         )
+        assertTrue("Expected real Set collision, got: ${attempted.failures}",
+            attempted.failures.any { it.message?.contains("Set owner collision") == true })
         assertEquals(existing.setId, checkNotNull(dao.findGroup(existing.groupId)).setId)
         assertEquals(1, dao.findTimeline(existing.groupId).size)
     }
@@ -165,6 +171,148 @@ class LibraryGroupSetBackupRegressionTest {
             owner.syncKey,
         )
         assertEquals(memberIds, database.getLibraryGroupsDao().findMembers(group.groupId).map { it.mangaId })
+    }
+
+
+    @Test fun missingSetOwnerFailsClosedWithoutMutation() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:owner", "Original owner")
+        val original = codec.dump(FavouriteSpace.NORMAL).toList().single()
+        assertRejectedWithoutMutation(
+            seeded.groupId,
+            original.copy(setSyncKey = "backup-edge:missing", title = "SHOULD NOT APPLY"),
+            "Set owner is missing",
+            mapOf(seeded.categoryId to seeded.categoryId),
+        )
+    }
+
+    @Test fun tombstonedSetOwnerFailsClosedWithoutMutation() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:active", "Active owner")
+        val original = codec.dump(FavouriteSpace.NORMAL).toList().single()
+        val tombstoneKey = "backup-edge:deleted"
+        database.getFavouriteCategorySetsDao().insert(FavouriteCategorySetEntity(
+            syncKey = tombstoneKey, title = "Deleted", sortKey = 2,
+            createdAt = 10L, updatedAt = 20L, deletedAt = 20L, space = 0,
+        ))
+        assertRejectedWithoutMutation(
+            seeded.groupId,
+            original.copy(setSyncKey = tombstoneKey, title = "SHOULD NOT APPLY"),
+            "Set owner is deleted",
+            mapOf(seeded.categoryId to seeded.categoryId),
+        )
+    }
+
+    @Test fun timelineWithUnknownMemberFailsClosedWithoutMutation() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:timeline-unknown", "Original timeline")
+        val original = codec.dump(FavouriteSpace.NORMAL).toList().single()
+        assertRejectedWithoutMutation(
+            seeded.groupId,
+            original.copy(title = "SHOULD NOT APPLY", timeline = listOf(
+                LibraryGroupTimelineBackup(999999L, 777L, 0),
+            )),
+            "timeline references an unknown member",
+            mapOf(seeded.categoryId to seeded.categoryId),
+        )
+    }
+
+    @Test fun duplicateTimelineChapterFailsClosedWithoutMutation() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:timeline-duplicate", "Original timeline")
+        val original = codec.dump(FavouriteSpace.NORMAL).toList().single()
+        val chapter = checkNotNull(original.timeline).single()
+        assertRejectedWithoutMutation(
+            seeded.groupId,
+            original.copy(title = "SHOULD NOT APPLY", timeline = listOf(chapter, chapter)),
+            "duplicate chapter",
+            mapOf(seeded.categoryId to seeded.categoryId),
+        )
+    }
+
+    @Test fun negativeTimelinePositionFailsClosedWithoutMutation() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:timeline-position", "Original timeline")
+        val original = codec.dump(FavouriteSpace.NORMAL).toList().single()
+        val chapter = checkNotNull(original.timeline).single()
+        assertRejectedWithoutMutation(
+            seeded.groupId,
+            original.copy(title = "SHOULD NOT APPLY", timeline = listOf(chapter.copy(position = -1))),
+            "timeline position",
+            mapOf(seeded.categoryId to seeded.categoryId),
+        )
+    }
+
+    @Test fun duplicateGroupMembershipFailsClosedWithoutMutation() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:duplicate-members", "Original members")
+        val original = codec.dump(FavouriteSpace.NORMAL).toList().single()
+        assertRejectedWithoutMutation(
+            seeded.groupId,
+            original.copy(title = "SHOULD NOT APPLY", members = original.members + original.members.first()),
+            "Invalid library group membership",
+            mapOf(seeded.categoryId to seeded.categoryId),
+        )
+    }
+
+    @Test fun overlappingGroupsAcrossSetsRejectAmbiguousRestoreWithoutMutation() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:set-a", "Set A")
+        val incoming = codec.dump(FavouriteSpace.NORMAL).toList().single().copy(title = "SHOULD NOT APPLY")
+        val dao = database.getLibraryGroupsDao()
+        val otherSet = insertSet(FavouriteSpace.NORMAL, "backup-edge:set-b")
+        val otherId = dao.insertGroup(LibraryGroupEntity(
+            title = "Set B", coverUrl = null, createdAt = 200L,
+            space = FavouriteSpace.NORMAL.dbValue, setId = otherSet,
+        ))
+        dao.insertMembers(memberIds.mapIndexed { index, mangaId ->
+            LibraryGroupMemberEntity(otherId, mangaId, index)
+        })
+        val beforeA = groupState(seeded.groupId)
+        val beforeB = groupState(otherId)
+        val result = codec.restore(
+            sequenceOf(incoming), FavouriteSpace.NORMAL,
+            mapOf(seeded.categoryId to seeded.categoryId),
+        )
+        assertFalse("Ambiguous cross-Set Group restore succeeded", result.isAllSuccess)
+        assertTrue("Wrong failure: ${result.failures}",
+            result.failures.any { it.message?.contains("different groups") == true })
+        assertEquals(beforeA, groupState(seeded.groupId))
+        assertEquals(beforeB, groupState(otherId))
+        assertEquals(2, dao.findAllGroups(0).size)
+    }
+
+    @Test fun lateCategoryMappingFailureRollsBackEveryGroupChild() = runTest {
+        val seeded = seedGroup(FavouriteSpace.NORMAL, "backup-edge:late-rollback", "Original metadata")
+        val original = codec.dump(FavouriteSpace.NORMAL).toList().single()
+        val reordered = original.members.reversed().mapIndexed { index, member ->
+            member.copy(position = index)
+        }
+        // A missing category mapping fails after member positions and metadata
+        // have been updated inside the transaction; neither may survive rollback.
+        assertRejectedWithoutMutation(
+            seeded.groupId,
+            original.copy(
+                title = "SHOULD NOT APPLY",
+                description = "SHOULD NOT APPLY",
+                members = reordered,
+                timeline = emptyList(),
+                tracking = emptyList(),
+            ),
+            "unmapped category",
+            emptyMap(),
+        )
+    }
+
+    private suspend fun assertRejectedWithoutMutation(
+        groupId: Long,
+        backup: LibraryGroupBackup,
+        message: String,
+        categoryIdMap: Map<Long, Long>,
+    ) {
+        val dao = database.getLibraryGroupsDao()
+        val before = groupState(groupId)
+        val groupsBefore = dao.findAllGroups(FavouriteSpace.NORMAL.dbValue)
+        val result = codec.restore(sequenceOf(backup), FavouriteSpace.NORMAL, categoryIdMap)
+        assertFalse("Expected safe rejection: ${result.failures}", result.isAllSuccess)
+        assertTrue("Wrong rejection reason (expected $message): ${result.failures}",
+            result.failures.any { it.message?.contains(message) == true })
+        assertEquals("Group state changed despite rejected restore", before, groupState(groupId))
+        assertEquals("Group count/metadata changed despite rejected restore",
+            groupsBefore, dao.findAllGroups(FavouriteSpace.NORMAL.dbValue))
     }
 
     private suspend fun seedGroup(space: FavouriteSpace, ownerKey: String, title: String): Seed {
