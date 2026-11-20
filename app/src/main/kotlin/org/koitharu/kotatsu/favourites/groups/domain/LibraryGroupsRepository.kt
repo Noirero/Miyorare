@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.model.isNovelContentPath
 import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
+import org.koitharu.kotatsu.favourites.groups.data.defaultLibraryGroupSetId
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberDisplay
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
@@ -134,6 +135,7 @@ class LibraryGroupsRepository @Inject constructor(
 				coverUrl = coverUrl.normalizeOptionalText(),
 				createdAt = System.currentTimeMillis(),
 				space = space.dbValue,
+				setId = db.defaultLibraryGroupSetId(space),
 			),
 		)
 		dao.insertMembers(uniqueIds.mapIndexed { index, mangaId ->
