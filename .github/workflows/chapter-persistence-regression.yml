@@ -249,3 +249,122 @@ jobs:
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 7
+
+# Diagnostic-only compatibility gate. This never changes the existing PR lane.
+  historical-v55-compatibility:
+    name: Upgrade authentic historical Room v55 database on Android 15
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact migration candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Checkout immutable historical Room v55 source
+        uses: actions/checkout@v5
+        with:
+          ref: b4e66ec6130bac5e05d77af2ca6cc11c99ad1190
+          path: historical-v55
+          persist-credentials: false
+
+      - name: Verify source identities and stage historical test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C historical-v55 rev-parse HEAD)" = 'b4e66ec6130bac5e05d77af2ca6cc11c99ad1190'
+          test "$GITHUB_REF" = 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
+          cp .github/fixtures/historical-v55/HistoricalV55SeedTest.kt historical-v55/app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/HistoricalV55SeedTest.kt
+          chmod +x gradlew historical-v55/gradlew
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Create v55 Room database, then upgrade using v56 application
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            (
+              cd historical-v55
+              ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
+                -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.HistoricalV55SeedTest
+            )
+            test -f historical-v55/app/schemas/org.koitharu.kotatsu.core.db.MangaDatabase/55.json
+            mkdir -p app/build/historical-v55-evidence
+            cp historical-v55/app/schemas/org.koitharu.kotatsu.core.db.MangaDatabase/55.json app/build/historical-v55-evidence/55.json
+            adb shell run-as org.noirero.miyorare.debug ls databases/historical-v55-library-groups
+            adb exec-out run-as org.noirero.miyorare.debug cat databases/historical-v55-library-groups > app/build/historical-v55-evidence/v55-runtime.sqlite
+            python3 - <<'PY'
+            import sqlite3
+            db = sqlite3.connect("app/build/historical-v55-evidence/v55-runtime.sqlite")
+            assert db.execute("PRAGMA user_version").fetchone()[0] == 55
+            assert db.execute("SELECT COUNT(*) FROM library_group_members").fetchone()[0] == 2
+            assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+            print("Verified real historical Room v55 runtime database, seeded with Group children")
+            db.close()
+            PY
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
+              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.HistoricalV55CompatibilityTest
+
+      - name: Verify both historical and upgrade XML evidence
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          suites = (
+              ('historical-v55/app/build/outputs/androidTest-results/connected',
+               'createAuthenticRoomV55DatabaseWithGroups', 'HistoricalV55SeedTest'),
+              ('app/build/outputs/androidTest-results/connected',
+               'historicalRoomV55DatabaseUpgradesWithoutLosingGroupChildren', 'HistoricalV55CompatibilityTest'),
+          )
+          for directory, expected, suite in suites:
+              files = list(Path(directory).rglob('TEST-*.xml'))
+              assert files, f'Missing XML evidence: {directory}'
+              cases = [case for f in files for case in ET.parse(f).getroot().iter('testcase')]
+              assert len(cases) == 1, (directory, [c.attrib for c in cases])
+              case = cases[0]
+              assert case.attrib.get('name', '').split('[')[0] == expected, case.attrib
+              assert case.attrib.get('classname', '').endswith('.' + suite), case.attrib
+              assert all(case.find(tag) is None for tag in ('failure', 'error', 'skipped')), case.attrib
+              print(f'PASS: {suite}.{expected}')
+          PY
+
+      - name: Upload historical v55 schema, database and instrumentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authentic-room-v55-to-v56-android15-evidence
+          path: |
+            app/build/historical-v55-evidence/
+            historical-v55/app/build/outputs/androidTest-results/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7
