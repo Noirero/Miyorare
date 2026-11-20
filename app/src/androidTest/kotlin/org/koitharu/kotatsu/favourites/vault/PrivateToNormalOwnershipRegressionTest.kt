@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.favourites.vault
 
 import android.content.ContextWrapper
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -40,15 +41,23 @@ class PrivateToNormalOwnershipRegressionTest {
             }
             val security = PrivateFavouritesSecurityStore(securityContext)
             val originalProtection = security.protection
-            val session = PrivateFavouritesSession(security)
-            val useCase = DisablePrivateFavouritesUseCase(db, security, session)
-
-            expectSqlFailure("Category space is immutable") {
-                useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
+            lateinit var session: PrivateFavouritesSession
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                session = PrivateFavouritesSession(security)
             }
-            assertEquals("A failing move must not disable Private security", originalProtection, security.protection)
-            assertEquals("A failing move must roll back copied favourites and every child row", before, snapshot(db))
-            assertHealthy(sql)
+            try {
+                val useCase = DisablePrivateFavouritesUseCase(db, security, session)
+                expectSqlFailure("Category space is immutable") {
+                    useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
+                }
+                assertEquals("A failing move must not disable Private security", originalProtection, security.protection)
+                assertEquals("A failing move must roll back copied favourites and every child row", before, snapshot(db))
+                assertHealthy(sql)
+            } finally {
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    ProcessLifecycleOwner.get().lifecycle.removeObserver(session)
+                }
+            }
         } finally {
             db.close()
             context.deleteDatabase(name)
