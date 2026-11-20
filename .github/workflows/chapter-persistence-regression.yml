@@ -146,7 +146,7 @@ jobs:
   # Diagnostic-only lane: reuses a workflow already registered on the default branch.
   # It never changes the normal pull_request regression gate.
   room-55-to-56:
-    name: Targeted Room 55-to-56 migration on Android 15
+    name: Targeted Room migration and Private-to-Normal on Android 15
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
@@ -201,7 +201,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >-
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.LibraryGroupSetMigrationTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.LibraryGroupSetMigrationTest,org.koitharu.kotatsu.favourites.vault.PrivateToNormalOwnershipRegressionTest
 
       - name: Verify targeted test evidence
         shell: bash
@@ -220,13 +220,20 @@ jobs:
               'upgradePreservesGroupChildrenAndResolvesOwners',
               'failedBackfillRollsBackSchemaAndPreservesRows',
               'upgradedAndFreshDatabasesHaveIdenticalGroupTriggers',
+              'moveToNormalWithAssignedCategoryFailsClosedAndPreservesData',
+              'groupSpaceChangeWithoutOwnerReassignmentIsRejectedAndRolledBack',
+              'destinationSetCollisionFailsClosedWithoutDroppingGroupChildren',
           }
           names = [case.attrib.get('name', '').split('[')[0] for case in cases]
-          assert len(names) == 3 and set(names) == expected, f'Unexpected executed tests: {names}'
+          assert len(names) == 6 and set(names) == expected, f'Unexpected executed tests: {names}'
+          allowed_classes = (
+              '.LibraryGroupSetMigrationTest',
+              '.PrivateToNormalOwnershipRegressionTest',
+          )
           for case in cases:
-              assert case.attrib.get('classname', '').endswith('.LibraryGroupSetMigrationTest'), case.attrib
+              assert case.attrib.get('classname', '').endswith(allowed_classes), case.attrib
               assert not any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped')), case.attrib
-          print('Verified exactly three LibraryGroupSetMigrationTest cases with no failures or skips')
+          print('Verified exactly six targeted Room/Private-to-Normal tests with no failures or skips')
           PY
 
       - name: Upload targeted Room migration evidence
