@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.os.Build
 import android.view.ContextThemeWrapper
+import androidx.core.content.res.use
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.SdkSuppress
 import org.junit.Assert.assertEquals
