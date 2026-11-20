@@ -482,6 +482,131 @@ class LibraryGroupSetBackupRegressionTest {
             converged, syncOwnerSnapshot(fixture.groupId))
     }
 
+
+    @Test fun remoteSetDeletionToggleFailsClosedWithoutOwnerMutation() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "sync-toggle:remote-set", "Owner survives")
+        val original = SyncSnapshot(
+            categorySets = driveSync.localCategorySets(),
+            categories = driveSync.localCategories(),
+        )
+        val deleted = original.copy(categorySets = original.categorySets.map { set ->
+            if (set.syncKey == "sync-toggle:remote-set")
+                set.copy(updatedAt = 900L, deletedAt = 900L) else set
+        })
+        val before = syncOwnerSnapshot(fixture.groupId)
+        syncSettings.isDeletionSyncDisabled = true
+        repeat(2) {
+            driveSync.applyToDatabase(deleted, false, setOf(SyncContent.FAVOURITES))
+            assertEquals("Deletion protection unexpectedly mutated owner or Group",
+                before, syncOwnerSnapshot(fixture.groupId))
+        }
+        syncSettings.isDeletionSyncDisabled = false
+        assertTombstoneRejected(deleted, fixture.groupId, before)
+        assertTombstoneRejected(deleted, fixture.groupId, before)
+        syncSettings.isDeletionSyncDisabled = true
+        driveSync.applyToDatabase(deleted, false, setOf(SyncContent.FAVOURITES))
+        assertEquals("Reenabled protection must retain Group and active Set",
+            before, syncOwnerSnapshot(fixture.groupId))
+    }
+
+    @Test fun localCategoryTombstoneSurvivesStaleRemoteAndToggle() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "sync-toggle:local-category", "Local delete")
+        val staleLive = SyncSnapshot(
+            categorySets = driveSync.localCategorySets(),
+            categories = driveSync.localCategories(),
+        )
+        val categoriesDao = database.getFavouriteCategoriesDao()
+        val local = categoriesDao.findAllForSync().single { it.categoryId.toLong() == fixture.categoryId }
+        categoriesDao.upsert(local.copy(deletedAt = 950L))
+        val before = syncOwnerSnapshot(fixture.groupId)
+        val children = groupState(fixture.groupId)
+        for (disabled in listOf(true, false, true, true)) {
+            syncSettings.isDeletionSyncDisabled = disabled
+            driveSync.applyToDatabase(staleLive, false, setOf(SyncContent.FAVOURITES))
+            val current = categoriesDao.findAllForSync().single { it.categoryId.toLong() == fixture.categoryId }
+            assertEquals("Stale Category resurrected; protection disabled=$disabled", 950L, current.deletedAt)
+            assertEquals(fixture.setId, database.getLibraryGroupsDao().findGroup(fixture.groupId)?.setId)
+            assertEquals(children, groupState(fixture.groupId))
+            assertEquals(before.favourites, database.getFavouritesDao().findAllForSync())
+            assertEquals(1, database.getLibraryGroupsDao().findAllGroups(0).size)
+            assertEquals(1, database.getFavouriteCategorySetsDao().getAssignments(0).count {
+                it.categoryId == fixture.categoryId
+            })
+        }
+    }
+
+    @Test fun localSetTombstoneSurvivesStaleOfflineSnapshotAfterRehome() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "sync-toggle:local-set", "Rehomed")
+        val staleLive = SyncSnapshot(
+            categorySets = driveSync.localCategorySets(),
+            categories = driveSync.localCategories(),
+        )
+        val setsDao = database.getFavouriteCategorySetsDao()
+        val fallback = setsDao.getSets(0).single { it.setId != fixture.setId }
+        val groupBefore = groupState(fixture.groupId)
+        // Local Set deletion requires explicit safe ownership/category resolution.
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE library_groups SET set_id = ? WHERE group_id = ?",
+            arrayOf(fallback.setId, fixture.groupId),
+        )
+        setsDao.assign(checkNotNull(setsDao.getAssignment(fixture.categoryId)).copy(
+            setId = fallback.setId, updatedAt = 850L,
+        ))
+        val owner = checkNotNull(setsDao.findSet(fixture.setId))
+        setsDao.upsert(owner.copy(deletedAt = 950L, updatedAt = 950L))
+        val resolvedChildren = groupState(fixture.groupId)
+        assertEquals(groupBefore.members, resolvedChildren.members)
+        assertEquals(groupBefore.timeline, resolvedChildren.timeline)
+        assertEquals(groupBefore.tracking, resolvedChildren.tracking)
+        val counts = syncOwnerSnapshot(fixture.groupId)
+        for (disabled in listOf(true, false, true, true)) {
+            syncSettings.isDeletionSyncDisabled = disabled
+            driveSync.applyToDatabase(staleLive, false, setOf(SyncContent.FAVOURITES))
+            assertEquals("Stale Set resurrected; protection disabled=$disabled", 950L,
+                checkNotNull(setsDao.findSet(fixture.setId)).deletedAt)
+            assertEquals(fallback.setId, database.getLibraryGroupsDao().findGroup(fixture.groupId)?.setId)
+            assertEquals(fallback.setId, setsDao.getAssignment(fixture.categoryId)?.setId)
+            assertEquals(resolvedChildren, groupState(fixture.groupId))
+            assertEquals(counts.sets.size, setsDao.getSetsForSync(0).size)
+            assertEquals(counts.categories.size, database.getFavouriteCategoriesDao().findAllForSync().size)
+            assertEquals(counts.favourites, database.getFavouritesDao().findAllForSync())
+        }
+    }
+
+    @Test fun remoteCategoryDeletionRequiresOptInAndResistsStaleReplay() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "sync-toggle:remote-category", "Remote delete")
+        val staleLive = SyncSnapshot(
+            categorySets = driveSync.localCategorySets(),
+            categories = driveSync.localCategories(),
+        )
+        val tombstone = staleLive.copy(categories = staleLive.categories.map { category ->
+            if (category.categoryId.toLong() == fixture.categoryId)
+                category.copy(deletedAt = 975L, updatedAt = 975L) else category
+        })
+        val before = syncOwnerSnapshot(fixture.groupId)
+        syncSettings.isDeletionSyncDisabled = true
+        driveSync.applyToDatabase(tombstone, false, setOf(SyncContent.FAVOURITES))
+        assertEquals("Protected remote Category deletion should be ignored",
+            before, syncOwnerSnapshot(fixture.groupId))
+        syncSettings.isDeletionSyncDisabled = false
+        repeat(2) {
+            driveSync.applyToDatabase(tombstone, false, setOf(SyncContent.FAVOURITES))
+            val current = database.getFavouriteCategoriesDao().findAllForSync()
+                .single { it.categoryId.toLong() == fixture.categoryId }
+            assertEquals(975L, current.deletedAt)
+            assertEquals(before.groupState, groupState(fixture.groupId))
+        }
+        syncSettings.isDeletionSyncDisabled = true
+        repeat(2) {
+            driveSync.applyToDatabase(staleLive, false, setOf(SyncContent.FAVOURITES))
+            assertEquals("Stale Category unexpectedly resurrected", 975L,
+                database.getFavouriteCategoriesDao().findAllForSync()
+                    .single { it.categoryId.toLong() == fixture.categoryId }.deletedAt)
+            assertEquals(before.groupState, groupState(fixture.groupId))
+            assertEquals(fixture.setId, database.getLibraryGroupsDao().findGroup(fixture.groupId)?.setId)
+        }
+    }
+
     private suspend fun deletedRemoteSet(ownerKey: String): SyncSnapshot {
         // The user-facing deletion-sync protection is enabled by default; this
         // fixture explicitly tests opt-in propagation of a remote tombstone.
