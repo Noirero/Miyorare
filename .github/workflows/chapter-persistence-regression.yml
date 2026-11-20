@@ -6,6 +6,7 @@ on:
       - agent/set-scoped-groups-migration-55-56-20261120
     paths:
       - '.github/workflows/chapter-persistence-regression.yml'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/local/LibraryGroupSetBackupRegressionTest.kt'
   pull_request:
     branches:
       - beta

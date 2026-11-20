@@ -47,7 +47,7 @@ class LibraryGroupSetBackupRegressionTest {
 
     @Before fun setUp() {
         hiltRule.inject()
-        database.clearAllTables()
+        resetFixtureDatabase()
         privateSecurity.includePrivateInBackup = false
     }
 
@@ -57,7 +57,7 @@ class LibraryGroupSetBackupRegressionTest {
         val file = backupFile("normal")
         try {
             writeBackup(file)
-            database.clearAllTables()
+            resetFixtureDatabase()
             val otherKey = "backup-repro:normal:unrelated"
             database.ensureCategorySets(FavouriteSpace.NORMAL)
             insertSet(FavouriteSpace.NORMAL, otherKey)
@@ -97,7 +97,7 @@ class LibraryGroupSetBackupRegressionTest {
                 "Private backup opt-in did not export a private payload",
                 zipEntries(on).contains(LocalBackupRepository.PRIVATE_FAVOURITES_ENTRY),
             )
-            database.clearAllTables()
+            resetFixtureDatabase()
             database.ensureCategorySets(FavouriteSpace.PRIVATE)
             insertSet(FavouriteSpace.PRIVATE, "backup-repro:private:unrelated")
 
@@ -121,7 +121,7 @@ class LibraryGroupSetBackupRegressionTest {
         val payload = codec.dump(FavouriteSpace.NORMAL).toList().single()
         assertEquals("Incoming group", payload.title)
 
-        database.clearAllTables()
+        resetFixtureDatabase()
         val existing = seedGroup(FavouriteSpace.NORMAL, "backup-repro:collision:target", "Unrelated destination group")
         val dao = database.getLibraryGroupsDao()
         val before = groupState(existing.groupId)
@@ -219,6 +219,16 @@ class LibraryGroupSetBackupRegressionTest {
         database.getLibraryGroupsDao().findTimeline(id),
         database.getLibraryGroupTrackingDao().findAll(id),
     )
+
+    /**
+     * Keep the v56 owner trigger intact. Room's clearAllTables() deletes Set
+     * rows before it can remove their Groups, so explicitly delete fixture
+     * Groups first (including cascade children), then clear the remaining rows.
+     */
+    private fun resetFixtureDatabase() {
+        database.openHelper.writableDatabase.execSQL("DELETE FROM library_groups")
+        database.clearAllTables()
+    }
 
     private fun backupFile(suffix: String): File =
         File.createTempFile("backup-group-set-$suffix-", ".zip", context.cacheDir)
