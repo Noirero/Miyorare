@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,17 +17,16 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
@@ -132,9 +132,18 @@ private fun FontSettingsScreen(viewModel: FontSettingsViewModel) {
     val busy by viewModel.busyPackIds.collectAsState()
     val catalogLoaded by viewModel.catalogLoaded.collectAsState()
     val catalogLoading by viewModel.catalogLoading.collectAsState()
+    val previewFamilies by viewModel.previewFamilies.collectAsState()
+    val previewLoading by viewModel.previewLoadingIds.collectAsState()
     val error by viewModel.errorMessage.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var pendingRemoval by remember { mutableStateOf<InstalledFontPack?>(null) }
+
+    // The pack the pinned preview at the top shows. Until the user taps a
+    // card the preview follows the active pack; a tap pins the preview to
+    // that card instead (null then means the built-in font).
+    var previewTouched by remember { mutableStateOf(false) }
+    var previewId by remember { mutableStateOf<String?>(null) }
+    var catalogOpen by rememberSaveable { mutableStateOf(true) }
 
     LaunchedEffect(error) {
         if (error != null) {
@@ -143,22 +152,90 @@ private fun FontSettingsScreen(viewModel: FontSettingsViewModel) {
         }
     }
 
-    // Use the actual bundled variable font, even when another pack is active.
-    val activeFamily = remember(activePack) {
-        activePack?.let(viewModel::fontFamily) ?: googleSansRounded
+    val targetId = if (previewTouched) previewId else activePack?.pack?.id
+    val targetInstalled = installed.firstOrNull { it.pack.id == targetId }
+    val targetCatalog = catalog.firstOrNull { it.id == targetId }
+    val targetIsBuiltin = targetId == null || (targetInstalled == null && targetCatalog == null)
+    val targetIsActive = if (targetIsBuiltin) {
+        activePack == null
+    } else {
+        targetId == activePack?.pack?.id
     }
-    val activeName = activePack?.pack?.name ?: stringResource(R.string.font_builtin_title)
+    val targetName = when {
+        targetInstalled != null -> targetInstalled.pack.name
+        targetCatalog != null -> targetCatalog.name
+        else -> stringResource(R.string.font_builtin_title)
+    }
+    val targetFamily = when {
+        targetInstalled != null -> viewModel.fontFamily(targetInstalled)
+        targetCatalog != null -> previewFamilies[targetCatalog.id] ?: googleSansRounded
+        else -> googleSansRounded
+    }
+    val targetPreviewLoading = targetCatalog != null && targetCatalog.id in previewLoading
+
+    // Fetch the real letterforms as soon as a catalog pack becomes the
+    // preview target; the preview falls back to the bundled font until then.
+    LaunchedEffect(targetCatalog?.id) {
+        targetCatalog?.let { viewModel.preview(it) }
+    }
+
+    fun showPreview(id: String?) {
+        previewTouched = true
+        previewId = id
+    }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(modifier = Modifier.fillMaxSize().widthIn(max = 840.dp)) {
+            FontPreviewHero(
+                label = stringResource(
+                    if (targetIsActive) R.string.font_section_in_use else R.string.font_preview,
+                ),
+                name = targetName,
+                family = targetFamily,
+                loading = targetPreviewLoading,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+            ) {
+                when {
+                    targetIsActive -> Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)) {
+                        Text(
+                            text = stringResource(R.string.font_active),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        )
+                    }
+                    targetInstalled != null -> Button(
+                        onClick = { viewModel.activate(targetInstalled.pack.id) },
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 40.dp),
+                    ) {
+                        Text(stringResource(R.string.font_use), style = MaterialTheme.typography.labelMedium)
+                    }
+                    targetIsBuiltin -> Button(
+                        onClick = { viewModel.activate(null) },
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 40.dp),
+                    ) {
+                        Text(stringResource(R.string.font_use), style = MaterialTheme.typography.labelMedium)
+                    }
+                    targetCatalog != null -> if (targetCatalog.id in busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                    } else {
+                        Button(
+                            onClick = { viewModel.install(targetCatalog) },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 40.dp),
+                        ) {
+                            Text(stringResource(R.string.font_download), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item(key = "active-preview") {
-                    ActiveFontPreview(name = activeName, family = activeFamily)
-                }
                 item(key = "installed-title") {
                     FontSectionTitle(stringResource(R.string.font_section_installed))
                 }
@@ -167,8 +244,9 @@ private fun FontSettingsScreen(viewModel: FontSettingsViewModel) {
                         name = stringResource(R.string.font_builtin_title),
                         subtitle = stringResource(R.string.font_builtin_summary),
                         family = googleSansRounded,
-                        selected = activePack == null,
-                        onSelect = { viewModel.activate(null) },
+                        highlighted = targetIsBuiltin,
+                        isActive = activePack == null,
+                        onClick = { showPreview(null) },
                     )
                 }
                 items(installed, key = { "installed-" + it.pack.id }) { pack ->
@@ -177,34 +255,44 @@ private fun FontSettingsScreen(viewModel: FontSettingsViewModel) {
                         name = pack.pack.name,
                         subtitle = stringResource(R.string.font_installed),
                         family = family,
-                        selected = activePack?.pack?.id == pack.pack.id,
-                        onSelect = { viewModel.activate(pack.pack.id) },
+                        highlighted = targetId == pack.pack.id,
+                        isActive = activePack?.pack?.id == pack.pack.id,
+                        onClick = { showPreview(pack.pack.id) },
                         onRemove = { pendingRemoval = pack },
                         removing = pack.pack.id in busy,
                     )
                 }
                 item(key = "catalog-title") {
-                    FontSectionTitle(stringResource(R.string.font_section_catalog))
+                    FontSectionTitle(
+                        title = stringResource(R.string.font_section_catalog),
+                        expanded = catalogOpen,
+                        onClick = { catalogOpen = !catalogOpen },
+                    )
                 }
-                if (catalog.isEmpty()) {
-                    item(key = "catalog-status") {
-                        CatalogStatus(
-                            loading = catalogLoading,
-                            loaded = catalogLoaded,
-                            onRetry = viewModel::refreshCatalog,
+                if (catalogOpen) {
+                    if (catalog.isEmpty()) {
+                        item(key = "catalog-status") {
+                            CatalogStatus(
+                                loading = catalogLoading,
+                                loaded = catalogLoaded,
+                                onRetry = viewModel::refreshCatalog,
+                            )
+                        }
+                    }
+                    items(catalog, key = { "catalog-" + it.id }) { pack ->
+                        val installedPack = installed.firstOrNull { it.pack.id == pack.id }
+                        val family = installedPack?.let { viewModel.fontFamily(it) }
+                            ?: previewFamilies[pack.id]
+                        CatalogFontCard(
+                            pack = pack,
+                            installed = installedPack != null,
+                            family = family,
+                            busy = pack.id in busy,
+                            highlighted = targetId == pack.id,
+                            onInstall = { viewModel.install(pack) },
+                            onClick = { showPreview(pack.id) },
                         )
                     }
-                }
-                items(catalog, key = { "catalog-" + it.id }) { pack ->
-                    val installedPack = installed.firstOrNull { it.pack.id == pack.id }
-                    val family = installedPack?.let { remember(it) { viewModel.fontFamily(it) } }
-                    CatalogFontCard(
-                        pack = pack,
-                        installed = installedPack != null,
-                        family = family,
-                        busy = pack.id in busy,
-                        onInstall = { viewModel.install(pack) },
-                    )
                 }
             }
             SnackbarHost(hostState = snackbar)
@@ -237,9 +325,14 @@ private fun FontSettingsScreen(viewModel: FontSettingsViewModel) {
 }
 
 @Composable
-private fun FontSectionTitle(title: String) {
+private fun FontSectionTitle(
+    title: String,
+    expanded: Boolean? = null,
+    onClick: (() -> Unit)? = null,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 18.dp, bottom = 2.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 18.dp, bottom = 2.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -254,12 +347,28 @@ private fun FontSectionTitle(title: String) {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
         )
+        if (expanded != null) {
+            Text(
+                text = if (expanded) "▾" else "▸",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun ActiveFontPreview(name: String, family: FontFamily) {
+private fun FontPreviewHero(
+    label: String,
+    name: String,
+    family: FontFamily,
+    loading: Boolean,
+    modifier: Modifier = Modifier,
+    action: @Composable () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(28.dp)
     val gradient = Brush.linearGradient(
@@ -270,7 +379,7 @@ private fun ActiveFontPreview(name: String, family: FontFamily) {
         ),
     )
     Box(
-        modifier = Modifier.fillMaxWidth().clip(shape).background(gradient)
+        modifier = modifier.fillMaxWidth().clip(shape).background(gradient)
             .border(BorderStroke(1.dp, colors.primary.copy(alpha = 0.28f)), shape),
     ) {
         // Quiet, theme-derived waves replace the fixed cyan decoration of the concept mockup.
@@ -306,7 +415,7 @@ private fun ActiveFontPreview(name: String, family: FontFamily) {
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.font_section_in_use),
+                        text = label,
                         style = MaterialTheme.typography.labelMedium,
                         color = colors.onSurfaceVariant,
                     )
@@ -318,14 +427,10 @@ private fun ActiveFontPreview(name: String, family: FontFamily) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Surface(shape = RoundedCornerShape(50), color = colors.primary.copy(alpha = 0.14f)) {
-                    Text(
-                        text = stringResource(R.string.font_active),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.primary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                    )
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                 }
+                action()
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
@@ -353,25 +458,23 @@ private fun InstalledFontCard(
     name: String,
     subtitle: String,
     family: FontFamily,
-    selected: Boolean,
-    onSelect: () -> Unit,
+    highlighted: Boolean,
+    isActive: Boolean,
+    onClick: () -> Unit,
     onRemove: (() -> Unit)? = null,
     removing: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(24.dp)
     Surface(
-        modifier = Modifier.fillMaxWidth().selectable(
-            selected = selected,
-            role = Role.RadioButton,
-            onClick = onSelect,
-        ),
+        onClick = onClick,
         shape = shape,
-        color = if (selected) lerp(colors.surfaceContainerHigh, colors.primaryContainer, 0.30f) else colors.surfaceContainer,
+        color = if (highlighted) lerp(colors.surfaceContainerHigh, colors.primaryContainer, 0.30f) else colors.surfaceContainer,
         border = BorderStroke(
-            if (selected) 1.5.dp else 1.dp,
-            if (selected) colors.primary else colors.outlineVariant.copy(alpha = 0.42f),
+            if (highlighted) 1.5.dp else 1.dp,
+            if (highlighted) colors.primary else colors.outlineVariant.copy(alpha = 0.42f),
         ),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 16.dp, bottom = 16.dp),
@@ -386,9 +489,9 @@ private fun InstalledFontCard(
                     color = colors.onSurface,
                 )
                 Text(
-                    text = if (selected) stringResource(R.string.font_active) else subtitle,
+                    text = if (isActive) stringResource(R.string.font_active) else subtitle,
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (selected) colors.primary else colors.onSurfaceVariant,
+                    color = if (isActive) colors.primary else colors.onSurfaceVariant,
                 )
                 Text(
                     text = stringResource(R.string.font_preview_sentence),
@@ -399,7 +502,7 @@ private fun InstalledFontCard(
                 )
             }
             when {
-                selected -> Surface(shape = RoundedCornerShape(50), color = colors.primary) {
+                isActive -> Surface(shape = RoundedCornerShape(50), color = colors.primary) {
                     Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                         Text("✓", color = colors.onPrimary, style = MaterialTheme.typography.titleMedium)
                     }
@@ -426,7 +529,9 @@ private fun CatalogFontCard(
     installed: Boolean,
     family: FontFamily?,
     busy: Boolean,
+    highlighted: Boolean,
     onInstall: () -> Unit,
+    onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val ctx = LocalContext.current
@@ -435,9 +540,13 @@ private fun CatalogFontCard(
             .filter(String::isNotBlank).joinToString(" · ")
     }
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(24.dp),
-        color = colors.surfaceContainer,
-        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.36f)),
+        color = if (highlighted) lerp(colors.surfaceContainerHigh, colors.primaryContainer, 0.30f) else colors.surfaceContainer,
+        border = BorderStroke(
+            if (highlighted) 1.5.dp else 1.dp,
+            if (highlighted) colors.primary else colors.outlineVariant.copy(alpha = 0.36f),
+        ),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -473,16 +582,6 @@ private fun CatalogFontCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = colors.onSurfaceVariant,
                         maxLines = 2,
-                    )
-                }
-                if (pack.description.isNotEmpty()) {
-                    Text(
-                        text = pack.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 3.dp),
                     )
                 }
             }

@@ -1513,6 +1513,7 @@
     <string name="font_title">App font</string>
     <string name="font_settings_summary">Download font packs and use one across the app</string>
     <string name="font_section_in_use">Font in use</string>
+    <string name="font_preview">Preview</string>
     <string name="font_section_catalog">Catalog</string>
     <string name="font_builtin_title">Built-in font</string>
     <string name="font_builtin_summary">Bundled with the app</string>
@@ -1526,12 +1527,14 @@
     <string name="font_active">Active</string>
     <string name="font_preview_sentence">The quick brown fox jumps over the lazy dog</string>
     <string name="font_download">Download</string>
+    <string name="font_use">Use this font</string>
     <string name="font_catalog_load_failed">Unable to load font catalog.</string>
     <string name="font_remove_title">Remove font?</string>
     <string name="font_remove_confirmation">Remove %1$s from your device?</string>
     <string name="icon_title">App icons</string>
     <string name="icon_settings_summary">Download icon packs for the Settings screens</string>
     <string name="icon_section_in_use">Icons in use</string>
+    <string name="icon_preview">Preview</string>
     <string name="icon_section_catalog">Catalog</string>
     <string name="icon_builtin_title">Built-in icons</string>
     <string name="icon_builtin_summary">Bundled with the app</string>

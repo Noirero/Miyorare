@@ -33,6 +33,13 @@ class FontSettingsViewModel @Inject constructor(
 	private val _catalogLoading = MutableStateFlow(false)
 	val catalogLoading = _catalogLoading.asStateFlow()
 
+	/** Preview families of catalog packs, fetched on demand (base file only). */
+	private val _previewFamilies = MutableStateFlow<Map<String, FontFamily>>(emptyMap())
+	val previewFamilies = _previewFamilies.asStateFlow()
+
+	private val _previewLoadingIds = MutableStateFlow<Set<String>>(emptySet())
+	val previewLoadingIds = _previewLoadingIds.asStateFlow()
+
 	init {
 		refreshCatalog()
 	}
@@ -80,6 +87,23 @@ class FontSettingsViewModel @Inject constructor(
 
 	fun fontFamily(pack: InstalledFontPack): FontFamily {
 		return repository.composeFontFamily(pack)
+	}
+
+	/**
+	 * Fetches the preview family of a catalog pack that is not installed,
+	 * so its real letterforms can be shown before any download decision.
+	 * Installed packs already expose their family through [fontFamily].
+	 */
+	fun preview(pack: FontPack) {
+		if (pack.id in _previewFamilies.value || pack.id in _previewLoadingIds.value) return
+		if (installed.value.any { it.pack.id == pack.id }) return
+		_previewLoadingIds.value += pack.id
+		viewModelScope.launch {
+			runCatching { repository.previewFontFamily(pack) }
+				.onSuccess { _previewFamilies.value += pack.id to it }
+				.onFailure { _errorMessage.value = it.message ?: it.javaClass.simpleName }
+			_previewLoadingIds.value -= pack.id
+		}
 	}
 
 	fun consumeError() {
