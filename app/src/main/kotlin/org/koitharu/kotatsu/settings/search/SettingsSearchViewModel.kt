@@ -11,7 +11,6 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
-import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import java.text.Normalizer
 import javax.inject.Inject
@@ -78,18 +77,32 @@ class SettingsSearchViewModel @Inject constructor(
 	}
 
 	private fun buildBrowseList(): List<ListModel> {
-		val result = ArrayList<ListModel>(allSettings.size + 16)
-		var currentSection: String? = null
+		val result = ArrayList<ListModel>()
+		var currentTitle: String? = null
+		var currentItems = ArrayList<SettingsItem>()
+		fun flushSection() {
+			if (currentItems.isNotEmpty()) {
+				val first = currentItems.first()
+				result.add(
+					SettingsSectionCard(
+						title = currentTitle.orEmpty(),
+						iconRes = first.sectionIconRes,
+						paletteKey = first.sectionPaletteKey,
+						items = currentItems.toList(),
+					),
+				)
+			}
+		}
 		for (item in allSettings) {
 			val section = item.breadcrumbs.firstOrNull().orEmpty()
-			if (section != currentSection) {
-				currentSection = section
-				if (section.isNotEmpty()) {
-					result.add(ListHeader(section))
-				}
+			if (section != currentTitle) {
+				flushSection()
+				currentTitle = section
+				currentItems = ArrayList()
 			}
-			result.add(item)
+			currentItems.add(item)
 		}
+		flushSection()
 		return result
 	}
 
