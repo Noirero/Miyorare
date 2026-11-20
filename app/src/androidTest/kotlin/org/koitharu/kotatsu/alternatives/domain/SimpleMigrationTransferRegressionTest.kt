@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
 import org.koitharu.kotatsu.alternatives.work.completedSimpleMigration
 import org.koitharu.kotatsu.alternatives.work.reconcileInterruptedSimpleMigration
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.DatabasePrePopulateCallback
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.model.MissingMangaSource
@@ -37,7 +38,8 @@ class SimpleMigrationTransferRegressionTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test fun fiftyToThirtyFiveMovesMandatoryAndPreservesUnmappedHistoryAndTimeline() = runTest {
-        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+            .addCallback(DatabasePrePopulateCallback(context.resources)).build()
         val settings = AppSettings(context)
         val notes = MangaNotesRepository(context)
         val old = manga(997001L, "SIMPLE_OLD", 50)
@@ -66,6 +68,7 @@ class SimpleMigrationTransferRegressionTest {
             val id = groups.insertGroup(LibraryGroupEntity(
                 title = "Personal Set", coverUrl = null, createdAt = 1L,
                 space = FavouriteSpace.NORMAL.dbValue,
+                setId = db.getFavouriteCategorySetsDao().getSets(FavouriteSpace.NORMAL.dbValue).first().setId,
             ))
             groups.insertMembers(listOf(LibraryGroupMemberEntity(id, oldId, 3)))
             groups.insertTimeline(listOf(LibraryGroupTimelineItemEntity(id, oldId, sourceLast.id, 9)))
@@ -118,7 +121,8 @@ class SimpleMigrationTransferRegressionTest {
     }
 
     @Test fun preservedTimelineAndChapterSnapshotSurviveRoutineCleanup() = runTest {
-        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+            .addCallback(DatabasePrePopulateCallback(context.resources)).build()
         val settings = AppSettings(context)
         val old = manga(997041L, "SIMPLE_OLD", 2)
         val target = manga(997042L, "SIMPLE_NEW", 1)
@@ -128,6 +132,7 @@ class SimpleMigrationTransferRegressionTest {
             val groups = db.getLibraryGroupsDao()
             val groupId = groups.insertGroup(LibraryGroupEntity(
                 title = "Unmappable timeline", coverUrl = null, createdAt = 1L, space = 0,
+                setId = db.getFavouriteCategorySetsDao().getSets(FavouriteSpace.NORMAL.dbValue).first().setId,
             ))
             groups.insertMembers(listOf(LibraryGroupMemberEntity(groupId, old.id, 1)))
             groups.insertTimeline(listOf(LibraryGroupTimelineItemEntity(groupId, old.id, missing.id, 4)))
@@ -311,7 +316,8 @@ class SimpleMigrationTransferRegressionTest {
     }
 
     @Test fun privateOnlySourceStaysPrivateWhenDestinationIsEmpty() = runTest {
-        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+            .addCallback(DatabasePrePopulateCallback(context.resources)).build()
         val settings = AppSettings(context)
         val notes = MangaNotesRepository(context)
         val old = manga(997021L, "SIMPLE_OLD", 1)
@@ -322,6 +328,7 @@ class SimpleMigrationTransferRegressionTest {
             val groupId = groups.insertGroup(LibraryGroupEntity(
                 title = "Private Group", coverUrl = null, createdAt = 1L,
                 space = FavouriteSpace.PRIVATE.dbValue,
+                setId = db.getFavouriteCategorySetsDao().getSets(FavouriteSpace.PRIVATE.dbValue).first().setId,
             ))
             groups.insertMembers(listOf(LibraryGroupMemberEntity(groupId, old.id, 1)))
             val failure = runCatching { transfer(db, settings, notes)(old, target) }.exceptionOrNull()
@@ -405,7 +412,8 @@ class SimpleMigrationTransferRegressionTest {
     }
 
     @Test fun groupPositionConflictRollsBackMandatoryMembership() = runTest {
-        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+        val db = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+            .addCallback(DatabasePrePopulateCallback(context.resources)).build()
         val settings = AppSettings(context)
         val notes = MangaNotesRepository(context)
         val old = manga(997081L, "SIMPLE_OLD", 2)
@@ -415,6 +423,7 @@ class SimpleMigrationTransferRegressionTest {
             val groupDao = db.getLibraryGroupsDao()
             val groupId = groupDao.insertGroup(LibraryGroupEntity(
                 title = "Same Group", coverUrl = null, createdAt = 1L, space = 0,
+                setId = db.getFavouriteCategorySetsDao().getSets(FavouriteSpace.NORMAL.dbValue).first().setId,
             ))
             groupDao.insertMembers(listOf(
                 LibraryGroupMemberEntity(groupId, old.id, 1),
