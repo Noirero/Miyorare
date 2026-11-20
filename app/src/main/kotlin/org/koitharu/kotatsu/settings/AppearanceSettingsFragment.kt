@@ -69,13 +69,14 @@ import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.ColorSchemePickerRow
 import org.koitharu.kotatsu.settings.compose.ConfirmDialog
 import org.koitharu.kotatsu.settings.compose.MiyorarePalettePickerRow
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.MiyorareVisualThemePickerRow
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.MiyorareChoiceSettingsItem
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.fonts.FontSettingsFragment
+import org.koitharu.kotatsu.settings.icons.IconSettingsFragment
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SliderSettingsItem
@@ -140,7 +141,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            MiyorareTheme {
+            MiyorareSettingsTheme("appearance") {
                 AppearanceScreen(
                     onOpenDetailsAppearance = {
                         (activity as? SettingsActivity)?.openFragment(
@@ -173,6 +174,13 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
                     onOpenFonts = {
                         (activity as? SettingsActivity)?.openFragment(
                             FontSettingsFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
+                    onOpenIcons = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            IconSettingsFragment::class.java,
                             null,
                             isFromRoot = false,
                         )
@@ -272,6 +280,7 @@ private fun AppearanceScreen(
     onOpenFeed: () -> Unit,
     onOpenAdvanced: () -> Unit,
     onOpenFonts: () -> Unit,
+    onOpenIcons: () -> Unit,
     onPickCustomBackground: () -> Unit,
     onRemoveCustomBackground: () -> Unit,
     onResetAppearance: () -> Unit,
@@ -794,6 +803,15 @@ private fun AppearanceScreen(
                         icon = R.drawable.ic_font,
                         shape = pos.shape,
                         onClick = onOpenFonts,
+                    )
+                }
+                item { pos ->
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.icon_title),
+                        subtitle = stringResource(R.string.icon_settings_summary),
+                        icon = R.drawable.ic_palette,
+                        shape = pos.shape,
+                        onClick = onOpenIcons,
                     )
                 }
             }

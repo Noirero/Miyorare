@@ -42,7 +42,7 @@ import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
@@ -85,7 +85,7 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.settings
 		refreshInstallerUiState()
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("extensions") {
 				ExtensionsScreen(
 					installerUiState = installerUiState,
 					onChooseInstallerMethod = ::showInstallerMethodDialog,

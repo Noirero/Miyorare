@@ -81,7 +81,7 @@ import org.koitharu.kotatsu.settings.about.changelog.ChangelogFragment
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsIconModern
@@ -118,7 +118,7 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("about") {
 				val isUpdateSupported by viewModel.isUpdateSupported.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
 				val isVerboseLogging by viewModel.isVerboseLogging.collectAsState()
@@ -209,7 +209,7 @@ class ProjectCreditsFragment : BaseComposeSettingsFragment(R.string.about_projec
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("about") {
 				SettingsScaffold {
 					item { AboutProjectCredits { url, title -> openLink(url, title) } }
 				}

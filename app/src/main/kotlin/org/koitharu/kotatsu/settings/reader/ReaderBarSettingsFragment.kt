@@ -55,7 +55,7 @@ import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
 import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
 import org.koitharu.kotatsu.reader.ui.ReaderActionsView
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.groupItemShape
@@ -81,7 +81,7 @@ class ReaderBarSettingsFragment :
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("reader") {
 				ReaderBarScreen(
 					initial = settings.readerControlsLayout,
 					onChanged = { settings.readerControlsLayout = it },

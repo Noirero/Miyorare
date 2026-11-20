@@ -33,7 +33,7 @@ import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeManager
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import java.util.Locale
 import javax.inject.Inject
@@ -50,7 +50,7 @@ class KotatsuSourcesSettingsFragment : BaseComposeSettingsFragment(R.string.kota
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("extensions") {
 				val sources by runtimeManager.sources.collectAsState(initial = emptyList())
 				val enabledSourceKeys by runtimeManager.enabledSourceKeys.collectAsState()
 				KotatsuSourcesScreen(
