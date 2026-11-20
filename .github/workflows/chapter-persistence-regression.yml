@@ -397,8 +397,15 @@ jobs:
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
 
+      - name: Prepare durable Group backup CI diagnostics
+        shell: bash
+        run: |
+          mkdir -p app/build/group-backup-ci-diagnostics
+          printf 'sha=%s\\nref=%s\\n' "$GITHUB_SHA" "$GITHUB_REF" > app/build/group-backup-ci-diagnostics/identity.txt
+
       - name: Execute four fixed Group backup Android regression tests
         id: instrumentation
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -407,14 +414,16 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: >-
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest
+          script: bash .github/scripts/run-group-backup-acceptance.sh
 
       - name: Verify four passing Group backup Android XML tests
+        if: always()
         shell: bash
+        env:
+          INSTRUMENTATION_OUTCOME: ${{ steps.instrumentation.outcome }}
         run: |
           python3 - <<'PY'
+          import os
           from pathlib import Path
           import xml.etree.ElementTree as ET
 
@@ -435,6 +444,9 @@ jobs:
               assert all(case.find(tag) is None for tag in ('failure', 'error', 'skipped')), case.attrib
               print('PASS: ' + case.attrib['name'])
           print('Verified exactly four Group backup acceptance tests: 4 PASS, 0 failures/errors/skips')
+          assert os.environ.get('INSTRUMENTATION_OUTCOME') == 'success', (
+              'Android emulator runner failed despite XML results; check diagnostic artifact'
+          )
           PY
 
       - name: Upload Group backup acceptance evidence
@@ -445,6 +457,7 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            app/build/group-backup-ci-diagnostics/
           if-no-files-found: warn
           retention-days: 7
 
