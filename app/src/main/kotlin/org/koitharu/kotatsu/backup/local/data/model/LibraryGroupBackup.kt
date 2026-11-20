@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTimelineItemEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTrackingEntity
 
 @Serializable
@@ -13,6 +14,19 @@ data class LibraryGroupMemberBackup(
 ) {
 	constructor(entity: LibraryGroupMemberEntity) : this(
 		mangaId = entity.mangaId,
+		position = entity.position,
+	)
+}
+
+@Serializable
+data class LibraryGroupTimelineBackup(
+	@SerialName("manga_id") val mangaId: Long,
+	@SerialName("chapter_id") val chapterId: Long,
+	@SerialName("position") val position: Int,
+) {
+	constructor(entity: LibraryGroupTimelineItemEntity) : this(
+		mangaId = entity.mangaId,
+		chapterId = entity.chapterId,
 		position = entity.position,
 	)
 }
@@ -60,6 +74,10 @@ data class LibraryGroupBackup(
 	@SerialName("created_at") val createdAt: Long,
 	@SerialName("members") val members: List<LibraryGroupMemberBackup>,
 	@SerialName("tracking") val tracking: List<LibraryGroupTrackingBackup> = emptyList(),
+	// Null denotes a legacy backup without portable ownership.
+	@SerialName("set_sync_key") val setSyncKey: String? = null,
+	// Null means a legacy backup without timeline; empty means explicitly empty.
+	@SerialName("timeline") val timeline: List<LibraryGroupTimelineBackup>? = null,
 ) {
 	constructor(
 		entity: LibraryGroupEntity,
@@ -68,6 +86,8 @@ data class LibraryGroupBackup(
 		coverFileExtension: String?,
 		categoryIds: Collection<Long> = emptyList(),
 		tracking: Collection<LibraryGroupTrackingEntity> = emptyList(),
+		setSyncKey: String? = null,
+		timeline: Collection<LibraryGroupTimelineItemEntity> = emptyList(),
 	) : this(
 		title = entity.title,
 		coverUrl = entity.coverUrl,
@@ -83,5 +103,7 @@ data class LibraryGroupBackup(
 		createdAt = entity.createdAt,
 		members = members.map(::LibraryGroupMemberBackup),
 		tracking = tracking.map(::LibraryGroupTrackingBackup),
+		setSyncKey = setSyncKey,
+		timeline = timeline.map(::LibraryGroupTimelineBackup),
 	)
 }

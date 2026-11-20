@@ -356,11 +356,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-# Branch-only negative reproduction: the three ownership tests are intentionally
-  # expected RED on current production, while the legacy compatibility control is GREEN.
-  # XML assertions distinguish real regression failures from harness/build failures.
+# Branch-only Group backup acceptance; normal PR gate remains unchanged.
+  # Exact XML assertion proves four passing instrumentation tests.
   group-backup-reproduction:
-    name: Targeted Group backup Set ownership negative reproduction on Android 15
+    name: Targeted Group backup Set ownership acceptance on Android 15
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
@@ -400,7 +399,6 @@ jobs:
 
       - name: Execute four fixed Group backup Android regression tests
         id: instrumentation
-        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -413,45 +411,37 @@ jobs:
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
             -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest
 
-      - name: Verify exact expected RED/GREEN XML evidence
+      - name: Verify four passing Group backup Android XML tests
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          tests = {
-              'normalGroupBackupPreservesSetOwnershipAcrossRemappedIds': 'Normal Group Set owner changed during restore',
-              'privateGroupBackupPreservesSetOwnershipWithOptIn': 'Private Group Set owner changed during restore',
-              'existingGroupOwnerCollisionFailsClosedWithoutMutation': 'Expected owner collision rejection and full rollback',
-              'legacyGroupBackupRestoresWithoutSetIdentity': None,
+
+          expected = {
+              'normalGroupBackupPreservesSetOwnershipAcrossRemappedIds',
+              'privateGroupBackupPreservesSetOwnershipWithOptIn',
+              'existingGroupOwnerCollisionFailsClosedWithoutMutation',
+              'legacyGroupBackupRestoresWithoutSetIdentity',
           }
           results = Path('app/build/outputs/androidTest-results/connected')
-          files = list(results.rglob('TEST-*.xml'))
-          assert files, 'No Android XML results: compile, harness or emulator failure (not valid regression evidence)'
-          cases = [node for file in files for node in ET.parse(file).getroot().iter('testcase')]
-          names = [c.attrib.get('name', '').split('[')[0] for c in cases]
-          assert len(names) == 4 and set(names) == set(tests), f'Unexpected tests: {names}'
+          files = sorted(results.rglob('TEST-*.xml'))
+          assert files, 'Missing Android XML evidence'
+          cases = [case for file in files for case in ET.parse(file).getroot().iter('testcase')]
+          names = [case.attrib.get('name', '').split('[')[0] for case in cases]
+          assert len(names) == 4 and set(names) == expected, f'Unexpected test coverage: {names}'
           for case in cases:
-              name = case.attrib['name'].split('[')[0]
               assert case.attrib.get('classname', '').endswith('.LibraryGroupSetBackupRegressionTest'), case.attrib
-              assert case.find('error') is None and case.find('skipped') is None, case.attrib
-              failure = case.find('failure')
-              expected = tests[name]
-              if expected is None:
-                  assert failure is None, f'Legacy compatibility control failed: {case.attrib}'
-                  print(f'PASS: {name}')
-              else:
-                  assert failure is not None, f'Unexpected GREEN (production behavior changed): {name}'
-                  detail = failure.attrib.get('message', '') + (failure.text or '')
-                  assert expected in detail, f'Unexpected failure type for {name}: {detail[:900]}'
-                  print(f'EXPECTED_REPRO_FAILURE: {name}: {expected}')
+              assert all(case.find(tag) is None for tag in ('failure', 'error', 'skipped')), case.attrib
+              print('PASS: ' + case.attrib['name'])
+          print('Verified exactly four Group backup acceptance tests: 4 PASS, 0 failures/errors/skips')
           PY
 
-      - name: Upload Group backup negative reproduction evidence
+      - name: Upload Group backup acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: group-backup-set-owner-negative-android15-evidence
+          name: group-backup-set-owner-acceptance-android15-evidence
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/

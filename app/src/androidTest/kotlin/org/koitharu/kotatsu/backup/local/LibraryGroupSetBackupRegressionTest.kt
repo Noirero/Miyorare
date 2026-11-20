@@ -28,9 +28,8 @@ import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 
 /**
- * Targeted negative reproductions against current production backup/restore.
- * The owner/collision tests are expected to be RED until a separate approved production fix.
- * No SQL guards are bypassed and no synthetic restore path is used for the round trips.
+ * Targeted acceptance regressions for portable Set ownership, timeline, collision
+ * rollback and legacy native backups. SQL guards remain active for every test.
  */
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
@@ -71,8 +70,14 @@ class LibraryGroupSetBackupRegressionTest {
             assertNotEquals("Fixture did not remap local Set ids", original.setId, restored.setId)
             assertEquals("Normal Group Set owner changed during restore", ownerKey, restoredSet.syncKey)
             assertEquals(memberIds, database.getLibraryGroupsDao().findMembers(restored.groupId).map { it.mangaId })
-            assertEquals(1, database.getLibraryGroupsDao().findTimeline(restored.groupId).size)
-            assertEquals(1, database.getLibraryGroupTrackingDao().findAll(restored.groupId).size)
+            assertEquals(
+                listOf(LibraryGroupTimelineItemEntity(restored.groupId, memberIds[0], 777L, 0)),
+                database.getLibraryGroupsDao().findTimeline(restored.groupId),
+            )
+            assertEquals(
+                "tracking",
+                database.getLibraryGroupTrackingDao().findAll(restored.groupId).single().targetTitle,
+            )
         } finally {
             file.delete()
         }
@@ -108,7 +113,10 @@ class LibraryGroupSetBackupRegressionTest {
             assertNotEquals("Fixture did not remap Private Set ids", original.setId, restored.setId)
             assertEquals("Private Group Set owner changed during restore", ownerKey, restoredSet.syncKey)
             assertEquals(memberIds, database.getLibraryGroupsDao().findMembers(restored.groupId).map { it.mangaId })
-            assertEquals(1, database.getLibraryGroupsDao().findTimeline(restored.groupId).size)
+            assertEquals(
+                listOf(LibraryGroupTimelineItemEntity(restored.groupId, memberIds[0], 777L, 0)),
+                database.getLibraryGroupsDao().findTimeline(restored.groupId),
+            )
         } finally {
             privateSecurity.includePrivateInBackup = false
             off.delete()
