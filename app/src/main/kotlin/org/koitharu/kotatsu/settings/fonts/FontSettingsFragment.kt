@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings.fonts
 
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.format.Formatter
 import android.view.LayoutInflater
@@ -64,9 +65,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.fonts.FontPack
 import org.koitharu.kotatsu.core.fonts.InstalledFontPack
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.googleSansRounded
@@ -74,7 +78,37 @@ import org.koitharu.kotatsu.settings.compose.googleSansRounded
 @AndroidEntryPoint
 class FontSettingsFragment : BaseComposeSettingsFragment(R.string.font_title) {
 
+	@Inject
+	lateinit var settings: AppSettings
+
+	@Inject
+	lateinit var activityRecreationHandle: ActivityRecreationHandle
+
 	private val viewModel: FontSettingsViewModel by viewModels()
+
+	/**
+	 * Switching the active pack only re-points the process-wide typeface
+	 * holder; Views that already exist keep the font they were created with.
+	 * Recreate through the same handle the Appearance settings use for
+	 * colour/design changes, so every screen is rebuilt with the new pack.
+	 * The preference only notifies on an actual value change, so re-selecting
+	 * the already active pack does not recreate anything.
+	 */
+	private val fontPackPrefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+		if (key == AppSettings.KEY_APP_FONT_PACK_ID) {
+			activityRecreationHandle.recreateAll()
+		}
+	}
+
+	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+		super.onViewCreated(view, savedInstanceState)
+		settings.subscribe(fontPackPrefListener)
+	}
+
+	override fun onDestroyView() {
+		settings.unsubscribe(fontPackPrefListener)
+		super.onDestroyView()
+	}
 
 	override fun onCreateView(
 		inflater: LayoutInflater,

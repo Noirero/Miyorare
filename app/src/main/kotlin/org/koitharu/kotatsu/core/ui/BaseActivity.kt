@@ -30,6 +30,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.viewbinding.ViewBinding
+import com.google.android.material.appbar.CollapsingToolbarLayout
 import dagger.hilt.android.EntryPointAccessors
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.fonts.AppFontContextWrapper
+import org.koitharu.kotatsu.core.fonts.AppFontHolder
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.util.ActionModeDelegate
 import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
@@ -219,6 +221,23 @@ abstract class BaseActivity<B : ViewBinding> :
 			it.applyTonalTopBarStyle()
 			takeOverToolbarBackHandling(it)
 		}
+		applyAppFontToCollapsingToolbar(binding.root)
+	}
+
+	/**
+	 * A [CollapsingToolbarLayout] draws its title and subtitle with its own text
+	 * helper instead of real TextViews, so the inflater wrapper never sees them
+	 * and they would keep the built-in font while the rest of the screen follows
+	 * the active Font Pack. Hand the layout the pack version of each state's
+	 * current typeface (weight and slant preserved). Without an active pack —
+	 * or on screens without a collapsing toolbar — nothing changes.
+	 */
+	private fun applyAppFontToCollapsingToolbar(root: View) {
+		val ctl = root.findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout) ?: return
+		AppFontHolder.styledLike(ctl.collapsedTitleTypeface)?.let { ctl.collapsedTitleTypeface = it }
+		AppFontHolder.styledLike(ctl.expandedTitleTypeface)?.let { ctl.expandedTitleTypeface = it }
+		AppFontHolder.styledLike(ctl.collapsedSubtitleTypeface)?.let { ctl.collapsedSubtitleTypeface = it }
+		AppFontHolder.styledLike(ctl.expandedSubtitleTypeface)?.let { ctl.expandedSubtitleTypeface = it }
 	}
 
 	/**
