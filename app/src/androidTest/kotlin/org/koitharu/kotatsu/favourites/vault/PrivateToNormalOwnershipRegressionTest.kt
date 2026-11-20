@@ -27,41 +27,154 @@ import java.io.File
 class PrivateToNormalOwnershipRegressionTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-    @Test fun moveToNormalWithAssignedCategoryFailsClosedAndPreservesData() = runBlocking {
-        val name = "private-normal-category-guard"
+    @Test fun moveToNormalPreservesCategoryAndGroupIdentities() = runBlocking {
+        val name = "private-normal-success"
         val db = create(name)
-        val securityDir = File(context.cacheDir, "private-normal-security-fixture")
-        securityDir.deleteRecursively()
         try {
-            seed(db, withNormalCollision = false)
-            val sql = db.openHelper.writableDatabase
+            val fixture = seed(db, withNormalCollision = false)
+            val sets = db.getFavouriteCategorySetsDao()
+            val oldPrivateSetId = sets.getSets(1).single().setId
+            val oldAssignment = checkNotNull(sets.getAssignment(56201L))
+            val oldCategory = db.getFavouriteCategoriesDao().find(56201)
+            val oldGroup = checkNotNull(db.getLibraryGroupsDao().findGroup(fixture.privateGroupId))
             val before = snapshot(db)
-            val securityContext = object : ContextWrapper(context) {
-                override fun getNoBackupFilesDir(): File = securityDir.apply { mkdirs() }
+            withUseCase(db, "success") { useCase, security ->
+                useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
+                assertEquals(PrivateFavouritesProtection.NONE, security.protection)
+                val movedGroup = checkNotNull(db.getLibraryGroupsDao().findGroup(fixture.privateGroupId))
+                val newAssignment = checkNotNull(sets.getAssignment(56201L))
+                val movedSet = checkNotNull(sets.findSet(movedGroup.setId))
+                assertEquals(0, movedGroup.space)
+                assertEquals(0, movedSet.space)
+                assertNotEquals(oldPrivateSetId, movedSet.setId)
+                assertNotEquals(sets.findSet(oldPrivateSetId)?.syncKey, movedSet.syncKey)
+                assertEquals(movedGroup.setId, newAssignment.setId)
+                assertEquals(oldAssignment.categorySyncKey, newAssignment.categorySyncKey)
+                assertTrue(newAssignment.updatedAt > oldAssignment.updatedAt)
+                assertEquals(oldCategory.copy(space = 0), db.getFavouriteCategoriesDao().find(56201))
+                assertEquals(oldGroup.copy(space = 0, setId = movedSet.setId), movedGroup)
+                val after = snapshot(db)
+                for (table in listOf(
+                    "library_group_members", "library_group_categories",
+                    "library_group_timeline", "library_group_tracking",
+                )) assertEquals("Changed child rows in $table", before[table], after[table])
+                assertEquals(before["private_favourites"], after["favourites"])
+                assertTrue(after["private_favourites"].orEmpty().isEmpty())
+                assertHealthy(db.openHelper.writableDatabase)
+
+                val setCount = sets.getSets(0).size
+                useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
+                assertEquals("Repeated conversion created more Normal Sets", setCount, sets.getSets(0).size)
+                assertEquals(after, snapshot(db))
             }
-            val security = PrivateFavouritesSecurityStore(securityContext)
-            val originalProtection = security.protection
-            lateinit var session: PrivateFavouritesSession
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                session = PrivateFavouritesSession(security)
-            }
+            db.close()
+            val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, name).build()
             try {
-                val useCase = DisablePrivateFavouritesUseCase(db, security, session)
-                expectSqlFailure("Category space is immutable") {
-                    useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
-                }
-                assertEquals("A failing move must not disable Private security", originalProtection, security.protection)
-                assertEquals("A failing move must roll back copied favourites and every child row", before, snapshot(db))
-                assertHealthy(sql)
+                assertEquals(0, reopened.getLibraryGroupsDao().findGroup(fixture.privateGroupId)?.space)
+                assertEquals(0, reopened.getFavouriteCategoriesDao().find(56201).space)
+                assertHealthy(reopened.openHelper.writableDatabase)
             } finally {
-                InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                    ProcessLifecycleOwner.get().lifecycle.removeObserver(session)
-                }
+                reopened.close()
+            }
+        } finally {
+            if (db.isOpen) db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test fun multiplePrivateSetsCloneSeparatelyIncludingEmptyAndDuplicateTitles() = runBlocking {
+        val name = "private-normal-multiple-sets"
+        val db = create(name)
+        try {
+            val fixture = seed(db, withNormalCollision = false)
+            val sets = db.getFavouriteCategorySetsDao()
+            val oldSets = sets.getSets(1)
+            val otherPrivateId = sets.insert(org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity(
+                syncKey = "private:second", title = "Shared", sortKey = 1,
+                createdAt = 200, updatedAt = 200, space = 1,
+            ))
+            sets.insert(org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity(
+                syncKey = "private:empty", title = "Empty", sortKey = 2,
+                createdAt = 201, updatedAt = 201, space = 1,
+            ))
+            sets.insert(org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity(
+                syncKey = "normal:shared", title = "Shared", sortKey = 1,
+                createdAt = 202, updatedAt = 202, space = 0,
+            ))
+            db.getFavouriteCategoriesDao().insert(FavouriteCategoryEntity(
+                56203, 203, 3, "Additional Private", "NEWEST", true, false, true, 0, 1,
+            ))
+            val otherOldAssignment = checkNotNull(sets.getAssignment(56203L))
+            sets.assign(otherOldAssignment.copy(setId = otherPrivateId, updatedAt = 204L))
+            val updatedOldAssignment = checkNotNull(sets.getAssignment(56203L))
+            val normalCount = sets.getSets(0).size
+            val privateCount = sets.getSets(1).size
+            assertEquals(3, privateCount)
+            withUseCase(db, "multiple") { useCase, _ ->
+                useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
+                val normalSets = sets.getSets(0)
+                assertEquals(normalCount + privateCount, normalSets.size)
+                assertEquals(normalSets.size, normalSets.map { it.title.trim().lowercase() }.toSet().size)
+                assertTrue(normalSets.any { it.title == "Shared" })
+                assertTrue(normalSets.any { it.title.startsWith("Shared (Private") })
+                assertTrue(normalSets.any { it.title == "Empty" })
+                val otherNewAssignment = checkNotNull(sets.getAssignment(56203L))
+                assertNotEquals(otherPrivateId, otherNewAssignment.setId)
+                assertEquals(updatedOldAssignment.categorySyncKey, otherNewAssignment.categorySyncKey)
+                assertEquals(0, sets.findSet(otherNewAssignment.setId)?.space)
+                val groupOwner = checkNotNull(db.getLibraryGroupsDao().findGroup(fixture.privateGroupId)).setId
+                assertNotEquals(groupOwner, otherNewAssignment.setId)
+                assertNotEquals(oldSets.single().setId, groupOwner)
+                assertHealthy(db.openHelper.writableDatabase)
             }
         } finally {
             db.close()
             context.deleteDatabase(name)
-            securityDir.deleteRecursively()
+        }
+    }
+
+    @Test fun moveToNormalGroupCollisionRollsBackAndKeepsSecurity() = runBlocking {
+        val name = "private-normal-usecase-collision"
+        val db = create(name)
+        try {
+            seed(db, withNormalCollision = true)
+            val before = snapshot(db)
+            withUseCase(db, "collision") { useCase, security ->
+                val protection = security.protection
+                expectSqlFailure("Private-to-Normal library group membership conflict") {
+                    useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
+                }
+                assertEquals(protection, security.protection)
+                assertEquals(before, snapshot(db))
+                assertHealthy(db.openHelper.writableDatabase)
+            }
+        } finally {
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test fun invalidPrivateCategoryAssignmentFailsWithoutMutation() = runBlocking {
+        val name = "private-normal-invalid-owner"
+        val db = create(name)
+        try {
+            seed(db, withNormalCollision = false)
+            db.openHelper.writableDatabase.execSQL(
+                "DELETE FROM favourite_category_set_assignments WHERE category_id = 56201",
+            )
+            val before = snapshot(db)
+            withUseCase(db, "invalid") { useCase, security ->
+                val protection = security.protection
+                expectSqlFailure("Private category has an invalid Set assignment") {
+                    useCase(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
+                }
+                assertEquals(protection, security.protection)
+                assertEquals(before, snapshot(db))
+                assertHealthy(db.openHelper.writableDatabase)
+            }
+        } finally {
+            db.close()
+            context.deleteDatabase(name)
         }
     }
 
@@ -106,6 +219,31 @@ class PrivateToNormalOwnershipRegressionTest {
         } finally {
             db.close()
             context.deleteDatabase(name)
+        }
+    }
+
+    private suspend fun withUseCase(
+        db: MangaDatabase,
+        name: String,
+        operation: suspend (DisablePrivateFavouritesUseCase, PrivateFavouritesSecurityStore) -> Unit,
+    ) {
+        val securityDir = File(context.cacheDir, "private-normal-security-$name")
+        securityDir.deleteRecursively()
+        val securityContext = object : ContextWrapper(context) {
+            override fun getNoBackupFilesDir(): File = securityDir.apply { mkdirs() }
+        }
+        val security = PrivateFavouritesSecurityStore(securityContext)
+        lateinit var session: PrivateFavouritesSession
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            session = PrivateFavouritesSession(security)
+        }
+        try {
+            operation(DisablePrivateFavouritesUseCase(db, security, session), security)
+        } finally {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                ProcessLifecycleOwner.get().lifecycle.removeObserver(session)
+            }
+            securityDir.deleteRecursively()
         }
     }
 
