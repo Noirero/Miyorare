@@ -16,16 +16,20 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.backup.local.data.LibraryGroupBackupCodec
 import org.koitharu.kotatsu.backup.local.data.LocalBackupRepository
+import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
 import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
 import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupTimelineBackup
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntity
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.groups.data.*
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.data.model.SyncContent
+import org.koitharu.kotatsu.sync.data.model.SyncFavourite
+import org.koitharu.kotatsu.sync.data.model.SyncHistory
 import org.koitharu.kotatsu.sync.data.model.SyncSnapshot
 import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
 import java.io.File
@@ -605,6 +609,126 @@ class LibraryGroupSetBackupRegressionTest {
             assertEquals(before.groupState, groupState(fixture.groupId))
             assertEquals(fixture.setId, database.getLibraryGroupsDao().findGroup(fixture.groupId)?.setId)
         }
+    }
+
+
+    /**
+     * Deterministic TTL boundary probe for the production pruning function.
+     * No wall-clock or CI runner scheduling assumptions are involved.
+     */
+    @Test fun tombstoneTtlBoundaryKeepsSetCategoryButExpiresFavouriteHistory() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "sync-ttl:boundary", "TTL identity")
+        val deletedAt = 1_000L
+        val owner = driveSync.localCategorySets()
+        val categories = driveSync.localCategories()
+        val manga = ttlMangaBackup()
+        val favourite = database.getFavouritesDao().findAllForSync()
+            .single { it.mangaId == memberIds[0] }
+        val history = HistoryEntity(
+            mangaId = memberIds[0], createdAt = 100L, updatedAt = 100L,
+            chapterId = 777L, page = 1, scroll = 0f, percent = 0.1f,
+            deletedAt = deletedAt, chaptersCount = 1,
+        )
+        val original = SyncSnapshot(
+            categorySets = owner.map { if (it.syncKey == "sync-ttl:boundary")
+                it.copy(deletedAt = deletedAt, updatedAt = deletedAt) else it },
+            categories = categories.map { if (it.categoryId.toLong() == fixture.categoryId)
+                it.copy(deletedAt = deletedAt, updatedAt = deletedAt) else it },
+            favourites = listOf(SyncFavourite(favourite.copy(deletedAt = deletedAt), manga)),
+            history = listOf(SyncHistory(history, manga)),
+        )
+        val ttl = GoogleDriveSyncRepository.TOMBSTONE_TTL_MS
+        val exactBoundary = pruneAtSyntheticTime(original, deletedAt + ttl)
+        assertEquals(1, exactBoundary.favourites.size)
+        assertEquals(1, exactBoundary.history.size)
+        val beyondTtl = pruneAtSyntheticTime(original, deletedAt + ttl + 1L)
+        assertTrue("Expired Favourite deletion should be pruned by current policy",
+            beyondTtl.favourites.isEmpty())
+        assertTrue("Expired History deletion should be pruned by current policy",
+            beyondTtl.history.isEmpty())
+        assertEquals("Durable Set identity tombstone must remain", original.categorySets,
+            beyondTtl.categorySets)
+        assertEquals("Durable Category identity tombstone must remain", original.categories,
+            beyondTtl.categories)
+    }
+
+    /**
+     * Diagnostic reproduction of the explicitly documented 60-day expiry trade-off.
+     * A stale device coming online after BOTH cloud pruning and local DAO GC can
+     * reintroduce an old live Favourite/History. This test records the behaviour,
+     * not approval of the data-retention policy or proof of two-device E2E sync.
+     */
+    @Test fun expiredFavouriteHistoryTombstonesPermitStaleOfflineResurrection() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "sync-ttl:replay", "TTL replay")
+        val manga = ttlMangaBackup()
+        val favouritesDao = database.getFavouritesDao()
+        val historyDao = database.getHistoryDao()
+        val liveFavourite = favouritesDao.findAllForSync().single { it.mangaId == memberIds[0] }
+        val liveHistory = HistoryEntity(
+            mangaId = memberIds[0], createdAt = 100L, updatedAt = 100L,
+            chapterId = 777L, page = 1, scroll = 0f, percent = 0.1f,
+            deletedAt = 0L, chaptersCount = 1,
+        )
+        historyDao.upsertForSync(liveHistory)
+        val staleOffline = SyncSnapshot(
+            categorySets = driveSync.localCategorySets(),
+            categories = driveSync.localCategories(),
+            favourites = listOf(SyncFavourite(liveFavourite, manga)),
+            history = listOf(SyncHistory(liveHistory, manga)),
+        )
+        val deletedAt = 1_000L
+        val tombstoneFavourite = liveFavourite.copy(deletedAt = deletedAt)
+        favouritesDao.upsert(tombstoneFavourite)
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE history SET deleted_at = ? WHERE manga_id = ?",
+            arrayOf(deletedAt, memberIds[0]),
+        )
+        val deletedHistory = historyDao.findAllForSync()
+            .single { it.mangaId == memberIds[0] }
+        assertEquals(deletedAt, deletedHistory.deletedAt)
+        val localDeleted = staleOffline.copy(
+            favourites = listOf(SyncFavourite(tombstoneFavourite, manga)),
+            history = listOf(SyncHistory(deletedHistory, manga)),
+        )
+        val ttl = GoogleDriveSyncRepository.TOMBSTONE_TTL_MS
+        val syntheticNow = deletedAt + ttl + 1L
+        val pruned = pruneAtSyntheticTime(localDeleted, syntheticNow)
+        assertTrue(pruned.favourites.isEmpty())
+        assertTrue(pruned.history.isEmpty())
+
+        // Invoke precisely the two DAO GC operations used in gcOldTombstones;
+        // unlike the production helper, the cutoff is supplied by this test.
+        syncSettings.isDeletionSyncDisabled = false
+        val cutoff = syntheticNow - ttl
+        favouritesDao.gc(cutoff)
+        historyDao.gc(cutoff)
+        assertFalse(favouritesDao.findAllForSync().any { it.mangaId == memberIds[0] })
+        assertFalse(historyDao.findAllForSync().any { it.mangaId == memberIds[0] })
+        val groupBefore = groupState(fixture.groupId)
+        repeat(2) {
+            driveSync.applyToDatabase(staleOffline, false,
+                setOf(SyncContent.FAVOURITES, SyncContent.HISTORY))
+            assertEquals("Documented stale Favourite resurrection after TTL", 0L,
+                favouritesDao.findAllForSync().single { it.mangaId == memberIds[0] }.deletedAt)
+            assertEquals("Documented stale History resurrection after TTL", 0L,
+                historyDao.findAllForSync().single { it.mangaId == memberIds[0] }.deletedAt)
+            assertEquals("Group children must survive stale replay",
+                groupBefore, groupState(fixture.groupId))
+        }
+    }
+
+    private fun ttlMangaBackup() = MangaBackup(
+        id = memberIds[0], title = "TTL fixture", url = "/backup-repro-${memberIds[0]}",
+        publicUrl = "https://fixture.invalid/backup-repro-${memberIds[0]}",
+        coverUrl = "", source = SampleData.mangaDetails.source.name,
+    )
+
+    private fun pruneAtSyntheticTime(snapshot: SyncSnapshot, now: Long): SyncSnapshot {
+        val method = driveSync.javaClass.getDeclaredMethod(
+            "pruneTombstones", SyncSnapshot::class.java, Long::class.javaPrimitiveType,
+        )
+        method.isAccessible = true
+        return method.invoke(driveSync, snapshot, now) as SyncSnapshot
     }
 
     private suspend fun deletedRemoteSet(ownerKey: String): SyncSnapshot {
