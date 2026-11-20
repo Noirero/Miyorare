@@ -404,7 +404,7 @@ jobs:
           mkdir -p app/build/group-backup-ci-diagnostics
           printf 'sha=%s\\nref=%s\\n' "$GITHUB_SHA" "$GITHUB_REF" > app/build/group-backup-ci-diagnostics/identity.txt
 
-      - name: Execute twelve Group backup Android regression tests
+      - name: Execute fourteen Group backup Android regression tests
         id: instrumentation
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -417,7 +417,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/run-group-backup-acceptance.sh
 
-      - name: Verify twelve passing Group backup Android XML tests
+      - name: Verify fourteen passing Group backup Android XML tests
         if: always()
         shell: bash
         env:
@@ -441,18 +441,20 @@ jobs:
               'duplicateGroupMembershipFailsClosedWithoutMutation',
               'overlappingGroupsAcrossSetsRejectAmbiguousRestoreWithoutMutation',
               'lateCategoryMappingFailureRollsBackEveryGroupChild',
+              'normalNativeGroupRestoreTwiceSurvivesDatabaseReopen',
+              'privateNativeGroupRestoreTwiceSurvivesDatabaseReopen',
           }
           results = Path('app/build/outputs/androidTest-results/connected')
           files = sorted(results.rglob('TEST-*.xml'))
           assert files, 'Missing Android XML evidence'
           cases = [case for file in files for case in ET.parse(file).getroot().iter('testcase')]
           names = [case.attrib.get('name', '').split('[')[0] for case in cases]
-          assert len(names) == 12 and set(names) == expected, f'Unexpected test coverage: {names}'
+          assert len(names) == 14 and set(names) == expected, f'Unexpected test coverage: {names}'
           for case in cases:
               assert case.attrib.get('classname', '').endswith('.LibraryGroupSetBackupRegressionTest'), case.attrib
               assert all(case.find(tag) is None for tag in ('failure', 'error', 'skipped')), case.attrib
               print('PASS: ' + case.attrib['name'])
-          print('Verified exactly twelve Group backup acceptance tests: 12 PASS, 0 failures/errors/skips')
+          print('Verified exactly fourteen Group backup acceptance tests: 14 PASS, 0 failures/errors/skips')
           assert os.environ.get('INSTRUMENTATION_OUTCOME') == 'success', (
               'Android emulator runner failed despite XML results; check diagnostic artifact'
           )

@@ -297,6 +297,125 @@ class LibraryGroupSetBackupRegressionTest {
         )
     }
 
+
+    @Test fun normalNativeGroupRestoreTwiceSurvivesDatabaseReopen() = runTest {
+        assertNativeIdempotency(FavouriteSpace.NORMAL)
+    }
+
+    @Test fun privateNativeGroupRestoreTwiceSurvivesDatabaseReopen() = runTest {
+        assertNativeIdempotency(FavouriteSpace.PRIVATE)
+    }
+
+    private suspend fun assertNativeIdempotency(space: FavouriteSpace) {
+        val ownerKey = "backup-idempotent:${space.name.lowercase()}"
+        val source = seedGroup(space, ownerKey, "Durable Group")
+        val file = backupFile("twice-${space.name.lowercase()}")
+        try {
+            privateSecurity.includePrivateInBackup = space == FavouriteSpace.PRIVATE
+            writeBackup(file)
+            resetFixtureDatabase()
+            database.ensureCategorySets(space)
+            insertSet(space, "$ownerKey:unrelated")
+            val sections = if (space == FavouriteSpace.NORMAL) {
+                setOf(BackupSection.CATEGORIES, BackupSection.FAVOURITES, BackupSection.LIBRARY_GROUPS)
+            } else {
+                emptySet()
+            }
+            val restorePrivate = space == FavouriteSpace.PRIVATE
+            val firstResult = restore(file, sections, restorePrivate)
+            assertTrue("First $space restore failed: ${firstResult.failures}", firstResult.isAllSuccess)
+            val first = persistenceSnapshot(database, space, ownerKey)
+            assertNotEquals("Fixture did not remap Set ids", source.setId, first.group.group?.setId)
+            assertEquals(memberIds, first.group.members.map { it.mangaId })
+            assertEquals(listOf(0, 1), first.group.members.map { it.position })
+            assertEquals(listOf(777L), first.group.timeline.map { it.chapterId })
+            assertEquals(listOf("tracking"), first.group.tracking.map { it.targetTitle })
+            assertEquals(1, first.group.categories.size)
+            assertEquals(1, first.groupCount)
+            assertEquals(listOf(1, 1), first.favouriteCounts)
+            val secondResult = restore(file, sections, restorePrivate)
+            assertTrue("Second $space restore failed: ${secondResult.failures}", secondResult.isAllSuccess)
+            assertEquals("Repeated $space restore changed or duplicated state",
+                first, persistenceSnapshot(database, space, ownerKey))
+
+            // A category-mapping error after metadata/member writes must roll back.
+            val original = codec.dump(space).toList().single()
+            val invalid = original.copy(
+                title = "MUST ROLL BACK", description = "MUST ROLL BACK",
+                members = original.members.reversed().mapIndexed { index, item ->
+                    item.copy(position = index)
+                },
+                timeline = emptyList(), tracking = emptyList(),
+            )
+            val rejected = codec.restore(sequenceOf(invalid), space, emptyMap())
+            assertFalse("Invalid $space restore accepted", rejected.isAllSuccess)
+            assertTrue("Unexpected rejection: ${rejected.failures}",
+                rejected.failures.any { it.message?.contains("unmapped category") == true })
+            assertEquals("Rollback lost Group state",
+                first, persistenceSnapshot(database, space, ownerKey))
+
+            // Independent file-backed Room handle: verify persisted SQLite rows,
+            // not only the Hilt-injected Room instance's in-memory state.
+            val firstHandle = org.koitharu.kotatsu.core.db.MangaDatabase(context)
+            try {
+                assertEquals("Fresh Room handle differs after $space restore",
+                    first, persistenceSnapshot(firstHandle, space, ownerKey))
+            } finally {
+                firstHandle.close()
+            }
+            val reopened = org.koitharu.kotatsu.core.db.MangaDatabase(context)
+            try {
+                assertEquals("Database close/reopen lost $space state",
+                    first, persistenceSnapshot(reopened, space, ownerKey))
+            } finally {
+                reopened.close()
+            }
+        } finally {
+            privateSecurity.includePrivateInBackup = false
+            file.delete()
+        }
+    }
+
+    private suspend fun persistenceSnapshot(
+        db: MangaDatabase, space: FavouriteSpace, ownerKey: String,
+    ): GroupPersistenceSnapshot {
+        val dao = db.getLibraryGroupsDao()
+        val groups = dao.findAllGroups(space.dbValue)
+        val group = groups.single()
+        val setsDao = db.getFavouriteCategorySetsDao()
+        val set = checkNotNull(setsDao.findSet(group.setId))
+        assertEquals("Wrong Set owner", ownerKey, set.syncKey)
+        assertEquals(space.dbValue, set.space)
+        assertEquals(0L, set.deletedAt)
+        val categories = db.getFavouriteCategoriesDao().findAllInSpace(space.dbValue)
+        val assignments = setsDao.getAssignments(space.dbValue)
+        val state = GroupState(
+            group, dao.findMembers(group.groupId), dao.findCategories(group.groupId),
+            dao.findTimeline(group.groupId), db.getLibraryGroupTrackingDao().findAll(group.groupId),
+        )
+        assertTrue("Group categories invalid", state.categories.all { entry ->
+            categories.any { it.categoryId.toLong() == entry.categoryId } &&
+                assignments.any { it.categoryId == entry.categoryId && it.setId == group.setId }
+        })
+        val counts = memberIds.map { memberId ->
+            if (space == FavouriteSpace.NORMAL) db.getFavouritesDao().findCategoriesCount(memberId)
+            else db.getPrivateFavouritesDao().findCategoriesCount(memberId)
+        }
+        return GroupPersistenceSnapshot(
+            state, groups.size, setsDao.getSets(space.dbValue).size,
+            categories.size, assignments.size, counts,
+        )
+    }
+
+    private data class GroupPersistenceSnapshot(
+        val group: GroupState,
+        val groupCount: Int,
+        val setCount: Int,
+        val categoryCount: Int,
+        val assignmentCount: Int,
+        val favouriteCounts: List<Int>,
+    )
+
     private suspend fun assertRejectedWithoutMutation(
         groupId: Long,
         backup: LibraryGroupBackup,
