@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.settings.search
 
 import android.annotation.SuppressLint
 import android.content.Context
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.fragment.app.Fragment
 import dagger.Reusable
@@ -82,11 +83,23 @@ class SettingsSearchHelper @Inject constructor(
                     breadcrumbs = breadcrumbs,
                     searchText = searchText,
                     fragmentClass = fragmentClass,
+                    sectionIconRes = sectionIconRes,
+                    sectionPaletteKey = sectionPaletteKey,
                 ),
             )
         }
 
-        fun section(@StringRes titleRes: Int, block: (List<String>) -> Unit) {
+        var sectionIconRes = 0
+        var sectionPaletteKey = ""
+
+        fun section(
+            @StringRes titleRes: Int,
+            @DrawableRes iconRes: Int,
+            paletteKey: String,
+            block: (List<String>) -> Unit,
+        ) {
+            sectionIconRes = iconRes
+            sectionPaletteKey = paletteKey
             block(listOf(ctx.getString(titleRes)))
         }
 
@@ -98,7 +111,7 @@ class SettingsSearchHelper @Inject constructor(
             block(sectionCrumbs + ctx.getString(groupTitleRes))
         }
 
-        section(R.string.settings_appearance_navigation) { sectionCrumbs ->
+        section(R.string.settings_appearance_navigation, R.drawable.ic_appearance, "appearance") { sectionCrumbs ->
             group(sectionCrumbs, R.string.miyorare_appearance_group) { crumbs ->
                 addItem(MiyorareAppearance.KEY_DESIGN_STYLE, R.string.miyorare_design_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(MiyorareAppearance.KEY_SETTINGS_ICON_STYLE, R.string.miyorare_settings_icon_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordText = MiyorareSettingsIconStyle.entries.map { ctx.getString(it.titleResId) } + ctx.getString(R.string.miyorare_settings_icon_custom))
@@ -172,7 +185,7 @@ class SettingsSearchHelper @Inject constructor(
             addItem("miyorare_reset_appearance", R.string.miyorare_reset_appearance, R.string.miyorare_reset_appearance_summary, sectionCrumbs, AppearanceSettingsFragment::class.java)
         }
 
-        section(R.string.reader_settings) { sectionCrumbs ->
+        section(R.string.reader_settings, R.drawable.ic_book_page, "reader") { sectionCrumbs ->
             group(sectionCrumbs, R.string.settings_group_reader_mode) { crumbs ->
                 addItem(AppSettings.KEY_READER_MODE, R.string.default_mode, breadcrumbs = crumbs, fragmentClass = ReaderSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.reader_modes))
                 addItem(AppSettings.KEY_READER_MODE_DETECT, R.string.detect_reader_mode, R.string.detect_reader_mode_summary, crumbs, ReaderSettingsFragment::class.java)
@@ -216,7 +229,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.settings_sources_extensions) { sectionCrumbs ->
+        section(R.string.settings_sources_extensions, R.drawable.ic_manga_source, "extensions") { sectionCrumbs ->
             group(sectionCrumbs, R.string.sources_section_library) { crumbs ->
                 addItem("miyorare_source_packs", R.string.miyorare_source_packs_manage, R.string.miyorare_source_packs_manage_summary, crumbs, ExtensionsSettingsFragment::class.java)
                 addItem("sources_catalog", R.string.manage_extensions, R.string.manage_extensions_summary, crumbs, ExtensionsSettingsFragment::class.java)
@@ -246,7 +259,7 @@ class SettingsSearchHelper @Inject constructor(
             addItem("kotatsu_parsers_manage_sources", R.string.kotatsu_parsers_manage_sources, R.string.kotatsu_parsers_manage_sources_summary, parserCrumbs, KotatsuParsersSettingsFragment::class.java)
         }
 
-        section(R.string.settings_chapter_updates) { sectionCrumbs ->
+        section(R.string.settings_chapter_updates, R.drawable.ic_feed, "tracker") { sectionCrumbs ->
             addItem(AppSettings.KEY_TRACKER_ENABLED, R.string.check_new_chapters_title, breadcrumbs = sectionCrumbs, fragmentClass = TrackerSettingsFragment::class.java)
             addItem(AppSettings.KEY_TRACKER_WIFI_ONLY, R.string.only_using_wifi, R.string.tracker_wifi_only_summary, sectionCrumbs, TrackerSettingsFragment::class.java)
             addItem(AppSettings.KEY_TRACKER_FREQUENCY, R.string.frequency_of_check, breadcrumbs = sectionCrumbs, fragmentClass = TrackerSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.tracker_frequency))
@@ -263,7 +276,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.settings_downloads_local_files) { sectionCrumbs ->
+        section(R.string.settings_downloads_local_files, R.drawable.ic_download, "downloads") { sectionCrumbs ->
             group(sectionCrumbs, R.string.settings_group_downloads) { crumbs ->
                 addItem(AppSettings.KEY_LOCAL_STORAGE, R.string.manga_save_location, breadcrumbs = crumbs, fragmentClass = DownloadsSettingsFragment::class.java)
                 addItem(AppSettings.KEY_DOWNLOADS_FORMAT, R.string.preferred_download_format, breadcrumbs = crumbs, fragmentClass = DownloadsSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.download_formats))
@@ -290,7 +303,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.google_drive_sync) { sectionCrumbs ->
+        section(R.string.google_drive_sync, R.drawable.ic_cloud_sync, "sync") { sectionCrumbs ->
             addItem("google_drive_sync_sign_in", R.string.sync_sign_in, R.string.sync_sign_in_summary, sectionCrumbs, SyncSettingsFragment::class.java)
             addItem("google_drive_sync_now", R.string.sync_now, breadcrumbs = sectionCrumbs, fragmentClass = SyncSettingsFragment::class.java)
             group(sectionCrumbs, R.string.options) { crumbs ->
@@ -303,7 +316,7 @@ class SettingsSearchHelper @Inject constructor(
             addItem("google_drive_sync_delete_data", R.string.sync_delete_data, R.string.sync_delete_data_summary, sectionCrumbs, SyncSettingsFragment::class.java)
         }
 
-        section(R.string.settings_storage_data) { sectionCrumbs ->
+        section(R.string.settings_storage_data, R.drawable.ic_usage, "storage") { sectionCrumbs ->
             group(sectionCrumbs, R.string.storage_usage) { crumbs ->
                 addItem("data_removal", R.string.data_removal, breadcrumbs = crumbs, fragmentClass = DataCleanupSettingsFragment::class.java)
                 val cleanupCrumbs = crumbs + ctx.getString(R.string.data_removal)
@@ -321,7 +334,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.settings_network) { sectionCrumbs ->
+        section(R.string.settings_network, R.drawable.ic_web, "storage") { sectionCrumbs ->
             group(sectionCrumbs, R.string.settings_group_network) { crumbs ->
                 addItem(AppSettings.KEY_PREFETCH_CONTENT, R.string.prefetch_content, breadcrumbs = crumbs, fragmentClass = NetworkSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.network_policy))
                 addItem("proxy", R.string.proxy, breadcrumbs = crumbs, fragmentClass = ProxySettingsFragment::class.java)
@@ -343,7 +356,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.backup_restore) { sectionCrumbs ->
+        section(R.string.backup_restore, R.drawable.ic_backup_restore, "backup") { sectionCrumbs ->
             group(sectionCrumbs, R.string.backup_restore) { crumbs ->
                 addItem("create_backup", R.string.create_backup, R.string.create_backup_summary, crumbs, BackupSettingsFragment::class.java)
                 addItem("restore_local_backup", R.string.restore_backup, R.string.restore_summary, crumbs, BackupSettingsFragment::class.java)
@@ -362,7 +375,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.settings_privacy_security) { sectionCrumbs ->
+        section(R.string.settings_privacy_security, R.drawable.ic_lock, "private") { sectionCrumbs ->
             group(sectionCrumbs, R.string.settings_app_security) { crumbs ->
                 addItem(AppSettings.KEY_PROTECT_APP, R.string.require_unlock, R.string.require_unlock_summary, crumbs, PrivacySecuritySettingsFragment::class.java)
                 addItem(AppSettings.KEY_PROTECT_APP_TIMEOUT, R.string.require_unlock_after, breadcrumbs = crumbs, fragmentClass = PrivacySecuritySettingsFragment::class.java)
@@ -373,7 +386,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.settings_insights_recommendations) { sectionCrumbs ->
+        section(R.string.settings_insights_recommendations, R.drawable.ic_suggestion, "services") { sectionCrumbs ->
             addItem("suggestions_screen", R.string.suggestions, breadcrumbs = sectionCrumbs, fragmentClass = SuggestionsSettingsFragment::class.java)
             val suggestionCrumbs = sectionCrumbs + ctx.getString(R.string.suggestions)
             addItem(AppSettings.KEY_SUGGESTIONS, R.string.suggestions_enable, breadcrumbs = suggestionCrumbs, fragmentClass = SuggestionsSettingsFragment::class.java)
@@ -390,7 +403,7 @@ class SettingsSearchHelper @Inject constructor(
             addItem(AppSettings.KEY_READING_TIME, R.string.reading_time_estimation, R.string.reading_time_estimation_summary, sectionCrumbs, InsightsSettingsFragment::class.java)
         }
 
-        section(R.string.settings_connected_services) { sectionCrumbs ->
+        section(R.string.settings_connected_services, R.drawable.ic_services, "services") { sectionCrumbs ->
             group(sectionCrumbs, R.string.settings_group_tracking_accounts) { crumbs ->
                 addItem(AppSettings.KEY_SCROBBLING_PROGRESS_SYNC, R.string.sync_progress_from_tracking, R.string.sync_progress_from_tracking_summary, crumbs, ConnectedServicesSettingsFragment::class.java)
                 addItem("anilist", ScrobblerService.ANILIST.titleResId, breadcrumbs = crumbs, fragmentClass = ConnectedServicesSettingsFragment::class.java)
@@ -408,7 +421,7 @@ class SettingsSearchHelper @Inject constructor(
             }
         }
 
-        section(R.string.about) { sectionCrumbs ->
+        section(R.string.about, R.drawable.ic_info_outline, "about") { sectionCrumbs ->
             group(sectionCrumbs, R.string.about_updates_section) { crumbs ->
                 addItem("app_version", R.string.check_for_updates, breadcrumbs = crumbs, fragmentClass = AboutSettingsFragment::class.java)
                 addItem("whats_new", R.string.whats_new_title, breadcrumbs = crumbs, fragmentClass = AboutSettingsFragment::class.java)
