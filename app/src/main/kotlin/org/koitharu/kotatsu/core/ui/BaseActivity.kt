@@ -234,10 +234,10 @@ abstract class BaseActivity<B : ViewBinding> :
 	 */
 	private fun applyAppFontToCollapsingToolbar(root: View) {
 		val ctl = root.findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout) ?: return
-		AppFontHolder.styledLike(ctl.collapsedTitleTypeface)?.let { ctl.collapsedTitleTypeface = it }
-		AppFontHolder.styledLike(ctl.expandedTitleTypeface)?.let { ctl.expandedTitleTypeface = it }
-		AppFontHolder.styledLike(ctl.collapsedSubtitleTypeface)?.let { ctl.collapsedSubtitleTypeface = it }
-		AppFontHolder.styledLike(ctl.expandedSubtitleTypeface)?.let { ctl.expandedSubtitleTypeface = it }
+		AppFontHolder.styledLike(ctl.collapsedTitleTypeface)?.let { ctl.setCollapsedTitleTypeface(it) }
+		AppFontHolder.styledLike(ctl.expandedTitleTypeface)?.let { ctl.setExpandedTitleTypeface(it) }
+		AppFontHolder.styledLike(ctl.collapsedSubtitleTypeface)?.let { ctl.setCollapsedSubtitleTypeface(it) }
+		AppFontHolder.styledLike(ctl.expandedSubtitleTypeface)?.let { ctl.setExpandedSubtitleTypeface(it) }
 	}
 
 	/**
