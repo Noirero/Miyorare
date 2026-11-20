@@ -190,7 +190,7 @@ jobs:
         shell: bash
         run: sudo chmod 666 /dev/kvm
 
-      - name: Run only LibraryGroupSetMigrationTest on Android 15
+      - name: Run fixed Room migration and Private-to-Normal tests on Android 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -220,12 +220,15 @@ jobs:
               'upgradePreservesGroupChildrenAndResolvesOwners',
               'failedBackfillRollsBackSchemaAndPreservesRows',
               'upgradedAndFreshDatabasesHaveIdenticalGroupTriggers',
-              'moveToNormalWithAssignedCategoryFailsClosedAndPreservesData',
+              'moveToNormalPreservesCategoryAndGroupIdentities',
+              'multiplePrivateSetsCloneSeparatelyIncludingEmptyAndDuplicateTitles',
+              'moveToNormalGroupCollisionRollsBackAndKeepsSecurity',
+              'invalidPrivateCategoryAssignmentFailsWithoutMutation',
               'groupSpaceChangeWithoutOwnerReassignmentIsRejectedAndRolledBack',
               'destinationSetCollisionFailsClosedWithoutDroppingGroupChildren',
           }
           names = [case.attrib.get('name', '').split('[')[0] for case in cases]
-          assert len(names) == 6 and set(names) == expected, f'Unexpected executed tests: {names}'
+          assert len(names) == 9 and set(names) == expected, f'Unexpected executed tests: {names}'
           allowed_classes = (
               '.LibraryGroupSetMigrationTest',
               '.PrivateToNormalOwnershipRegressionTest',
@@ -233,7 +236,7 @@ jobs:
           for case in cases:
               assert case.attrib.get('classname', '').endswith(allowed_classes), case.attrib
               assert not any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped')), case.attrib
-          print('Verified exactly six targeted Room/Private-to-Normal tests with no failures or skips')
+          print('Verified exactly nine targeted Room/Private-to-Normal tests with no failures or skips')
           PY
 
       - name: Upload targeted Room migration evidence
