@@ -93,6 +93,9 @@ class LibraryGroupBackupCodec @Inject constructor(
 				owner.setId
 			}
 			val timeline = backup.timeline?.also { entries ->
+				require(entries.all { it.position >= 0 }) {
+					"Library group timeline position cannot be negative"
+				}
 				val unique = HashSet<Pair<Long, Long>>()
 				require(entries.all { it.mangaId in memberIds && unique.add(it.mangaId to it.chapterId) }) {
 					"Library group timeline references an unknown member or duplicate chapter"
