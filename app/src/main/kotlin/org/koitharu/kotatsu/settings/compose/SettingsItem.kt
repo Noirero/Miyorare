@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
@@ -150,6 +152,7 @@ fun SettingsItem(
 						palette = visualPalette,
 						enabled = enabled,
 						tintIcon = tintIcon,
+						colors = iconColors,
 					)
 					iconColors != null -> SettingsIconBubble(
 						iconRes = icon,
@@ -295,9 +298,42 @@ internal fun SettingsIconModern(
 	tintIcon: Boolean,
 	tintOverride: Color? = null,
 	applyImageAlpha: Boolean = true,
+	colors: CategoryIconColors? = null,
 ) {
 	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
+	if (colors != null) {
+		// Category treatment: the bubble takes the section's own category
+		// colors and the glyph is drawn in the paired on-container color at
+		// full strength, instead of bubble and glyph both coming from the
+		// theme palette (which reads flat). Rows without category colors
+		// keep the theme treatment below.
+		Box(
+			modifier = Modifier
+				.size(40.dp)
+				.clip(shape)
+				.background(
+					Brush.linearGradient(
+						listOf(
+							colors.container.copy(alpha = alpha),
+							colors.container.copy(alpha = alpha * 0.8f),
+						),
+					),
+				)
+				.border(1.dp, colors.onContainer.copy(alpha = 0.10f * alpha), shape),
+			contentAlignment = Alignment.Center,
+		) {
+			PackAwareSettingsIcon(
+				iconRes = iconRes,
+				modifier = Modifier.size(21.dp),
+				colorFilter = if (tintIcon) {
+					ColorFilter.tint(colors.onContainer.copy(alpha = alpha))
+				} else null,
+				alpha = if (applyImageAlpha) alpha else 1f,
+			)
+		}
+		return
+	}
 	val iconSurfacePalette = palette.forSettingsIconSurface(MaterialTheme.colorScheme)
 	Box(
 		modifier = Modifier
