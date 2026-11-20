@@ -71,7 +71,8 @@ concurrency:
 jobs:
   regression:
     if: >-
-      github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
+      (github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120') &&
+      (github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/')))
     name: Verify chapter cache survives process-style reopen
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -136,6 +137,103 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chapter-persistence-regression
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Diagnostic-only lane: reuses a workflow already registered on the default branch.
+  # It never changes the normal pull_request regression gate.
+  room-55-to-56:
+    name: Targeted Room 55-to-56 migration on Android 15
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout immutable dispatch commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact tested SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF" = 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
+          echo "Room migration diagnostics at $GITHUB_SHA"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Run only LibraryGroupSetMigrationTest on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >-
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.LibraryGroupSetMigrationTest
+
+      - name: Verify targeted test evidence
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          directory = Path('app/build/outputs/androidTest-results/connected')
+          reports = sorted(directory.rglob('TEST-*.xml')) if directory.exists() else []
+          assert reports, 'No Android instrumentation TEST-*.xml evidence found'
+          cases = []
+          for report in reports:
+              cases.extend(ET.parse(report).getroot().iter('testcase'))
+          expected = {
+              'upgradePreservesGroupChildrenAndResolvesOwners',
+              'failedBackfillRollsBackSchemaAndPreservesRows',
+              'upgradedAndFreshDatabasesHaveIdenticalGroupTriggers',
+          }
+          names = [case.attrib.get('name', '').split('[')[0] for case in cases]
+          assert len(names) == 3 and set(names) == expected, f'Unexpected executed tests: {names}'
+          for case in cases:
+              assert case.attrib.get('classname', '').endswith('.LibraryGroupSetMigrationTest'), case.attrib
+              assert not any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped')), case.attrib
+          print('Verified exactly three LibraryGroupSetMigrationTest cases with no failures or skips')
+          PY
+
+      - name: Upload targeted Room migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-55-to-56-android15-evidence
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
