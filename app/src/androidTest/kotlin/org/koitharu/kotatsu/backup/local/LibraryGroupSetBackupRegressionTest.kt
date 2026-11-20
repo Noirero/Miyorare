@@ -23,6 +23,9 @@ import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.groups.data.*
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
+import org.koitharu.kotatsu.sync.data.model.SyncContent
+import org.koitharu.kotatsu.sync.data.model.SyncSnapshot
+import org.koitharu.kotatsu.sync.domain.GoogleDriveSyncRepository
 import java.io.File
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -41,6 +44,7 @@ class LibraryGroupSetBackupRegressionTest {
     @Inject lateinit var repository: LocalBackupRepository
     @Inject lateinit var codec: LibraryGroupBackupCodec
     @Inject lateinit var privateSecurity: PrivateFavouritesSecurityStore
+    @Inject lateinit var driveSync: GoogleDriveSyncRepository
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val memberIds = listOf(831001L, 831002L)
@@ -414,6 +418,107 @@ class LibraryGroupSetBackupRegressionTest {
         val categoryCount: Int,
         val assignmentCount: Int,
         val favouriteCounts: List<Int>,
+    )
+
+
+    @Test fun remoteSetTombstoneWithOwnedGroupFailsClosedAcrossRetries() = runTest {
+        val ownerKey = "sync-tombstone:owned"
+        val fixture = seedGroup(FavouriteSpace.NORMAL, ownerKey, "Still locally owned")
+        val remote = deletedRemoteSet(ownerKey)
+        val baseline = syncOwnerSnapshot(fixture.groupId)
+
+        // A remote Set tombstone must not partially move categories or delete
+        // the Set when a local Group still owns it. Repeated apply is a retry.
+        assertTombstoneRejected(remote, fixture.groupId, baseline)
+        assertTombstoneRejected(remote, fixture.groupId, baseline)
+        assertEquals("Unresolved owner conflict must not be silently discarded",
+            fixture.setId, database.getLibraryGroupsDao().findGroup(fixture.groupId)?.setId)
+    }
+
+    @Test fun remoteSetTombstoneConvergesAfterExplicitGroupRehome() = runTest {
+        val ownerKey = "sync-tombstone:resolve"
+        val fixture = seedGroup(FavouriteSpace.NORMAL, ownerKey, "Group to preserve")
+        val remote = deletedRemoteSet(ownerKey)
+        val before = syncOwnerSnapshot(fixture.groupId)
+        assertTombstoneRejected(remote, fixture.groupId, before)
+
+        val destination = database.getFavouriteCategorySetsDao().getSets(0)
+            .single { it.setId != fixture.setId }
+        val children = groupState(fixture.groupId)
+        // Explicit user-equivalent resolution, not an automatic production policy.
+        // Existing SQL owner/membership triggers remain enabled.
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE library_groups SET set_id = ? WHERE group_id = ?",
+            arrayOf(destination.setId, fixture.groupId),
+        )
+        driveSync.applyToDatabase(remote, false, setOf(SyncContent.FAVOURITES))
+
+        val owner = checkNotNull(database.getFavouriteCategorySetsDao().findSet(fixture.setId))
+        assertTrue("Remote deleted Set was not tombstoned", owner.deletedAt > 0)
+        assertEquals(destination.setId, database.getLibraryGroupsDao().findGroup(fixture.groupId)?.setId)
+        assertEquals(destination.setId,
+            database.getFavouriteCategorySetsDao().getAssignment(fixture.categoryId)?.setId)
+        val after = groupState(fixture.groupId)
+        assertEquals(children.members, after.members)
+        assertEquals(children.categories, after.categories)
+        assertEquals(children.timeline, after.timeline)
+        assertEquals(children.tracking, after.tracking)
+        assertEquals(before.favourites, database.getFavouritesDao().findAllForSync())
+        assertEquals(1, database.getLibraryGroupsDao().findAllGroups(0).size)
+        // Applying the same cloud snapshot again must be idempotent.
+        val converged = syncOwnerSnapshot(fixture.groupId)
+        driveSync.applyToDatabase(remote, false, setOf(SyncContent.FAVOURITES))
+        assertEquals("Converged retry must not mutate Group/Set/Category/Favourite rows",
+            converged, syncOwnerSnapshot(fixture.groupId))
+    }
+
+    private suspend fun deletedRemoteSet(ownerKey: String): SyncSnapshot {
+        val sets = driveSync.localCategorySets()
+        assertEquals(1, sets.count { it.syncKey == ownerKey })
+        return SyncSnapshot(
+            categorySets = sets.map { set ->
+                if (set.syncKey == ownerKey) set.copy(updatedAt = 500L, deletedAt = 500L)
+                else set
+            },
+            categories = driveSync.localCategories(),
+        )
+    }
+
+    private suspend fun assertTombstoneRejected(
+        remote: SyncSnapshot, groupId: Long, baseline: SyncOwnerSnapshot,
+    ) {
+        val failure = try {
+            driveSync.applyToDatabase(remote, false, setOf(SyncContent.FAVOURITES))
+            null
+        } catch (error: Exception) {
+            error
+        }
+        assertNotNull("Expected SQL owner trigger to reject remote Set tombstone", failure)
+        val messages = generateSequence(failure) { it.cause }
+            .mapNotNull { it.message }.joinToString(" | ")
+        assertTrue("Expected Set ownership trigger, actual: $messages",
+            messages.contains("Set still owns library groups"))
+        assertEquals("Failed sync must roll back every Group/Set/Category/Favourite change",
+            baseline, syncOwnerSnapshot(groupId))
+    }
+
+    private suspend fun syncOwnerSnapshot(groupId: Long): SyncOwnerSnapshot =
+        SyncOwnerSnapshot(
+            database.getFavouriteCategorySetsDao().getSetsForSync(0),
+            database.getFavouriteCategoriesDao().findAllForSync(),
+            database.getFavouriteCategorySetsDao().getAssignments(0),
+            database.getFavouritesDao().findAllForSync(),
+            database.getLibraryGroupsDao().findAllGroups(0),
+            groupState(groupId),
+        )
+
+    private data class SyncOwnerSnapshot(
+        val sets: List<FavouriteCategorySetEntity>,
+        val categories: List<FavouriteCategoryEntity>,
+        val assignments: List<FavouriteCategorySetAssignmentEntity>,
+        val favourites: List<FavouriteEntity>,
+        val groups: List<LibraryGroupEntity>,
+        val groupState: GroupState,
     )
 
     private suspend fun assertRejectedWithoutMutation(
