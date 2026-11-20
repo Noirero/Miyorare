@@ -11,6 +11,7 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.list.ui.model.ListModel
 import java.text.Normalizer
 import javax.inject.Inject
 
@@ -30,7 +31,7 @@ class SettingsSearchViewModel @Inject constructor(
 		} else {
 			val normalizedQuery = q.normalizeSearchText()
 			if (normalizedQuery.isBlank()) {
-				allSettings
+				buildBrowseList()
 			} else {
 				val tokens = normalizedQuery.split(' ').filter { it.isNotBlank() }
 				allSettings.asSequence()
@@ -73,6 +74,36 @@ class SettingsSearchViewModel @Inject constructor(
 	fun navigateToPreference(item: SettingsItem) {
 		discardSearch()
 		onNavigateToPreference.call(item)
+	}
+
+	private fun buildBrowseList(): List<ListModel> {
+		val result = ArrayList<ListModel>()
+		var currentTitle: String? = null
+		var currentItems = ArrayList<SettingsItem>()
+		fun flushSection() {
+			if (currentItems.isNotEmpty()) {
+				val first = currentItems.first()
+				result.add(
+					SettingsSectionCard(
+						title = currentTitle.orEmpty(),
+						iconRes = first.sectionIconRes,
+						paletteKey = first.sectionPaletteKey,
+						items = currentItems.toList(),
+					),
+				)
+			}
+		}
+		for (item in allSettings) {
+			val section = item.breadcrumbs.firstOrNull().orEmpty()
+			if (section != currentTitle) {
+				flushSection()
+				currentTitle = section
+				currentItems = ArrayList()
+			}
+			currentItems.add(item)
+		}
+		flushSection()
+		return result
 	}
 
 	private fun SettingsItem.matchScore(query: String, tokens: List<String>): Int? {
