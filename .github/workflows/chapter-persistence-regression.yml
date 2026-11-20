@@ -317,28 +317,30 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/run-authentic-v55-compatibility.sh
 
-      - name: Verify both historical and upgrade XML evidence
+      - name: Verify historical instrumentation and upgrade XML evidence
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          suites = (
-              ('historical-v55/app/build/outputs/androidTest-results/connected',
-               'createAuthenticRoomV55DatabaseWithGroups', 'HistoricalV55SeedTest'),
-              ('app/build/outputs/androidTest-results/connected',
-               'historicalRoomV55DatabaseUpgradesWithoutLosingGroupChildren', 'HistoricalV55CompatibilityTest'),
-          )
-          for directory, expected, suite in suites:
-              files = list(Path(directory).rglob('TEST-*.xml'))
-              assert files, f'Missing XML evidence: {directory}'
-              cases = [case for f in files for case in ET.parse(f).getroot().iter('testcase')]
-              assert len(cases) == 1, (directory, [c.attrib for c in cases])
-              case = cases[0]
-              assert case.attrib.get('name', '').split('[')[0] == expected, case.attrib
-              assert case.attrib.get('classname', '').endswith('.' + suite), case.attrib
-              assert all(case.find(tag) is None for tag in ('failure', 'error', 'skipped')), case.attrib
-              print(f'PASS: {suite}.{expected}')
+          historical_log = Path('app/build/historical-v55-evidence/v55-seed-instrumentation.log')
+          assert historical_log.is_file(), 'Missing historical instrumentation evidence'
+          output = historical_log.read_text()
+          assert 'INSTRUMENTATION_STATUS: test=createAuthenticRoomV55DatabaseWithGroups' in output
+          assert 'INSTRUMENTATION_STATUS_CODE: 0' in output
+          assert 'OK (1 test)' in output and 'INSTRUMENTATION_CODE: -1' in output
+          assert 'FAILURES!!!' not in output and 'Error in' not in output
+          print('PASS: HistoricalV55SeedTest.createAuthenticRoomV55DatabaseWithGroups')
+          directory = Path('app/build/outputs/androidTest-results/connected')
+          files = list(directory.rglob('TEST-*.xml'))
+          assert files, f'Missing upgrade XML evidence: {directory}'
+          cases = [case for f in files for case in ET.parse(f).getroot().iter('testcase')]
+          assert len(cases) == 1, [c.attrib for c in cases]
+          case = cases[0]
+          assert case.attrib.get('name', '').split('[')[0] == 'historicalRoomV55DatabaseUpgradesWithoutLosingGroupChildren', case.attrib
+          assert case.attrib.get('classname', '').endswith('.HistoricalV55CompatibilityTest'), case.attrib
+          assert all(case.find(tag) is None for tag in ('failure', 'error', 'skipped')), case.attrib
+          print('PASS: HistoricalV55CompatibilityTest.historicalRoomV55DatabaseUpgradesWithoutLosingGroupChildren')
           PY
 
       - name: Upload historical v55 schema, database and instrumentation evidence
