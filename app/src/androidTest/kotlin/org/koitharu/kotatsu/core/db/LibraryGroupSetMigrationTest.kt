@@ -30,10 +30,11 @@ class LibraryGroupSetMigrationTest {
         try {
             val first = create(name)
             val ids = try {
-                seed(first).also { downgradeTo55(first) }
+                seed(first)
             } finally {
                 first.close()
             }
+            downgradeTo55(name)
             val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name)
                 .addMigrations(Migration55To56()).build()
             try {
@@ -70,10 +71,11 @@ class LibraryGroupSetMigrationTest {
         try {
             val initial = create(name)
             val ids = try {
-                seed(initial).also { downgradeTo55(initial) }
+                seed(initial)
             } finally {
                 initial.close()
             }
+            downgradeTo55(name)
             // v55 allows this otherwise-invalid space; no active Set can own it.
             val raw = SQLiteDatabase.openDatabase(
                 context.getDatabasePath(name).absolutePath, null, SQLiteDatabase.OPEN_READWRITE,
@@ -122,10 +124,10 @@ class LibraryGroupSetMigrationTest {
             val first = create(upgradedName)
             try {
                 seed(first)
-                downgradeTo55(first)
             } finally {
                 first.close()
             }
+            downgradeTo55(upgradedName)
             val upgraded = Room.databaseBuilder(context, MangaDatabase::class.java, upgradedName)
                 .addMigrations(Migration55To56()).build()
             val fresh = create(freshName)
@@ -206,14 +208,68 @@ class LibraryGroupSetMigrationTest {
         return Seed(defaultSetId, scopedSetId, scopedGroupId, unplacedGroupId)
     }
 
-    /** Recreate the v55 table shape without altering the member/timeline/tracking child tables. */
-    private fun downgradeTo55(db: MangaDatabase) {
-        val sql = db.openHelper.writableDatabase
-        for (name in sqlTriggers(sql).keys) sql.execSQL("DROP TRIGGER IF EXISTS \"$name\"")
-        sql.execSQL("DROP INDEX IF EXISTS index_library_groups_space_set_id")
-        sql.execSQL("ALTER TABLE library_groups DROP COLUMN set_id")
-        sql.execSQL("DROP TABLE room_master_table")
-        sql.version = 55
+    /**
+     * Rebuild only the Group parent in an isolated test database using its v55 declaration.
+     * SQLite on minSdk 26 does not support ALTER TABLE DROP COLUMN.
+     *
+     * This is a v55-shaped fixture, NOT an authentic exported v55 Room schema. A genuine
+     * v55 database/JSON export is still required for the historical schema acceptance gate.
+     */
+    private fun downgradeTo55(name: String) {
+        val raw = SQLiteDatabase.openDatabase(
+            context.getDatabasePath(name).absolutePath, null, SQLiteDatabase.OPEN_READWRITE,
+        )
+        try {
+            // Changing FK enforcement inside an active transaction is a no-op.
+            raw.setForeignKeyConstraintsEnabled(false)
+            raw.beginTransaction()
+            try {
+                raw.rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'library_group_%'",
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        raw.execSQL("DROP TRIGGER IF EXISTS \\"${cursor.getString(0)}\\"")
+                    }
+                }
+                raw.execSQL("""
+                    CREATE TABLE library_groups_v55 (
+                        group_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        cover_url TEXT,
+                        created_at INTEGER NOT NULL,
+                        space INTEGER NOT NULL DEFAULT 0,
+                        alternative_title TEXT,
+                        author TEXT,
+                        artist TEXT,
+                        description TEXT,
+                        metadata_source INTEGER,
+                        metadata_target_id INTEGER
+                    )
+                """.trimIndent())
+                raw.execSQL("""
+                    INSERT INTO library_groups_v55 (
+                        group_id,title,cover_url,created_at,space,alternative_title,author,
+                        artist,description,metadata_source,metadata_target_id
+                    ) SELECT group_id,title,cover_url,created_at,space,alternative_title,author,
+                        artist,description,metadata_source,metadata_target_id FROM library_groups
+                """.trimIndent())
+                raw.execSQL("DROP TABLE library_groups")
+                raw.execSQL("ALTER TABLE library_groups_v55 RENAME TO library_groups")
+                raw.execSQL("CREATE INDEX index_library_groups_space ON library_groups(space)")
+                raw.execSQL("DROP TABLE room_master_table")
+                raw.version = 55
+                raw.setTransactionSuccessful()
+            } finally {
+                raw.endTransaction()
+            }
+            raw.setForeignKeyConstraintsEnabled(true)
+            raw.rawQuery("PRAGMA foreign_key_check", null).use { cursor ->
+                assertFalse("Fixture rebuild broke existing group relationships", cursor.moveToFirst())
+            }
+        } finally {
+            raw.close()
+        }
     }
 
     private fun sqlTriggers(db: androidx.sqlite.db.SupportSQLiteDatabase): Map<String, String> {
