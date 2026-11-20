@@ -25,6 +25,8 @@ import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.groups.data.*
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.data.model.SyncContent
@@ -71,6 +73,102 @@ class LibraryGroupSetBackupRegressionTest {
 
     @After fun tearDown() {
         syncSettings.isDeletionSyncDisabled = previousDeletionSyncDisabled
+    }
+
+
+    /** Exercise the real local repository lifecycle with v56 ownership guards enabled. */
+    @Test fun localGroupCrudReorderAndDeleteCascadesWithoutLosingFavourites() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "local-crud:owner", "Local Group")
+        val groups = LibraryGroupsRepository(database)
+        val dao = database.getLibraryGroupsDao()
+        val favouritesBefore = database.getFavouritesDao().findAllForSync()
+        val setsBefore = database.getFavouriteCategorySetsDao().getSetsForSync(0)
+
+        groups.updateGroup(fixture.groupId, "  Edited Group  ", null, FavouriteSpace.NORMAL)
+        groups.reorder(fixture.groupId, memberIds.reversed(), FavouriteSpace.NORMAL)
+        groups.replaceCategories(fixture.groupId, listOf(fixture.categoryId), FavouriteSpace.NORMAL)
+        groups.replaceTimeline(
+            fixture.groupId,
+            listOf(LibraryGroupTimelineItem(memberIds[1], 888L, 0)),
+            FavouriteSpace.NORMAL,
+        )
+        val edited = groupState(fixture.groupId)
+        assertEquals("Edited Group", edited.group?.title)
+        assertEquals(fixture.setId, edited.group?.setId)
+        assertEquals(memberIds.reversed(), edited.members.map { it.mangaId })
+        assertEquals(listOf(fixture.categoryId), edited.categories.map { it.categoryId })
+        assertEquals(listOf(888L), edited.timeline.map { it.chapterId })
+
+        groups.deleteGroup(fixture.groupId, FavouriteSpace.NORMAL)
+        val deleted = groupState(fixture.groupId)
+        assertNull(deleted.group)
+        assertTrue(deleted.members.isEmpty())
+        assertTrue(deleted.categories.isEmpty())
+        assertTrue(deleted.timeline.isEmpty())
+        assertTrue(deleted.tracking.isEmpty())
+        assertEquals(favouritesBefore, database.getFavouritesDao().findAllForSync())
+        assertEquals(setsBefore, database.getFavouriteCategorySetsDao().getSetsForSync(0))
+
+        val recreatedId = groups.createGroup(
+            "  Recreated  ", memberIds, categoryIds = listOf(fixture.categoryId),
+            space = FavouriteSpace.NORMAL,
+        )
+        val recreated = checkNotNull(dao.findGroup(recreatedId))
+        assertEquals("Recreated", recreated.title)
+        assertEquals(FavouriteSpace.NORMAL.dbValue, recreated.space)
+        assertEquals(0L, checkNotNull(database.getFavouriteCategorySetsDao().findSet(recreated.setId)).deletedAt)
+        assertEquals(memberIds, dao.findMembers(recreatedId).map { it.mangaId })
+        groups.removeMember(recreatedId, memberIds.first(), FavouriteSpace.NORMAL)
+        assertNull("A one-member Group must dissolve", dao.findGroup(recreatedId))
+        assertEquals(favouritesBefore, database.getFavouritesDao().findAllForSync())
+    }
+
+    /** Reject unapproved member moves atomically; allow explicit move and dissolve source. */
+    @Test fun localGroupMemberMoveRejectsThenDissolvesSourceWithoutOwnerDrift() = runTest {
+        val fixture = seedGroup(FavouriteSpace.NORMAL, "local-move:owner", "Move source")
+        val dao = database.getLibraryGroupsDao()
+        val newMemberIds = listOf(831003L, 831004L)
+        newMemberIds.forEachIndexed { index, id ->
+            val manga = SampleData.mangaDetails.copy(
+                id = id, url = "/backup-repro-$id",
+                publicUrl = "https://fixture.invalid/backup-repro-$id",
+            ).toEntity()
+            database.getMangaDao().upsert(manga, emptyList())
+            database.getFavouritesDao().upsert(FavouriteEntity(
+                mangaId = id, categoryId = fixture.categoryId, sortKey = index + 2,
+                isPinned = false, createdAt = 100L, deletedAt = 0L,
+            ))
+        }
+        val targetId = dao.insertGroup(LibraryGroupEntity(
+            title = "Move target", coverUrl = null, createdAt = 102L,
+            space = FavouriteSpace.NORMAL.dbValue, setId = fixture.setId,
+        ))
+        dao.insertMembers(newMemberIds.mapIndexed { index, id ->
+            LibraryGroupMemberEntity(targetId, id, index)
+        })
+        val groups = LibraryGroupsRepository(database)
+        val beforeSource = groupState(fixture.groupId)
+        val beforeTarget = groupState(targetId)
+        val favouritesBefore = database.getFavouritesDao().findAllForSync()
+        var rejected = false
+        try {
+            groups.addMembers(targetId, listOf(memberIds[0]), false, FavouriteSpace.NORMAL)
+        } catch (_: IllegalArgumentException) {
+            rejected = true
+        }
+        assertTrue("Moving an already-grouped member requires explicit consent", rejected)
+        assertEquals(beforeSource, groupState(fixture.groupId))
+        assertEquals(beforeTarget, groupState(targetId))
+
+        val moved = groups.addMembers(targetId, listOf(memberIds[0]), true, FavouriteSpace.NORMAL)
+        assertEquals(1, moved.addedCount)
+        assertEquals(1, moved.movedCount)
+        assertEquals(1, moved.dissolvedGroupCount)
+        assertNull("Source Group must dissolve below two members", dao.findGroup(fixture.groupId))
+        val target = groupState(targetId)
+        assertEquals(fixture.setId, target.group?.setId)
+        assertEquals(newMemberIds + memberIds[0], target.members.map { it.mangaId })
+        assertEquals(favouritesBefore, database.getFavouritesDao().findAllForSync())
     }
 
     @Test fun normalGroupBackupPreservesSetOwnershipAcrossRemappedIds() = runTest {
