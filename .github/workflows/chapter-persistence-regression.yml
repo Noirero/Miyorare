@@ -260,7 +260,7 @@ jobs:
   historical-v55-compatibility:
     name: Upgrade authentic historical Room v55 database on Android 15
     if: >-
-      (github.event_name == 'workflow_dispatch' || github.event_name == 'push') &&
+      github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -354,3 +354,106 @@ jobs:
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 7
+
+# Branch-only negative reproduction: the three ownership tests are intentionally
+  # expected RED on current production, while the legacy compatibility control is GREEN.
+  # XML assertions distinguish real regression failures from harness/build failures.
+  group-backup-reproduction:
+    name: Targeted Group backup Set ownership negative reproduction on Android 15
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact diagnostic SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact SHA and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF" = 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Execute four fixed Group backup Android regression tests
+        id: instrumentation
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >-
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest
+
+      - name: Verify exact expected RED/GREEN XML evidence
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          tests = {
+              'normalGroupBackupPreservesSetOwnershipAcrossRemappedIds': 'Normal Group Set owner changed during restore',
+              'privateGroupBackupPreservesSetOwnershipWithOptIn': 'Private Group Set owner changed during restore',
+              'existingGroupOwnerCollisionFailsClosedWithoutMutation': 'Expected owner collision rejection and full rollback',
+              'legacyGroupBackupRestoresWithoutSetIdentity': None,
+          }
+          results = Path('app/build/outputs/androidTest-results/connected')
+          files = list(results.rglob('TEST-*.xml'))
+          assert files, 'No Android XML results: compile, harness or emulator failure (not valid regression evidence)'
+          cases = [node for file in files for node in ET.parse(file).getroot().iter('testcase')]
+          names = [c.attrib.get('name', '').split('[')[0] for c in cases]
+          assert len(names) == 4 and set(names) == set(tests), f'Unexpected tests: {names}'
+          for case in cases:
+              name = case.attrib['name'].split('[')[0]
+              assert case.attrib.get('classname', '').endswith('.LibraryGroupSetBackupRegressionTest'), case.attrib
+              assert case.find('error') is None and case.find('skipped') is None, case.attrib
+              failure = case.find('failure')
+              expected = tests[name]
+              if expected is None:
+                  assert failure is None, f'Legacy compatibility control failed: {case.attrib}'
+                  print(f'PASS: {name}')
+              else:
+                  assert failure is not None, f'Unexpected GREEN (production behavior changed): {name}'
+                  detail = failure.attrib.get('message', '') + (failure.text or '')
+                  assert expected in detail, f'Unexpected failure type for {name}: {detail[:900]}'
+                  print(f'EXPECTED_REPRO_FAILURE: {name}: {expected}')
+          PY
+
+      - name: Upload Group backup negative reproduction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group-backup-set-owner-negative-android15-evidence
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7
+
