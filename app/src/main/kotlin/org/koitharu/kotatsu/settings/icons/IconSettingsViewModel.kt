@@ -37,6 +37,13 @@ class IconSettingsViewModel @Inject constructor(
 	private val _catalogLoading = MutableStateFlow(false)
 	val catalogLoading = _catalogLoading.asStateFlow()
 
+	/** Sample glyphs of catalog packs, rendered on demand for preview. */
+	private val _previewGlyphs = MutableStateFlow<Map<String, Map<String, ImageBitmap>>>(emptyMap())
+	val previewGlyphs = _previewGlyphs.asStateFlow()
+
+	private val _previewLoadingIds = MutableStateFlow<Set<String>>(emptySet())
+	val previewLoadingIds = _previewLoadingIds.asStateFlow()
+
 	init {
 		refreshCatalog()
 	}
@@ -90,6 +97,39 @@ class IconSettingsViewModel @Inject constructor(
 	/** Rendered glyphs of an installed pack, for the preview strip. */
 	fun glyphs(pack: InstalledIconPack): Map<String, ImageBitmap> {
 		return repository.glyphs(pack)
+	}
+
+	/**
+	 * Fetches the sample glyphs of a catalog pack that is not installed, so
+	 * its look can be previewed before any download decision. Installed
+	 * packs already expose their glyphs through [glyphs].
+	 */
+	fun preview(pack: IconPack) {
+		if (pack.id in _previewGlyphs.value || pack.id in _previewLoadingIds.value) return
+		if (installed.value.any { it.pack.id == pack.id }) return
+		_previewLoadingIds.value += pack.id
+		viewModelScope.launch {
+			runCatching { repository.previewGlyphs(pack, PREVIEW_KEYS) }
+				.onSuccess { _previewGlyphs.value += pack.id to it }
+				.onFailure { _errorMessage.value = it.message ?: it.javaClass.simpleName }
+			_previewLoadingIds.value -= pack.id
+		}
+	}
+
+	companion object {
+		/** The glyph keys sampled for catalog previews: a representative slice of every pack. */
+		private val PREVIEW_KEYS = listOf(
+			"ic_action_skip",
+			"ic_add",
+			"ic_alert_outline",
+			"ic_app_update",
+			"ic_appearance",
+			"ic_arrow_forward",
+			"ic_auth_key_large",
+			"ic_auto_detect",
+			"ic_auto_stories",
+			"ic_backup_restore",
+		)
 	}
 
 	fun consumeError() {

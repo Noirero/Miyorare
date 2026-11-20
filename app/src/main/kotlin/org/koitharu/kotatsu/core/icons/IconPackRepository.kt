@@ -67,6 +67,8 @@ class IconPackRepository @Inject constructor(
 
 	private val rootDir = File(context.filesDir, ICONS_DIR)
 
+	private val previewDir = File(context.filesDir, PREVIEW_DIR)
+
 	private val _catalog = MutableStateFlow<List<IconPack>>(emptyList())
 	val catalog = _catalog.asStateFlow()
 
@@ -168,6 +170,55 @@ class IconPackRepository @Inject constructor(
 		refreshInstalled()
 	}
 
+	/**
+	 * Renders a small sample of a catalog pack's glyphs for preview, without
+	 * installing the pack. Sample SVGs are fetched into a separate preview
+	 * cache (`files/icons-preview/<packId>/`), verified by size, SHA-256
+	 * and the SVG safety gate, and rendered once; later previews reuse the
+	 * rendered bitmaps. A glyph that fails any check is simply absent from
+	 * the result instead of failing the whole preview.
+	 */
+	suspend fun previewGlyphs(pack: IconPack, keys: List<String>): Map<String, ImageBitmap> {
+		_installed.value.firstOrNull { it.pack.id == pack.id }?.let { installedPack ->
+			return glyphs(installedPack).filterKeys { it in keys }
+		}
+		return withContext(Dispatchers.IO) {
+			val dir = File(previewDir, pack.id)
+			dir.mkdirs()
+			val result = mutableMapOf<String, ImageBitmap>()
+			val semaphore = Semaphore(MAX_PARALLEL_GLYPHS)
+			coroutineScope {
+				for (file in pack.files) {
+					if (file.key !in keys) continue
+					launch {
+						semaphore.withPermit {
+							runCatching {
+								val svgFile = File(dir, file.svgFileName)
+								val pngFile = File(dir, file.pngFileName)
+								if (!pngFile.isFile) {
+									val cached = svgFile.isFile && svgFile.length() == file.sizeBytes &&
+										FontPackHashes.sha256(svgFile) == file.sha256 &&
+										IconPackSvg.isSafeGlyph(svgFile.readText())
+									if (!cached) {
+										download(file.url, svgFile)
+										check(svgFile.length() == file.sizeBytes) { "Size mismatch for ${file.key}" }
+										check(FontPackHashes.sha256(svgFile) == file.sha256) { "Hash mismatch for ${file.key}" }
+										check(IconPackSvg.isSafeGlyph(svgFile.readText())) { "Unsafe or malformed SVG: ${file.key}" }
+									}
+									renderGlyph(svgFile, pngFile)
+								}
+								BitmapFactory.decodeFile(pngFile.absolutePath)
+							}.getOrNull()?.let { bitmap ->
+								synchronized(result) { result[file.key] = bitmap.asImageBitmap() }
+							}
+						}
+					}
+				}
+			}
+			result.toMap()
+		}
+	}
+
 	/** The pack's glyphs rendered as bitmaps, keyed by drawable name. */
 	fun glyphs(pack: InstalledIconPack): Map<String, ImageBitmap> {
 		return pack.pack.files.mapNotNull { file ->
@@ -233,6 +284,7 @@ class IconPackRepository @Inject constructor(
 		const val INDEX_URL =
 			"https://raw.githubusercontent.com/Noirero/Miyorare-Source-Packs/main/icons/index.json"
 		private const val ICONS_DIR = "icons"
+		private const val PREVIEW_DIR = "icons-preview"
 		private const val PACK_JSON = "pack.json"
 		private const val RENDER_SIZE_PX = 96
 		private const val MAX_PARALLEL_GLYPHS = 8
