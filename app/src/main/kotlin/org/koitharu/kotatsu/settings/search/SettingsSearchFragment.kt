@@ -16,7 +16,6 @@ import org.koitharu.kotatsu.core.util.ext.consumeAll
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.FragmentSearchSuggestionBinding
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
-import org.koitharu.kotatsu.list.ui.adapter.listHeaderAD
 import org.koitharu.kotatsu.list.ui.model.ListModel
 
 @AndroidEntryPoint
@@ -33,7 +32,7 @@ class SettingsSearchFragment : BaseFragment<FragmentSearchSuggestionBinding>(),
 	override fun onViewBindingCreated(binding: FragmentSearchSuggestionBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		val adapter = BaseListAdapter<ListModel>()
-			.addDelegate(ListItemType.HEADER, listHeaderAD(null))
+			.addDelegate(ListItemType.HEADER, settingsSectionCardAD(this))
 			.addDelegate(ListItemType.NAV_ITEM, settingsItemAD(this))
 		adapter.addListListener(this)
 		// Bare FastScrollRecyclerView root: its floating scroller would be added to the settings
