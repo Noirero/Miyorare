@@ -117,7 +117,7 @@ class IconPackRepository @Inject constructor(
 	 * directory is discarded, keeping the install all-or-nothing.
 	 * [onProgress] reports how many glyphs are fully done, out of the total.
 	 */
-	suspend fun install(pack: IconPack, onProgress: (done: Int, total: Int) -> Unit = {}) {
+	suspend fun install(pack: IconPack, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }) {
 		withContext(Dispatchers.IO) {
 			rootDir.mkdirs()
 			val tmpDir = File(rootDir, ".tmp-${pack.id}")
