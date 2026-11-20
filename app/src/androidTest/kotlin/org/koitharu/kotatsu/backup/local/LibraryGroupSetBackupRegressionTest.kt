@@ -58,6 +58,10 @@ class LibraryGroupSetBackupRegressionTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val memberIds = listOf(831001L, 831002L)
 
+    // Contract probe: keep this expected 60-day policy independent of the
+    // private production constant, so a future TTL change fails the boundary test.
+    private val expectedTombstoneTtlMs = 60L * 24 * 60 * 60 * 1000
+
     @Before fun setUp() {
         hiltRule.inject()
         previousDeletionSyncDisabled = syncSettings.isDeletionSyncDisabled
@@ -637,7 +641,7 @@ class LibraryGroupSetBackupRegressionTest {
             favourites = listOf(SyncFavourite(favourite.copy(deletedAt = deletedAt), manga)),
             history = listOf(SyncHistory(history, manga)),
         )
-        val ttl = GoogleDriveSyncRepository.TOMBSTONE_TTL_MS
+        val ttl = expectedTombstoneTtlMs
         val exactBoundary = pruneAtSyntheticTime(original, deletedAt + ttl)
         assertEquals(1, exactBoundary.favourites.size)
         assertEquals(1, exactBoundary.history.size)
@@ -690,7 +694,7 @@ class LibraryGroupSetBackupRegressionTest {
             favourites = listOf(SyncFavourite(tombstoneFavourite, manga)),
             history = listOf(SyncHistory(deletedHistory, manga)),
         )
-        val ttl = GoogleDriveSyncRepository.TOMBSTONE_TTL_MS
+        val ttl = expectedTombstoneTtlMs
         val syntheticNow = deletedAt + ttl + 1L
         val pruned = pruneAtSyntheticTime(localDeleted, syntheticNow)
         assertTrue(pruned.favourites.isEmpty())
