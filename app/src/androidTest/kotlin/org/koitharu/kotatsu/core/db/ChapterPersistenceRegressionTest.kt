@@ -455,7 +455,7 @@ class ChapterPersistenceRegressionTest {
                         title TEXT NOT NULL,
                         cover_url TEXT,
                         created_at INTEGER NOT NULL,
-                        space INTEGER NOT NULL DEFAULT 0,
+                        space INTEGER NOT NULL,
                         alternative_title TEXT,
                         author TEXT,
                         artist TEXT,
