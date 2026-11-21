@@ -350,8 +350,8 @@ class ExploreFragment :
 		}
 	}
 
-	private fun toggleSourceSearch() {
-		if (sourceSearchField != null) {
+	internal fun toggleSourceSearch() {
+		if (sourceSearchSessionQuery != null) {
 			closeSourceSearch()
 			return
 		}
@@ -434,19 +434,17 @@ class ExploreFragment :
 
 	/** Ends the search session: the input row is removed and the source filter is cleared. */
 	private fun closeSourceSearch() {
-		teardownSourceSearch(clearSession = true)
+		if (sourceSearchSessionQuery == null) return
+		sourceSearchSessionQuery = null
+		suspendSourceSearch()
+		applySourceQuery("")
 	}
 
 	/** Removes the input row without ending the session; the row is reinstalled with its
 	 * query when Explore becomes visible again, so the search survives trips into a
 	 * source's list or another tab. */
 	private fun suspendSourceSearch() {
-		teardownSourceSearch(clearSession = false)
-	}
-
-	private fun teardownSourceSearch(clearSession: Boolean) {
 		val field = sourceSearchField ?: return
-		if (clearSession) sourceSearchSessionQuery = null
 		sourceSearchField = null
 		sourceSearchBackCallback?.isEnabled = false
 		(field.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
@@ -458,7 +456,6 @@ class ExploreFragment :
 			host.findViewById<SearchBar>(R.id.search_bar)?.isVisible = true
 			host.releaseSharedSearchBarOwner(this)
 		}
-		if (clearSession) applySourceQuery("")
 	}
 
 	private fun restoreSourceSearch() {
