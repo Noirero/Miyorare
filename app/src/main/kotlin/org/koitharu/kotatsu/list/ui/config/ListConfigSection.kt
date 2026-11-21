@@ -17,6 +17,9 @@ sealed interface ListConfigSection : Parcelable {
 	) : ListConfigSection
 
 	@Parcelize
+	data object LocalFavourites : ListConfigSection
+
+	@Parcelize
 	data object Suggestions : ListConfigSection
 
 	@Parcelize

@@ -193,7 +193,7 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 							viewModel.isGridSpacingIncreased = it
 						},
 					)
-					if (!useModernFavouritesLayout) {
+					if (!useModernFavouritesLayout && !viewModel.isLocalFavouritesSection) {
 						SheetSection(
 							title = stringResource(R.string.grid_size),
 							value = "${gridSize.roundToInt()}%",

@@ -27,6 +27,7 @@ import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
@@ -111,7 +112,9 @@ class LocalFavouritesListViewModel @Inject constructor(
 	private val displayOptions = combine(
 		contentTypeStore.selectedType,
 		displayPreferences.state,
-	) { type, state -> state.getValue(type) }.distinctUntilChanged()
+	) { type, state ->
+		state.getValue(if (favouriteSpace == FavouriteSpace.NORMAL) FavouriteContentType.MANGA else type)
+	}.distinctUntilChanged()
 
 	private val pagingState = combine(pinnedIds, limit) { pinned, pageLimit -> pinned to pageLimit }
 

@@ -18,6 +18,7 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -40,6 +41,7 @@ import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.domain.*
@@ -50,6 +52,10 @@ import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerViewModel
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListViewModel
+import org.koitharu.kotatsu.favourites.ui.list.LocalFavouritesListFragment
+import org.koitharu.kotatsu.favourites.ui.list.LocalFavouritesListViewModel
+import org.koitharu.kotatsu.list.ui.config.ListConfigSection
+import org.koitharu.kotatsu.list.ui.config.ListConfigViewModel
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.main.ui.MainActivity
@@ -443,6 +449,41 @@ class CategorySetsUiTest {
 			capture("manage-one-set")
 			compose.onNodeWithTag("set-overflow:${first.setId}").performScrollTo().performClick()
 			compose.onNodeWithTag("set-delete:${first.setId}").assertIsNotEnabled()
+		}
+	}
+
+	@Test fun localListModeUsesItsExistingPreferenceAndUpdatesTheList() {
+		val previousGlobal = settings.listMode
+		val previousLocal = settings.favoritesListMode
+		settings.listMode = ListMode.COVER_ONLY
+		settings.favoritesListMode = ListMode.GRID
+		types.setLastCategoryId(FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, FavouriteSpace.NORMAL)
+		try {
+			ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+				val local = AtomicReference<LocalFavouritesListViewModel?>()
+				await {
+					scenario.onActivity { activity ->
+						val fragment = descendants(activity.supportFragmentManager.fragments)
+							.filterIsInstance<LocalFavouritesListFragment>().firstOrNull()
+						local.set(fragment?.viewModel)
+					}
+					local.get()?.listMode?.value == ListMode.GRID
+				}
+				scenario.onActivity {
+					val config = ListConfigViewModel(
+						SavedStateHandle(mapOf(AppRouter.KEY_LIST_SECTION to ListConfigSection.LocalFavourites)),
+						settings, types, display,
+					)
+					assertEquals(ListMode.GRID, config.listMode)
+					config.listMode = ListMode.LIST
+				}
+				await { local.get()?.listMode?.value == ListMode.LIST }
+				assertEquals(ListMode.LIST, settings.favoritesListMode)
+				assertEquals(ListMode.COVER_ONLY, settings.listMode)
+			}
+		} finally {
+			settings.listMode = previousGlobal
+			settings.favoritesListMode = previousLocal
 		}
 	}
 
