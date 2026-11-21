@@ -599,8 +599,11 @@ private fun JourneyPanelNight(data: JourneyPanelData, numberFormat: NumberFormat
 
 @Composable
 private fun JourneyPanelDawn(data: JourneyPanelData, numberFormat: NumberFormat) {
-	val ink = Color(0xFF2E2145)
-	val muted = Color(0xFF6F5B96)
+	// Ungu Fajar follows the active app theme: its dawn gradient and accents are built
+	// from the current color scheme instead of fixed purples.
+	val scheme = MaterialTheme.colorScheme
+	val ink = scheme.onPrimaryContainer
+	val muted = scheme.onPrimaryContainer.copy(alpha = 0.72f)
 	Column(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -613,7 +616,11 @@ private fun JourneyPanelDawn(data: JourneyPanelData, numberFormat: NumberFormat)
 				.clip(RoundedCornerShape(26.dp))
 				.background(
 					Brush.linearGradient(
-						listOf(Color(0xFFD9C8F5), Color(0xFFEED9F2), Color(0xFFFDEEDA)),
+						listOf(
+							scheme.primaryContainer,
+							scheme.secondaryContainer,
+							scheme.tertiaryContainer,
+						),
 					),
 				)
 				.padding(horizontal = 20.dp, vertical = 20.dp),
@@ -624,15 +631,15 @@ private fun JourneyPanelDawn(data: JourneyPanelData, numberFormat: NumberFormat)
 						modifier = Modifier
 							.size(54.dp)
 							.clip(CircleShape)
-							.background(Color.White)
-							.border(1.5.dp, Gold, CircleShape),
+							.background(scheme.surface)
+							.border(1.5.dp, scheme.tertiary, CircleShape),
 						contentAlignment = Alignment.Center,
 					) {
 						Text(
 							text = data.initial,
 							fontSize = 21.sp,
 							fontWeight = FontWeight.Bold,
-							color = Color(0xFF512DA8),
+							color = scheme.primary,
 						)
 					}
 					Spacer(Modifier.width(13.dp))
@@ -688,13 +695,13 @@ private fun JourneyPanelDawn(data: JourneyPanelData, numberFormat: NumberFormat)
 						.fillMaxWidth()
 						.height(7.dp)
 						.clip(RoundedCornerShape(99.dp))
-						.background(Color.White.copy(alpha = 0.65f)),
+						.background(scheme.onPrimaryContainer.copy(alpha = 0.18f)),
 				) {
 					Box(
 						modifier = Modifier
 							.fillMaxWidth(data.levelFraction)
 							.height(7.dp)
-							.background(Color(0xFF6D4AC8)),
+							.background(scheme.primary),
 					)
 				}
 			}
