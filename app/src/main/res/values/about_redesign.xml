@@ -15,8 +15,8 @@
 	<string name="about_credits_title">Upstream credits</string>
 	<string name="about_credits_summary">Kotatsu, LNReader, Mihon/Tachiyomi, and related communities</string>
 	<string name="about_verbose_logging_title">Verbose logging</string>
-	<string name="about_verbose_logging_enabled_summary">Recording — turn off to save log as .txt</string>
-	<string name="about_verbose_logging_disabled_summary">Off by default to preserve performance</string>
+	<string name="about_verbose_logging_enabled_summary">Recording · turn off to stop</string>
+	<string name="about_verbose_logging_disabled_summary">Record app diagnostics for troubleshooting</string>
 
 	<string name="about_this_project_section">MIYORARE (THIS PROJECT)</string>
 	<string name="about_upstream_section">UPSTREAM &amp; CREDITS</string>
@@ -54,4 +54,12 @@
 	<string name="about_url_dropsauce_github" translatable="false">https://github.com/HuzaifaKhalid1311/DropSauce</string>
 	<string name="about_url_dropsauce_discord" translatable="false">https://discord.gg/PTd2bYgz9m</string>
 	<string name="about_project_credits_title">Project credits</string>
+	<string name="about_verbose_logging_recording_partial">Recording · some diagnostics are unavailable</string>
+	<string name="about_verbose_logging_preparing">Preparing diagnostic recording…</string>
+	<string name="about_verbose_logging_failed">Could not save the recording to the app storage</string>
+	<string name="about_verbose_logging_save">Save last log</string>
+	<string name="about_verbose_logging_delete">Delete last log</string>
+	<string name="about_verbose_logging_partial">Partial recording</string>
+	<string name="about_verbose_logging_saved">Log saved</string>
+	<string name="about_verbose_logging_deleted">Log deleted</string>
 </resources>

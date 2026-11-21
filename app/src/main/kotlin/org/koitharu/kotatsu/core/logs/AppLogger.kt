@@ -1,237 +1,163 @@
 package org.koitharu.kotatsu.core.logs
 
 import android.content.Context
-import android.util.Log
+import android.net.Uri
+import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileWriter
-import java.io.IOException
-import java.io.InputStreamReader
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.concurrent.ArrayBlockingQueue
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
-
-private const val MAX_ENTRIES = 10_000
-private const val MAX_FILE_BYTES = 5L * 1024 * 1024 // 5MB cap per file (10MB total across rolling files)
 
 @Singleton
 class AppLogger @Inject constructor(
 	@ApplicationContext private val context: Context,
 ) {
+	enum class Phase { INITIALIZING, IDLE, STARTING, RECORDING, STOPPING }
 
-	private val logsDir: File
-		get() = File(context.filesDir, "logs")
-	private val sessionFile: File
-		get() = File(logsDir, "session.log")
-	private val oldSessionFile: File
-		get() = File(logsDir, "session.log.old")
+	data class State(
+		val phase: Phase = Phase.INITIALIZING,
+		val hasSavedLog: Boolean = false,
+		val capturePartial: Boolean = false,
+		val savedPartial: Boolean = false,
+		val failed: Boolean = false,
+	)
 
-	@Volatile
-	var isEnabled: Boolean = false
-		private set
-
-	private val buffer = ArrayBlockingQueue<String>(MAX_ENTRIES)
 	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-	private val stateLock = Any()
-	private var readerJob: Job? = null
-	private var logcatProcess: Process? = null
-	private var generation = 0
-	private var diagnosticsSummary = ""
+	private val files = Mutex()
+	private val initialized = AtomicBoolean()
+	private val store = VerboseLogStore(File(context.noBackupFilesDir, "verbose-diagnostics"))
+	private val mutableState = MutableStateFlow(State())
+	val state: StateFlow<State> = mutableState
+	private var checkpoint: Job? = null
+	private var unsavedReport: String? = null
 
-	fun getLogContent(): String = runCatching {
-		val sb = StringBuilder()
-		if (oldSessionFile.exists() && oldSessionFile.length() > 0) {
-			sb.append(oldSessionFile.readText())
-			if (!sb.endsWith("\n")) sb.append("\n")
-		}
-		if (sessionFile.exists() && sessionFile.length() > 0) {
-			sb.append(sessionFile.readText())
-		}
-		sb.toString()
-	}.getOrDefault("")
-
-	fun setEnabled(enabled: Boolean, resetExistingLogs: Boolean = false) {
-		synchronized(stateLock) {
-			if (enabled == isEnabled) return
-			if (enabled && resetExistingLogs) {
-				// Reset before the reader job is scheduled: even an immediate OFF must export no old entries.
-				logsDir.mkdirs()
-				openSessionLogWriter(sessionFile, oldSessionFile, resetExistingLogs = true).close()
-			}
-			isEnabled = enabled
-			generation++
-			if (enabled) {
-				buffer.clear()
-				startReadingLocked(generation)
-				diagnosticsSummary = ""
-				PerformanceDiagnostics.start(context)
-				if (BuildConfig.DEBUG) LegacyCbzDiagnosticExport.start()
-			} else {
-				diagnosticsSummary = stopDiagnostics()
-				stopReadingLocked()
+	fun initialize() {
+		if (!initialized.compareAndSet(false, true)) return
+		scope.launch {
+			files.withLock {
+				val legacy = File(context.filesDir, "logs")
+				listOf("session.log", "session.log.old", "previous_session.log").forEach { File(legacy, it).delete() }
+				mutableState.value = State(
+					phase = if (store.hasInterrupted) Phase.STARTING else Phase.IDLE,
+					hasSavedLog = store.hasSaved,
+					savedPartial = store.hasSaved && runCatching { store.savedIsPartial() }.getOrDefault(true),
+				)
+				if (store.hasInterrupted) start(resume = true)
 			}
 		}
 	}
 
-	suspend fun stopAndDrainToString(): String {
-		val (job, summary) = synchronized(stateLock) {
-			if (isEnabled) {
-				diagnosticsSummary = stopDiagnostics()
-				isEnabled = false
-				generation++
-			}
-			stopReadingLocked() to diagnosticsSummary
-		}
-		job?.join()
-		val diskLogs = getLogContent()
-		return diskLogs.ifBlank { drainToString() } + "\n" + summary
-	}
-
-	private fun stopDiagnostics(): String {
-		val summary = PerformanceDiagnostics.stop()
-		return if (BuildConfig.DEBUG) summary + "\n" + LegacyCbzDiagnosticExport.stop() else summary
-	}
-
-	private fun drainToString(): String {
-		val lines = ArrayList<String>(buffer.size)
-		buffer.drainTo(lines)
-		return lines.joinToString("\n")
-	}
-
-	private fun startReadingLocked(readerGeneration: Int) {
-		// Anchor the logcat stream to activation time, not its existing device buffer.
-		val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-		val job = scope.launch(start = CoroutineStart.LAZY) {
-			var process: Process? = null
-			var writer: BufferedWriter? = null
-			var bytesWritten = 0L
-			try {
-				val pid = android.os.Process.myPid().toString()
-				val startedProcess = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "threadtime", "-T", timestamp))
-				process = startedProcess
-				synchronized(stateLock) {
-					if (!isEnabled || generation != readerGeneration) {
-						startedProcess.destroy()
-						return@launch
-					}
-					logcatProcess = startedProcess
-				}
-				writer = runCatching {
-					logsDir.mkdirs()
-					// Cleanup deprecated previous_session.log if existing from older builds
-					File(logsDir, "previous_session.log").delete()
-
-					val bw = openSessionLogWriter(sessionFile, oldSessionFile, resetExistingLogs = false)
-					bytesWritten = sessionFile.length()
-					bw.write("\n================================================================================\n")
-					bw.write("=== SESSION STARTED: $timestamp (PID: $pid) ===\n")
-					bw.write("================================================================================\n")
-					bw.flush()
-					bytesWritten += 180L
-					bw
-				}.onFailure { Log.e("AppLogger", "Failed to open session log", it) }.getOrNull()
-				BufferedReader(InputStreamReader(startedProcess.inputStream)).use { reader ->
-					while (isActive) {
-						val line = reader.readLine() ?: break
-						if (!isOwnPid(line, pid)) continue
-						if (!buffer.offer(line)) {
-							buffer.poll()
-							buffer.offer(line)
-						}
-						writer?.let { w ->
-							runCatching {
-								if (bytesWritten >= MAX_FILE_BYTES) {
-									w.flush()
-									w.close()
-									oldSessionFile.delete()
-									sessionFile.renameTo(oldSessionFile)
-									val newWriter = FileWriter(sessionFile, false).buffered()
-									writer = newWriter
-									bytesWritten = 0L
-								}
-								val out = writer ?: w
-								out.write(line)
-								out.newLine()
-								out.flush() // per-line flush so logs survive a crash
-								bytesWritten += line.length + 1
-							}
-						}
-					}
-				}
-			} catch (e: CancellationException) {
-				throw e
-			} catch (e: Exception) {
-				Log.e("AppLogger", "Failed to read logcat", e)
-			} finally {
-				runCatching { writer?.close() }
-				process?.destroy()
-				synchronized(stateLock) {
-					if (generation == readerGeneration) {
-						logcatProcess = null
-						readerJob = null
-					}
+	fun setEnabled(enabled: Boolean) {
+		val current = mutableState.value
+		val required = if (enabled) Phase.IDLE else Phase.RECORDING
+		if (current.phase != required) return
+		val next = if (enabled) Phase.STARTING else Phase.STOPPING
+		if (!mutableState.compareAndSet(current, current.copy(phase = next, failed = false))) return
+		scope.launch {
+			files.withLock {
+				if (enabled) {
+					if (persistUnsaved()) start(resume = false)
+					else mutableState.update { it.copy(phase = Phase.IDLE, failed = true) }
+				} else {
+					stop()
 				}
 			}
 		}
-		readerJob = job
-		job.start()
 	}
 
-	/**
-	 * threadtime format: `MM-DD HH:MM:SS.mmm  PID  TID L tag: message`.
-	 * We spawn an unfiltered logcat (see comment at exec) so the pid check happens here.
-	 */
-	private fun isOwnPid(line: String, pid: String): Boolean {
-		var i = 0
-		var field = 0
-		while (field < 2) { // skip date and time
-			while (i < line.length && line[i] == ' ') i++
-			while (i < line.length && line[i] != ' ') i++
-			field++
+	suspend fun export(uri: Uri): Boolean = withContext(Dispatchers.IO) {
+		files.withLock {
+			persistUnsaved()
+			store.export(unsavedReport) { context.contentResolver.openOutputStream(uri, "wt") }
 		}
-		while (i < line.length && line[i] == ' ') i++
-		val start = i
-		while (i < line.length && line[i] != ' ') i++
-		return i - start == pid.length && line.regionMatches(start, pid, 0, pid.length)
 	}
 
-	private fun stopReadingLocked(): Job? {
-		val job = readerJob
-		readerJob = null
-		job?.cancel()
-		logcatProcess?.let { process ->
-			runCatching { process.inputStream.close() }
-			process.destroy()
+	suspend fun deleteSaved(): Boolean = withContext(Dispatchers.IO) {
+		files.withLock {
+			runCatching { store.deleteSaved() }.onSuccess {
+				unsavedReport = null
+				mutableState.update { it.copy(hasSavedLog = false, savedPartial = false, failed = false) }
+			}.isSuccess
 		}
-		logcatProcess = null
-		return job
 	}
-}
 
-/** Only an explicit new recording discards the old in-app log files. Resuming after process
- * restart keeps crash diagnostics until the user stops and exports the recording. */
-internal fun openSessionLogWriter(
-	current: File,
-	rolled: File,
-	resetExistingLogs: Boolean,
-): BufferedWriter {
-	if (resetExistingLogs && rolled.exists() && !rolled.delete()) {
-		throw IOException("Cannot clear rolled verbose log")
+	private fun start(resume: Boolean) {
+		var partial = resume
+		if (runCatching { store.prepare(resume) }.isFailure) partial = true
+		if (runCatching { PerformanceDiagnostics.start(context) }.isFailure) {
+			runCatching { PerformanceDiagnostics.stop() }
+			mutableState.update { it.copy(phase = Phase.IDLE, failed = true) }
+			return
+		}
+		if (!saveCheckpoint()) partial = true
+		mutableState.update { it.copy(phase = Phase.RECORDING, capturePartial = partial, failed = false) }
+		checkpoint = scope.launch {
+			while (isActive) {
+				delay(5_000)
+				val saved = saveCheckpoint()
+				if (!saved || PerformanceDiagnostics.captureFailed()) {
+					mutableState.update { it.copy(capturePartial = true) }
+				}
+			}
+		}
 	}
-	return FileWriter(current, !resetExistingLogs).buffered()
+
+	private fun saveCheckpoint(): Boolean {
+		val report = PerformanceDiagnostics.exportSnapshot() ?: return false
+		return runCatching { store.checkpoint(header() + report) }.isSuccess
+	}
+
+	private suspend fun stop() {
+		checkpoint?.cancelAndJoin()
+		checkpoint = null
+		if (PerformanceDiagnostics.captureFailed()) mutableState.update { it.copy(capturePartial = true) }
+		val report = PerformanceDiagnostics.stop()
+		if (report.isNotEmpty()) unsavedReport = header() + report
+		val saved = persistUnsaved()
+		mutableState.update {
+			it.copy(
+				phase = Phase.IDLE,
+				hasSavedLog = store.hasSaved || unsavedReport != null,
+				savedPartial = !saved || it.savedPartial,
+				capturePartial = false,
+				failed = !saved,
+			)
+		}
+	}
+
+	private fun persistUnsaved(): Boolean {
+		val report = unsavedReport ?: return true
+		return try {
+			val partial = store.finish(report, mutableState.value.capturePartial || mutableState.value.failed)
+			unsavedReport = null
+			mutableState.update { it.copy(hasSavedLog = true, savedPartial = partial, failed = false) }
+			true
+		} catch (_: IOException) {
+			false
+		} catch (_: SecurityException) {
+			false
+		}
+	}
+
+	private fun header(): String = "Miyorare diagnostic recording\n" +
+		"version=${BuildConfig.VERSION_NAME} build=${BuildConfig.VERSION_CODE} type=${BuildConfig.BUILD_TYPE} " +
+		"android_api=${Build.VERSION.SDK_INT}\n"
 }

@@ -41,7 +41,7 @@ object WidgetCoverLoader {
 			manga.largeCoverUrl?.takeIf { it.isNotBlank() }?.let { add(it) }
 		}
 		if (urlCandidates.isEmpty()) {
-			Log.w(TAG, "No cover url for manga id=${manga.id}")
+			Log.w(TAG, "No cover URL is available")
 			return null
 		}
 
@@ -78,7 +78,7 @@ object WidgetCoverLoader {
 				.allowHardware(false)
 				.build()
 			loader.execute(request)
-		}.onFailure { Log.w(TAG, "execute() threw for $url", it) }.getOrNull()
+		}.onFailure { Log.w(TAG, "Cover request failed: ${it.javaClass.simpleName}") }.getOrNull()
 
 		return when (val r = result) {
 			null -> null
@@ -87,11 +87,11 @@ object WidgetCoverLoader {
 				if (direct != null) return direct
 				// Fall back: rasterize the drawable onto a software bitmap. Handles cases
 				// where the underlying image is HW-config or a vector/animated source.
-				Log.w(TAG, "toBitmap failed for $url; rasterizing drawable")
+				Log.w(TAG, "Cover bitmap conversion failed; rasterizing drawable")
 				rasterizeDrawable(context, r)
 			}
 			is ErrorResult -> {
-				Log.w(TAG, "ErrorResult for $url", r.throwable)
+				Log.w(TAG, "Cover load failed: ${r.throwable.javaClass.simpleName}")
 				null
 			}
 		}

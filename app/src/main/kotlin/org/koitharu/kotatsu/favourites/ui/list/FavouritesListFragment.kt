@@ -161,7 +161,7 @@ class FavouritesListFragment : MangaListFragment() {
 	}
 
 	private fun logListGeometry(event: String, recyclerView: RecyclerView) {
-		if (!PerformanceDiagnostics.enabled) return
+		if (!PerformanceDiagnostics.enabled || viewModel.favouriteSpace != FavouriteSpace.NORMAL) return
 		val pager = recyclerView.ancestors.filterIsInstance<ViewPager2>().firstOrNull()
 		// ViewPager2 itself can remain full width while its internal RecyclerView or
 		// FragmentStateAdapter page holder is measured narrowly. Record each layer to
@@ -182,7 +182,7 @@ class FavouritesListFragment : MangaListFragment() {
 				"scroll_y=${recyclerView.computeVerticalScrollOffset()} " +
 				"adapter_count=${recyclerView.adapter?.itemCount ?: -1}"
 		Log.i("FavouritesLayout", "trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} event=$event $dimensions")
-		PerformanceDiagnostics.captureDiagnostic("FavouritesLayout", event, this, dimensions)
+		PerformanceDiagnostics.captureDiagnostic("FavouritesLayout", event, dimensions)
 	}
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null

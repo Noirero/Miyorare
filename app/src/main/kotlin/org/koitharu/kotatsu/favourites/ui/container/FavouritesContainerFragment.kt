@@ -160,9 +160,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun logPagerDiagnostic(event: String, details: String) {
-		if (!PerformanceDiagnostics.enabled) return
+		if (!PerformanceDiagnostics.enabled || viewModel.favouriteSpace != FavouriteSpace.NORMAL) return
 		Log.i("FavouritesPager", "trace=${PerformanceDiagnostics.ownerTrace(this)?.id ?: "none"} event=$event $details")
-		PerformanceDiagnostics.captureDiagnostic("FavouritesPager", event, this, details)
+		PerformanceDiagnostics.captureDiagnostic("FavouritesPager", event, details)
 	}
 
 	internal val isListWorkActive: Boolean

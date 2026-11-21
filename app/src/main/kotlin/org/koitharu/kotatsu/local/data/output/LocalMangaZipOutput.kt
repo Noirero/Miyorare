@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.core.util.ext.MimeType
 import org.koitharu.kotatsu.core.util.ext.deleteAwait
 import org.koitharu.kotatsu.core.util.ext.readText
 import org.koitharu.kotatsu.core.zip.ZipOutput
+import org.koitharu.kotatsu.download.domain.CbzPageCount
 import org.koitharu.kotatsu.local.data.MangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -102,6 +103,14 @@ class LocalMangaZipOutput private constructor(
 
 	override suspend fun finish() = mutex.withLock {
 		finishImpl()
+	}
+
+	/** Diagnostic-only count of a newly written, isolated archive after commit. */
+	internal suspend fun readCommittedPageCount(): Int? {
+		val file = committedFile ?: return null
+		return runInterruptible(Dispatchers.IO) {
+			CbzPageCount.read(file, ENTRY_NAME_INDEX, index.getCoverEntry())
+		}
 	}
 
 	/**
