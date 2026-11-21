@@ -68,6 +68,14 @@ class ListSelectionController(
 		notifySelectionChanged()
 	}
 
+	/** Replace a previous selection with all rows in the active result set. */
+	fun replaceAll(ids: Collection<Long>) {
+		if (ids.isNotEmpty() && startActionMode() == null) return
+		decoration.clearSelection()
+		decoration.checkAll(ids)
+		notifySelectionChanged()
+	}
+
 	fun attachToRecyclerView(recyclerView: RecyclerView) {
 		recyclerView.addItemDecoration(decoration)
 	}

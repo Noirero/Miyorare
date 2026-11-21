@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListViewModel
 import org.koitharu.kotatsu.history.domain.MarkAsReadUseCase
 import org.koitharu.kotatsu.list.domain.ListFilterOption
@@ -393,6 +394,39 @@ class DownloadedLocalStateTest {
 			icons.clearIcons(); icons.addIcon(R.drawable.ic_storage); assertEquals(1, icons.iconsCount)
 			assertNotSame(custom, download.drawable)
 		}
+	}
+
+	@Test fun selectAllInSimilarTitleScanMatchesTheCurrentSearch() = runBlocking {
+		val first = remote(810_021L).copy(title = "Same Story", description = "Translated edition")
+		val second = remote(810_022L).copy(
+			title = first.title, source = MissingMangaSource("BATCH11_SCAN_SECOND"), description = "Original edition",
+		)
+		favourite(first)
+		favourite(second)
+		val vm = favouritesViewModel()
+		try {
+			assertEquals(2, vm.enterSimilarTitleScanMode())
+			FavouritesContainerFragment.searchQuery.value = "Translated edition"
+			vm.awaitContent("filtered scan") { it.grid(first.id) != null && it.grid(second.id) == null }
+			assertEquals(setOf(first.id), vm.getAllSelectableIds())
+			FavouritesContainerFragment.searchQuery.value = "missing"
+			assertEquals(emptySet<Long>(), vm.getAllSelectableIds())
+		} finally {
+			FavouritesContainerFragment.searchQuery.value = ""
+		}
+	}
+
+	@Test fun bulkActionsResolveEverySelectedTitleAcrossPages() = runBlocking {
+		val titles = (810_100L until 810_170L).map(::remote)
+		val category = repository.createCategory("Paged selection", ListSortOrder.NEWEST, false, false, true)
+		repository.updateCategoryMemberships(titles, mapOf(category.id to true), FavouriteSpace.NORMAL)
+		val vm = favouritesViewModel()
+		vm.awaitContent("first page") { it.filterIsInstance<MangaGridModel>().size == 64 }
+		val loaded = vm.content.value.filterIsInstance<MangaGridModel>().map { it.manga }.toSet()
+		val selectedIds = checkNotNull(vm.getAllSelectableIds())
+		assertEquals(titles.map { it.id }.toSet(), selectedIds)
+		assertEquals(selectedIds, vm.resolveSelectedManga(selectedIds, loaded)?.map { it.id }?.toSet())
+		assertNull(vm.resolveSelectedManga(selectedIds + Long.MAX_VALUE, loaded))
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {

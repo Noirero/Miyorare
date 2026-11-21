@@ -357,29 +357,8 @@ abstract class MangaListFragment :
 				true
 			}
 
-			R.id.action_share -> {
-				ShareHelper(requireContext()).shareMangaLinks(selectedItems)
-				mode?.finish()
-				true
-			}
-
-			R.id.action_favourite -> {
-				router.showFavoriteDialog(selectedItems)
-				mode?.finish()
-				true
-			}
-
-			R.id.action_save -> {
-				router.showDownloadDialog(selectedItems, viewBinding?.recyclerView)
-				mode?.finish()
-				true
-			}
-
-			R.id.action_edit_override -> {
-				router.openMangaOverrideConfig(selectedItems.singleOrNull() ?: return false)
-				mode?.finish()
-				true
-			}
+			R.id.action_share, R.id.action_favourite, R.id.action_save, R.id.action_edit_override ->
+				onMangaSelectionAction(item.itemId, mode)
 
 			R.id.action_fix -> {
 				val itemsSnapshot = selectedItemsIds
@@ -393,6 +372,39 @@ abstract class MangaListFragment :
 						mode?.finish()
 					}
 				}.show()
+				true
+			}
+
+			else -> false
+		}
+	}
+
+	protected open fun onMangaSelectionAction(actionId: Int, mode: ActionMode?): Boolean =
+		performMangaSelectionAction(actionId, mode, selectedItems)
+
+	protected fun performMangaSelectionAction(actionId: Int, mode: ActionMode?, items: Set<Manga>): Boolean {
+		return when (actionId) {
+			R.id.action_share -> {
+				ShareHelper(requireContext()).shareMangaLinks(items)
+				mode?.finish()
+				true
+			}
+
+			R.id.action_favourite -> {
+				router.showFavoriteDialog(items)
+				mode?.finish()
+				true
+			}
+
+			R.id.action_save -> {
+				router.showDownloadDialog(items, viewBinding?.recyclerView)
+				mode?.finish()
+				true
+			}
+
+			R.id.action_edit_override -> {
+				router.openMangaOverrideConfig(items.singleOrNull() ?: return false)
+				mode?.finish()
 				true
 			}
 

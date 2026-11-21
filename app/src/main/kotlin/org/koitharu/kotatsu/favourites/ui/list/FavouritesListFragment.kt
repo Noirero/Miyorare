@@ -46,6 +46,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -101,6 +102,7 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -182,6 +184,7 @@ class FavouritesListFragment : MangaListFragment() {
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
 	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
+	private var selectAllJob: Job? = null
 	private var modernSelectionPopupItems: List<MenuItem> = emptyList()
 	private val listWorkOwner = FavouritesListWorkOwner()
 
@@ -218,6 +221,10 @@ class FavouritesListFragment : MangaListFragment() {
 				// holders as needed; this also fixes off-screen stale cards after returning to a preset.
 				adapter.notifyItemRangeChanged(0, adapter.itemCount)
 			}
+		}
+		viewModel.selectionContextChanges.drop(1).observe(viewLifecycleOwner) {
+			selectAllJob?.cancel()
+			clearListSelection()
 		}
 		viewModel.content.observe(viewLifecycleOwner) { items ->
 			if (PerformanceDiagnostics.enabled) {
@@ -303,6 +310,7 @@ class FavouritesListFragment : MangaListFragment() {
 	}
 
 	override fun onPause() {
+		selectAllJob?.cancel()
 		listWorkOwner.onPause()
 		updateWorkActivity()
 		super.onPause()
@@ -604,7 +612,7 @@ class FavouritesListFragment : MangaListFragment() {
 			viewModel.isLibraryGroupingAvailable &&
 				groupItems.isNotEmpty() &&
 				groupItems.none { it.source.isNovelSource } &&
-				(groupItems.size >= 2 || viewModel.hasLibraryGroups)
+				(ids.size >= 2 || viewModel.hasLibraryGroups)
 		menu.findItem(R.id.action_move_private)?.isVisible =
 			viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
 				categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
@@ -646,8 +654,14 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 		return when (item.itemId) {
 			R.id.action_select_all -> {
-				viewLifecycleScope.launch {
-					controller.addAll(viewModel.getAllSelectableIds())
+				selectAllJob?.cancel()
+				selectAllJob = viewLifecycleScope.launch {
+					val ids = runCatchingCancellable { viewModel.getAllSelectableIds() }
+						.getOrElse {
+							Toast.makeText(requireContext(), R.string.favourites_selection_unavailable, Toast.LENGTH_SHORT).show()
+							return@launch
+						} ?: return@launch
+					if (isResumed && !isHidden) controller.replaceAll(ids)
 				}
 				true
 			}
@@ -685,19 +699,50 @@ class FavouritesListFragment : MangaListFragment() {
 			}
 
 			R.id.action_mark_current -> {
-				val itemsSnapshot = selectedItems
-				MaterialAlertDialogBuilder(context ?: return false)
-					.setTitle(item.title)
-					.setMessage(R.string.mark_as_completed_prompt)
-					.setNegativeButton(android.R.string.cancel, null)
-					.setPositiveButton(android.R.string.ok) { _, _ ->
-						viewModel.markAsRead(itemsSnapshot)
-						mode?.finish()
-					}.show()
+				withSelectedManga { items ->
+					MaterialAlertDialogBuilder(requireContext())
+						.setTitle(item.title)
+						.setMessage(R.string.mark_as_completed_prompt)
+						.setNegativeButton(android.R.string.cancel, null)
+						.setPositiveButton(android.R.string.ok) { _, _ ->
+							viewModel.markAsRead(items)
+							mode?.finish()
+						}.show()
+				}
 				true
 			}
 
 			else -> super.onActionItemClicked(controller, mode, item)
+		}
+	}
+
+	override fun onDestroyActionMode(controller: ListSelectionController, mode: ActionMode) {
+		selectAllJob?.cancel()
+		super.onDestroyActionMode(controller, mode)
+	}
+
+	override fun onMangaSelectionAction(actionId: Int, mode: ActionMode?): Boolean {
+		withSelectedManga { items -> performMangaSelectionAction(actionId, mode, items) }
+		return true
+	}
+
+	private fun withSelectedManga(action: (Set<Manga>) -> Unit) {
+		val ids = selectedItemsIds
+		if (ids.isEmpty()) return
+		val loaded = selectedItems
+		if (loaded.size == ids.size) {
+			action(loaded)
+			return
+		}
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable { viewModel.resolveSelectedManga(ids, loaded) }
+			if (!isResumed || isHidden || selectedItemsIds != ids) return@launch
+			val items = result.getOrNull()
+			if (items == null) {
+				Toast.makeText(requireContext(), R.string.favourites_selection_unavailable, Toast.LENGTH_SHORT).show()
+			} else {
+				action(items)
+			}
 		}
 	}
 
@@ -930,7 +975,10 @@ class FavouritesListFragment : MangaListFragment() {
 		if (ids.isEmpty()) return
 		MaterialAlertDialogBuilder(requireContext())
 			.setTitle(R.string.private_remove_title)
-			.setMessage(R.string.private_remove_shared_download_warning)
+			.setMessage(
+				resources.getQuantityString(R.plurals.favourites_remove_selected_count, ids.size, ids.size) +
+					"\n\n" + getString(R.string.private_remove_shared_download_warning),
+			)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.delete) { _, _ ->
 				showRemoveMangaOptionsDialog(ids, mode, removeWholeNormal)

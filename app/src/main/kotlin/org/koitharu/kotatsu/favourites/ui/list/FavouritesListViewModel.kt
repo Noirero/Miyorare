@@ -228,7 +228,8 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
-	private val searchQuery = FavouritesContainerFragment.searchQuery
+	private val rawSearchQuery = FavouritesContainerFragment.searchQuery
+	private val searchQuery = rawSearchQuery
 		.debounceFavouritesSearch()
 		.onEach { query ->
 			if (query != lastSearchQuery) {
@@ -281,6 +282,18 @@ class FavouritesListViewModel @Inject constructor(
 			sourceSelections = if (isLocalShelf) emptyMap() else sourceFilterState.value,
 		),
 	)
+
+	private val selectionContext = combine(
+		rawSearchQuery,
+		contentTypeStore.selectedType(favouriteSpace),
+		effectiveFilters.combineWithSettings(),
+		activeSetCategoryIds,
+		similarTitleScanState,
+	) { query, type, filters, categoryIds, scan ->
+		SelectionContext(query.trim(), type, filters, categoryIds, scan)
+	}.distinctUntilChanged()
+
+	internal val selectionContextChanges = selectionContext.map { Unit }
 
 	override val listMode: StateFlow<ListMode> = activeDisplayOptions
 		.map { it.listMode }
@@ -376,11 +389,7 @@ class FavouritesListViewModel @Inject constructor(
 		val (displayAndCardEnrichment, scanState) = displayAndCardAndScan
 		val (display, currentCardEnrichment) = displayAndCardEnrichment
 		if (scanState != null) {
-			val scanned = if (display.query.isBlank()) {
-				scanState.mangas
-			} else {
-				searchMatcher.filter(scanState.mangas, display.query)
-			}
+			val scanned = searchMatcher.filter(scanState.mangas, display.query)
 			val enrichmentKey = cardEnrichmentKey(
 				display = display,
 				manga = scanned,
@@ -658,12 +667,19 @@ class FavouritesListViewModel @Inject constructor(
 		libraryGroupsRepository.reorder(groupId, orderedMangaIds, favouriteSpace)
 	}
 
-	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
-		similarTitleScanState.value?.let { state ->
-			return@withContext state.mangas.mapTo(LinkedHashSet()) { it.id }
+	suspend fun getAllSelectableIds(): Set<Long>? = withContext(Dispatchers.Default) {
+		val scope = selectionContext.first()
+		val ids = if (scope.scan != null) {
+			searchMatcher.filter(scope.scan.mangas, scope.query).mapTo(LinkedHashSet()) { it.id }
+		} else {
+			querySelectableIds(scope)
 		}
+		ids.takeIf { selectionContext.first() == scope }
+	}
+
+	private suspend fun querySelectableIds(scope: SelectionContext): Set<Long> {
 		val order = sortOrder.filterNotNull().first()
-		val filters = systemShelfFilters(effectiveFilters.combineWithSettings().first())
+		val filters = systemShelfFilters(scope.filters)
 		val queryFilters = scopeDownloadStatusFilters(filters)
 		val allItems = when (categoryId) {
 			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeAll(
@@ -679,7 +695,7 @@ class FavouritesListViewModel @Inject constructor(
 				space = favouriteSpace,
 			).first()
 			NO_ID -> repository.observeInCategories(
-				categoryIds = activeSetCategoryIds.filterNotNull().first(), order = order, filters = queryFilters,
+				categoryIds = scope.categoryIds.orEmpty(), order = order, filters = queryFilters,
 				limit = Int.MAX_VALUE, pinned = emptyList(), space = favouriteSpace,
 			).first()
 			PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
@@ -718,14 +734,32 @@ class FavouritesListViewModel @Inject constructor(
 		} else {
 			canonicalItems
 		}
-		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
+		val wantNovel = scope.type == FavouriteContentType.NOVEL
 		val typed = scopedItems.filter { manga -> isNovelContent(manga) == wantNovel }
-		val matched = searchWithLibraryGroups(typed, searchQuery.value, activeGroupsFor(filters))
-		val hiddenGroupMembers = activeGroupsFor(filters).flatMapTo(HashSet()) { it.memberIds }
-		matched.mapTo(LinkedHashSet(matched.size)) { it.id }.apply {
-			removeAll(hiddenGroupMembers)
+		val groups = activeGroupsFor(filters)
+		val matched = searchWithLibraryGroups(typed, scope.query, groups)
+		val hiddenGroupMembers = groups.flatMapTo(HashSet()) { it.memberIds }
+		return matched.mapNotNullTo(LinkedHashSet(matched.size)) {
+			it.id.takeUnless(hiddenGroupMembers::contains)
 		}
 	}
+
+	internal suspend fun resolveSelectedManga(ids: Set<Long>, loaded: Set<Manga>): Set<Manga>? =
+		withContext(Dispatchers.Default) {
+			val byId = loaded.associateByTo(HashMap()) { it.id }
+			val missing = ids - byId.keys
+			for (manga in mangaDataRepository.findMangaByIds(missing)) byId[manga.id] = manga
+			val selected = ids.mapNotNullTo(LinkedHashSet(ids.size), byId::get)
+			selected.takeIf { it.size == ids.size }
+		}
+
+	private data class SelectionContext(
+		val query: String,
+		val type: FavouriteContentType,
+		val filters: Set<ListFilterOption>,
+		val categoryIds: List<Long>?,
+		val scan: SimilarTitleScanState?,
+	)
 
 	fun markAsRead(items: Set<Manga>) {
 		launchLoadingJob(Dispatchers.Default) {
