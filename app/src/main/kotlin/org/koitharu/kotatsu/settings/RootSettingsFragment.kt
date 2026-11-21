@@ -174,7 +174,7 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                             Box(modifier = Modifier.weight(1f)) {
                                 if (panelDisplayMode == JourneyDisplayMode.KARTU) {
                                     SettingsJourneyPanelScreen(
-                                        stats = journeyStats,
+                                        stats = journeyStats.forMatureMode(statsMatureMode),
                                         profile = journeyProfile,
                                         model = journeyModel,
                                         onModelChange = journeyViewModel::setModel,
@@ -183,8 +183,8 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                                     )
                                 } else {
                                     StatsScreen(
-                                        stats = stats,
-                                        isLoading = statsLoading,
+                                        stats = stats.forMatureMode(statsMatureMode),
+                                        isLoading = statsLoading || stats.matureMode != statsMatureMode,
                                         period = statsPeriod,
                                         scope = statsScope,
                                         matureMode = statsMatureMode,

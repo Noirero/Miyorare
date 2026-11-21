@@ -5,6 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -50,13 +53,11 @@ class SettingsJourneyPanelViewModel @Inject constructor(
 
 	val profile: StateFlow<ReaderProfileSettings> = profileStore.profile
 
-	private val matureMode = StatsMatureMode.fromPreference(settings.statsMatureMode)
-
 	val stats = MutableStateFlow(
 		ReadingStats(
 			period = StatsPeriod.ALL,
 			scope = StatsContentScope.OVERVIEW,
-			matureMode = matureMode,
+			matureMode = StatsMatureMode.fromPreference(settings.statsMatureMode),
 		),
 	)
 
@@ -75,15 +76,19 @@ class SettingsJourneyPanelViewModel @Inject constructor(
 
 	init {
 		launchJob(Dispatchers.Default) {
+			val matureMode = settings.observe(AppSettings.KEY_STATS_MATURE_MODE)
+				.map { StatsMatureMode.fromPreference(settings.statsMatureMode) }
+				.distinctUntilChanged()
 			repository.observeReaderJourneyChanges()
 				.onStart { emit(Unit) }
-				.collectLatest {
+				.combine(matureMode) { _, mode -> mode }
+				.collectLatest { mode ->
 					stats.value = withLoading {
 						repository.getStatsSnapshot(
 							period = StatsPeriod.ALL,
 							categories = emptySet(),
 							scope = StatsContentScope.OVERVIEW,
-							matureMode = matureMode,
+							matureMode = mode,
 						)
 					}
 					resolveWeeklyGoal(stats.value.journeyCompletedChapters)
