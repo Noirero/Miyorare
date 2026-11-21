@@ -31,6 +31,14 @@ class MainNavigationPreferencesTest {
 		assertEquals(listOf(NavItem.FAVORITES, NavItem.LOCAL, NavItem.EXPLORE, NavItem.BOOKMARKS, NavItem.HISTORY), result)
 		assertFalse(NavItem.DISCOVERY_HUB in result)
 	}
+	@Test fun `disabling tracking does not restore home to an edited four slot bar`() {
+		val saved = listOf("LOCAL", "EXPLORE", "BOOKMARKS", "FEED")
+		val available = NavItem.entries.toSet() - setOf(NavItem.FEED, NavItem.UPDATED)
+		assertEquals(
+			listOf(NavItem.FAVORITES, NavItem.LOCAL, NavItem.EXPLORE, NavItem.BOOKMARKS, NavItem.HISTORY),
+			Policy.primary(saved, available),
+		)
+	}
 	@Test fun `normalized preference is stable and never stores a fixed root`() {
 		val slots = Policy.configurable(listOf(" EXPLORE ", "LOCAL", "HISTORY"))
 		assertEquals(slots, Policy.configurable(slots.map { it.name }))

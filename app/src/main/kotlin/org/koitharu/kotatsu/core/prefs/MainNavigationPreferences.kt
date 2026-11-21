@@ -8,13 +8,13 @@ object MainNavigationPreferences {
 
 	fun configurable(raw: List<String>?, available: Set<NavItem> = NavItem.entries.toSet()): List<NavItem> {
 		val selected = raw.orEmpty().mapNotNull { name -> NavItem.entries.firstOrNull { it.name == name.trim() } }
-			.filter { it !in fixed && it in available }
+			.filterNot { it in fixed }
 			.distinct()
 		val eligible = (selected + fallback).filter { it !in fixed && it in available }.distinct()
 		// Configurations written while Discovery Hub was a fixed root hold at most three slot
 		// names and never the hub itself. Keep the hub in the bar for those users, in its old
 		// centre position, instead of silently dropping it. A configuration that already lists
-		// four slots is current and is taken as-is, with or without the hub.
+		// four slots is current, even when one of its features is temporarily unavailable.
 		val isLegacyConfig = selected.size <= 3 && NavItem.DISCOVERY_HUB !in selected
 		val slots = if (isLegacyConfig && NavItem.DISCOVERY_HUB in available) {
 			val base = eligible.take(3).toMutableList()
