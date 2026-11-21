@@ -51,6 +51,7 @@ import org.koitharu.kotatsu.core.util.ext.MimeType
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
@@ -442,6 +443,38 @@ class DownloadedLocalStateTest {
 		} finally {
 			FavouritesContainerFragment.searchQuery.value = ""
 		}
+	}
+
+	@Test fun downloadedDateAddedSortIgnoresMetadataRefresh() = runBlocking {
+		val older = remote(810_035L).copy(title = "Older favourite")
+		val newer = remote(810_036L).copy(title = "Newer favourite")
+		val withoutMembership = remote(810_037L).copy(title = "Alpha download")
+		val removed = remote(810_038L).copy(title = "Beta download")
+		val category = repository.createCategory("First", ListSortOrder.NEWEST, false, false, true)
+		val anotherCategory = repository.createCategory("Second", ListSortOrder.NEWEST, false, false, true)
+		val titles = listOf(older, newer, withoutMembership, removed)
+		for (title in titles) data.storeManga(title, replaceExisting = true)
+		db.getFavouritesDao().apply {
+			upsert(FavouriteEntity(older.id, category.id, 0, false, 100L, 0L))
+			upsert(FavouriteEntity(older.id, anotherCategory.id, 0, false, 300L, 0L))
+			upsert(FavouriteEntity(newer.id, category.id, 0, false, 200L, 0L))
+			upsert(FavouriteEntity(removed.id, category.id, 0, false, 400L, 500L))
+		}
+		db.getFavouriteDownloadIndexDao().upsert(titles.map { title ->
+			FavouriteDownloadIndexEntity(title.id, FavouriteSpace.NORMAL.dbValue, download(root, title).file.canonicalPath)
+		})
+
+		suspend fun ordered(order: ListSortOrder, limit: Int = titles.size) =
+			repository.observeDownloaded(order, emptySet(), limit).first().map { it.id }
+
+		val newestFirst = listOf(newer.id, older.id, withoutMembership.id, removed.id)
+		assertEquals(newestFirst, ordered(ListSortOrder.NEWEST))
+		assertEquals(listOf(older.id, newer.id, withoutMembership.id, removed.id), ordered(ListSortOrder.OLDEST))
+
+		data.storeManga(older, replaceExisting = true, detailsFetched = true)
+		assertTrue(data.getDetailsUpdatedAt(older.id) > data.getDetailsUpdatedAt(newer.id))
+		assertEquals(newestFirst, ordered(ListSortOrder.NEWEST))
+		assertEquals(newestFirst.take(2), ordered(ListSortOrder.NEWEST, limit = 2))
 	}
 
 	@Test fun sharedDestinationShelfRequiresOwnershipAndHonorsVaultMembership() = runBlocking {

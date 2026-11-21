@@ -173,7 +173,7 @@ class FavouritesRepository @Inject constructor(
 		pinned: List<Long> = emptyList(),
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): Flow<List<Manga>> = db.getFavouritesDao()
-		.observeDownloaded(downloadedShelfCondition(space), order, filterOptions, limit, pinned)
+		.observeDownloaded(space, downloadedShelfCondition(space), order, filterOptions, limit, pinned)
 		.map { it.toMangaList() }
 
 	fun observeAll(

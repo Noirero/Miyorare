@@ -138,6 +138,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	/** Page canonical titles using the same eligibility as the Downloaded counter. */
 	fun observeDownloaded(
+		space: FavouriteSpace,
 		ownershipCondition: String,
 		order: ListSortOrder,
 		filterOptions: Set<ListFilterOption>,
@@ -145,7 +146,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		pinned: List<Long> = emptyList(),
 	): Flow<List<MangaWithTags>> = observeDownloadedImpl(
 		downloadedQuery(ownershipCondition, filterOptions)
-			.orderBy("${getDownloadedOrderBy(order, pinned)}, manga.manga_id")
+			.orderBy("${getDownloadedOrderBy(order, pinned, space)}, manga.manga_id")
 			.limit(limit)
 			.build(),
 	)
@@ -414,12 +415,21 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		progress = "IFNULL((SELECT percent FROM history WHERE history.manga_id = manga.manga_id), 0)",
 	)
 
-	private fun getDownloadedOrderBy(sortOrder: ListSortOrder, pinned: List<Long>): String {
-		val orderBy = sortOrder.toOrderBy(
-			dateAdded = "manga.details_updated_at",
+	private fun getDownloadedOrderBy(sortOrder: ListSortOrder, pinned: List<Long>, space: FavouriteSpace): String {
+		val useFavouriteDate = space == FavouriteSpace.NORMAL && sortOrder.type == ListSortOrder.Type.DATE_ADDED
+		// Use the earliest active Normal membership when a title belongs to multiple categories.
+		val dateAdded = if (useFavouriteDate) {
+			"(SELECT MIN(created_at) FROM favourites WHERE favourites.manga_id = manga.manga_id AND deleted_at = 0)"
+		} else {
+			"manga.details_updated_at"
+		}
+		val mangaOrderBy = sortOrder.toOrderBy(
+			dateAdded = dateAdded,
 			lastRead = "IFNULL((SELECT updated_at FROM history WHERE history.manga_id = manga.manga_id), 0)",
 			progress = "IFNULL((SELECT percent FROM history WHERE history.manga_id = manga.manga_id), 0)",
 		)
+		// Titles without a date come last in both directions, ordered by title and ID.
+		val orderBy = if (useFavouriteDate) "$dateAdded IS NULL, $mangaOrderBy" else mangaOrderBy
 		if (pinned.isEmpty()) return orderBy
 		val case = buildString {
 			append("CASE manga.manga_id")
