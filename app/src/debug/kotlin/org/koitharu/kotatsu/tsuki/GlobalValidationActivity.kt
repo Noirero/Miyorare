@@ -385,6 +385,36 @@ class GlobalValidationActivity : FragmentActivity() {
 		val alternative = "[Alt prefix] Alternative [Alt suffix]"
 		val gallery = "/g/4323075/testtoken/"
 		val requests = java.util.concurrent.ConcurrentLinkedQueue<String>()
+		val pageScenario = java.util.concurrent.atomic.AtomicReference("single")
+		fun indexHtml(page: Int, scenario: String): String {
+			val incremental = scenario == "incremental" || scenario == "unconfirmedEnd"
+			val length = if (incremental) "" else {
+				val expected = if (scenario == "single") 2 else 4
+				"""<div id="gdd"><table><tr><td>Length:</td><td>$expected pages</td></tr></table></div>"""
+			}
+			val images = when {
+				incremental -> (page * 2 + 1)..(page * 2 + 2)
+				page == 0 || scenario == "repeated" -> 1..2
+				scenario == "empty" -> IntRange.EMPTY
+				else -> 3..4
+			}
+			val pager = when (scenario) {
+				"incremental", "unconfirmedEnd" -> {
+					val next = when {
+						page < 2 -> """<a href="?p=${page + 1}">&gt;</a>"""
+						scenario == "incremental" -> "&gt;"
+						else -> ""
+					}
+					"""<table class="ptt"><tr><td class="ptds">${page + 1}</td><td>$next</td></tr></table>"""
+				}
+				"single", "noPager" -> ""
+				"footer" -> """<table class="ptb"><tr><td><a href="?p=1">2</a></td></tr></table>"""
+				else -> """<table class="ptt"><tr><td><a href="?p=1">2</a></td></tr></table>"""
+			}
+			return """
+				$length$pager<div id="gdt">${images.joinToString("") { """<a href="/sample/image-$it"></a>""" }}</div>
+			""".trimIndent()
+		}
 		val client = OkHttpClient.Builder().addInterceptor { chain ->
 			val request = chain.request()
 			val path = request.url.encodedPath
@@ -399,7 +429,7 @@ class GlobalValidationActivity : FragmentActivity() {
 					<div class="gm"><div id="gd2">
 					<h1 id="gn">$fullTitle</h1><h1 id="gj">$alternative</h1>
 					</div></div>
-				""".trimIndent()
+				""".trimIndent() + indexHtml(request.url.queryParameter("p")?.toIntOrNull() ?: 0, pageScenario.get())
 				else -> error("Unexpected fixture request: $path")
 			}
 			Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
@@ -426,6 +456,27 @@ class GlobalValidationActivity : FragmentActivity() {
 		check(details.title == fullTitle && full == fullTitle && compact == "Fixture (Ongoing)") { "Repository or presentation changed the source title" }
 		check(EhentaiSourceFamily.isOfficialSource(details.source.name))
 		Log.i(TAG, "TITLE_FIXTURE_OK")
+
+		val chapter = checkNotNull(details.chapters).single()
+		for ((scenario, expected) in listOf("single" to 2, "normal" to 4, "footer" to 4, "incremental" to 6)) {
+			pageScenario.set(scenario)
+			val pages = repository.getFreshPages(chapter)
+			check(pages.map { it.url.substringAfterLast('/') } == (1..expected).map { "image-$it" }) {
+				"Expected ordered, complete pages for $scenario"
+			}
+		}
+		for (scenario in listOf("repeated", "empty", "noPager", "unconfirmedEnd")) {
+			pageScenario.set(scenario)
+			try {
+				repository.getFreshPages(chapter)
+				error("An incomplete $scenario gallery was accepted")
+			} catch (failure: java.io.IOException) {
+				check(failure.message.orEmpty().contains("Please retry")) {
+					"An incomplete $scenario gallery failed without a retryable message: $failure"
+				}
+			}
+		}
+		Log.i(TAG, "GALLERY_PAGES_FIXTURE_OK")
 	}
 
 	private companion object {

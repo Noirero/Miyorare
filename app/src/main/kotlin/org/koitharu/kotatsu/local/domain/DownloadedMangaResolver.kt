@@ -87,22 +87,22 @@ class DownloadedMangaResolver @Inject constructor(
 			return localMangaRepository.findSavedManga(manga, withDetails = true)
 		}
 
-		if (officialExhentai) {
-			localMangaRepository.findExhentaiDestinationCopy(manga, space)?.let { return it }
-		}
 		val roots = downloadDestinationStore.readableRoots(space)
 
 		// Space ownership is stronger than the global Local index for sidecar-free downloads.
 		val ownership = database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id)
 		if (ownership != null) {
 			val ownedFile = File(ownership.path)
-			if (roots.any { ownedFile.isInside(it) }) {
-				val saved = if (officialExhentai) {
-					localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = space)?.local
-				} else {
-					localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)
-				}
-				if (saved != null) return saved
+			val inKnownRoot = roots.any { ownedFile.isInside(it) }
+			if (officialExhentai) {
+				val match = localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = space)
+				if (match != null && (inKnownRoot || (
+						match.verified && match.receipt?.space == space &&
+							match.local.file.canonicalFile == ownedFile.canonicalFile
+						))
+				) return match.local
+			} else if (inKnownRoot) {
+				localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let { return it }
 			}
 		}
 
@@ -111,7 +111,8 @@ class DownloadedMangaResolver @Inject constructor(
 		// active space; the background legacy reconciler is the only compatibility path allowed to
 		// persist ownership after checking favourite membership and chapter evidence.
 		if (officialExhentai) {
-			return localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
+			return localMangaRepository.findExhentaiDestinationCopy(manga, space)
+				?: localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
 		}
 		if (!canInferSpaceFromPath()) return null
 

@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
@@ -82,6 +83,15 @@ class LocalMangaRepository @Inject constructor(
 	@Volatile
 	private var listQueryCache: LocalListQueryCache? = null
 	private val listQueryCacheLock = Any()
+
+	internal data class ExhentaiDownloadChange(val mangaId: Long, val space: FavouriteSpace, val local: LocalManga)
+
+	private val exhentaiDownloadChanges = MutableSharedFlow<ExhentaiDownloadChange>()
+	internal val exhentaiDownloads = exhentaiDownloadChanges.asSharedFlow()
+
+	internal suspend fun publishExhentaiDownload(mangaId: Long, space: FavouriteSpace, local: LocalManga) {
+		exhentaiDownloadChanges.emit(ExhentaiDownloadChange(mangaId, space, local))
+	}
 
 	override val source = LocalMangaSource
 
@@ -343,15 +353,17 @@ class LocalMangaRepository @Inject constructor(
 					val evidence = ExhentaiChapterOwnership.inspectDestination(file)
 					val receiptSpace = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt?.space
 					if (evidence == ExhentaiChapterOwnership.Evidence.Unusable || receiptSpace == otherSpace) continue
+
 					if (file.isInsideAny(otherRoots) && receiptSpace != space &&
 						!favouriteDownloadOwnershipIndex.ownsExactExhentaiFile(remote.id, space, file)) {
 						LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_SHARED_ROOT)
 						continue
 					}
-					if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, file, verified = true) ||
-						file.parentFile?.let {
-							favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, it, verified = true)
-						} == true) continue
+					val match = findExhentaiAtPath(remote, file, withDetails = true, space = space)
+					if (match?.verified == true) return@withContext match.local
+					if (evidence is ExhentaiChapterOwnership.Evidence.Owned ||
+						favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, file, verified = false)
+					) continue
 					ExhentaiDownloadedCopy.fromDestination(remote, file)?.let {
 						LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_SELECTED)
 						return@withContext it
@@ -387,7 +399,10 @@ class LocalMangaRepository @Inject constructor(
 			if (match == null) LegacyCbzTrace.record(LegacyCbzTrace.Stage.ARCHIVE_REJECTED)
 		}
 		if (match == null) return null
-		if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, match.local.file, match.verified)) {
+		if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(
+				remote.id, space, match.local.file, match.verified, match.physicalMangaId, receipt = match.receipt,
+			)
+		) {
 			LegacyCbzTrace.record(LegacyCbzTrace.Stage.OWNERSHIP_CONFLICT)
 			return null
 		}
