@@ -4,22 +4,29 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.OnBackPressedCallback
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,7 +39,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.github.AppUpdateRepository
@@ -48,6 +59,8 @@ import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelScreen
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelViewModel
 import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
@@ -63,6 +76,14 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
 
     private val searchViewModel: SettingsSearchViewModel by activityViewModels()
 
+    private val journeyViewModel: SettingsJourneyPanelViewModel by viewModels()
+
+    // Bridges between the pager composition below and the activity back press:
+    // while the Journey page is showing, Back returns to the Settings page
+    // instead of leaving the Settings screen.
+    private val journeyPageVisible = MutableStateFlow(false)
+    private var journeyBackAction: (() -> Unit)? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -72,12 +93,55 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
         setContent {
             MiyorareTheme {
                 val update by appUpdateRepository.observeAvailableUpdate().collectAsState()
-                RootSettingsContent(
-                    appVersion = BuildConfig.VERSION_NAME,
-                    updateAvailable = update != null,
-                    onSectionClick = { section -> openSection(section) },
-                    onUpdateClick = { router.openAppUpdate() },
-                )
+                val journeyStats by journeyViewModel.stats.collectAsState()
+                val journeyProfile by journeyViewModel.profile.collectAsState()
+                val journeyModel by journeyViewModel.model.collectAsState()
+                val journeyGoal by journeyViewModel.weeklyGoal.collectAsState()
+                // Root Settings and the Reader Journey panel are two pages of one
+                // pager — the same stable swipe pattern as the Favourites tabs:
+                // the pages follow the finger and settle into place, instead of a
+                // bare trigger firing a navigation. Page 0 is Settings itself,
+                // page 1 is the Journey panel.
+                val pagerState = rememberPagerState(pageCount = { 2 })
+                val coroutineScope = rememberCoroutineScope()
+                val settingsActivity = activity as? SettingsActivity
+                LaunchedEffect(pagerState.currentPage) {
+                    journeyPageVisible.value = pagerState.currentPage == 1
+                    settingsActivity?.setSectionTitle(
+                        if (pagerState.currentPage == 1) {
+                            getString(R.string.reader_journey)
+                        } else {
+                            null
+                        },
+                    )
+                }
+                SideEffect {
+                    journeyBackAction = {
+                        coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                    }
+                }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    if (page == 0) {
+                        RootSettingsContent(
+                            appVersion = BuildConfig.VERSION_NAME,
+                            updateAvailable = update != null,
+                            onSectionClick = { section -> openSection(section) },
+                            onUpdateClick = { router.openAppUpdate() },
+                        )
+                    } else {
+                        SettingsJourneyPanelScreen(
+                            stats = journeyStats,
+                            profile = journeyProfile,
+                            model = journeyModel,
+                            onModelChange = journeyViewModel::setModel,
+                            weeklyGoal = journeyGoal,
+                            onWeeklyGoalChange = journeyViewModel::setWeeklyGoal,
+                        )
+                    }
+                }
             }
         }
     }
@@ -88,12 +152,22 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
             SettingsSearchMenuProvider(searchViewModel),
             viewLifecycleOwner,
         )
+        val journeyBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                journeyBackAction?.invoke()
+            }
+        }
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, journeyBackCallback)
+        viewLifecycleOwner.lifecycleScope.launch {
+            journeyPageVisible.collect { journeyBackCallback.isEnabled = it }
+        }
     }
 
     private fun openSection(section: SettingsSection) {
         val activity = activity as? SettingsActivity ?: return
         activity.openFragment(section.fragmentClass, null, isFromRoot = true)
     }
+
 }
 
 private enum class SettingsSection(
@@ -266,6 +340,7 @@ private fun RootSettingsContent(
 ) {
     val ctx = LocalContext.current
     val modern = LocalMiyorareVisualPalette.current.isModern
+    // This content is page 0 of the root pager; page 1 is the Journey panel.
     SettingsScaffold {
         if (updateAvailable) {
             item {
