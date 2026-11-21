@@ -49,6 +49,7 @@ data class ModernCoverState(
 	val showContinueReading: Boolean,
 	/** Preserve the host's original counter (tracker updates, Local chapter total, etc.). */
 	val legacyCounter: Int,
+	val useDarkReadingBadgeForeground: Boolean = false,
 ) {
 	companion object {
 		fun from(model: MangaGridModel, host: ModernCoverContext): ModernCoverState {
