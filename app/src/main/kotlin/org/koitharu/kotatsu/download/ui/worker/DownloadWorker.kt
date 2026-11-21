@@ -435,7 +435,6 @@ class DownloadWorker @AssistedInject constructor(
 					checkIsPaused()
 					if (chaptersToSkip.remove(chapter.value.id)) {
 						completedRequestedChapters++
-						if (diagnostic != null) expectedArchivePages += pages.size
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
@@ -592,6 +591,7 @@ class DownloadWorker @AssistedInject constructor(
 					// return false until finish(), so flushChapter() is not a success/failure signal.
 					if (accounting.requestedChapterCompleted) {
 						completedRequestedChapters++
+						if (diagnostic != null) expectedArchivePages += pages.size
 					}
 					if (accounting.durableArtifactAvailable && !isExhentai) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
@@ -630,7 +630,7 @@ class DownloadWorker @AssistedInject constructor(
 				if (diagnostic?.active == true &&
 					isPublicForDiagnostics(mangaDetails.id)
 				) {
-					diagnostic.record(DownloadEvent.ARCHIVE_INDEXED, expectedArchivePages, expectedArchivePages)
+					diagnostic.record(DownloadEvent.ARCHIVE_INDEXED, expectedArchivePages, -1)
 					val archive = output as? LocalMangaZipOutput
 					if (isExhentai && archive != null) {
 						val actual = runCatchingCancellable { archive.readCommittedPageCount() }.getOrNull()

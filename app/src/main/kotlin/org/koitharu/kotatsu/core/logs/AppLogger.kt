@@ -12,6 +12,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -66,11 +67,12 @@ class AppLogger @Inject constructor(
 	}
 
 	fun setEnabled(enabled: Boolean) {
-		val current = mutableState.value
 		val required = if (enabled) Phase.IDLE else Phase.RECORDING
-		if (current.phase != required) return
 		val next = if (enabled) Phase.STARTING else Phase.STOPPING
-		if (!mutableState.compareAndSet(current, current.copy(phase = next, failed = false))) return
+		val previous = mutableState.getAndUpdate { state ->
+			if (state.phase == required) state.copy(phase = next, failed = false) else state
+		}
+		if (previous.phase != required) return
 		scope.launch {
 			files.withLock {
 				if (enabled) {
