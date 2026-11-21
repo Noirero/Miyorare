@@ -1018,21 +1018,18 @@ class DownloadMaintenanceRegressionTest {
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
 
-		// Gallery identity is not a read filter for an owned title destination.
+		// A replacement with a different gallery marker must invalidate the recorded path.
 		ZipOutputStream(cbz.outputStream()).use { zip ->
 			zip.setComment(org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.comment(812304L))
 			zip.putNextEntry(ZipEntry("other-gallery.jpg"))
 			zip.write(byteArrayOf(4, 5, 6))
 			zip.closeEntry()
 		}
-		for (lookupSpace in listOf(null, space)) {
-			val saved = checkNotNull(resolver.findSavedManga(gallery, lookupSpace))
-			assertEquals(cbz.canonicalFile, saved.file.canonicalFile)
-			val chapter = MangaDetails(gallery).copy(localManga = saved).allChapters
-				.single { it.id == gallery.chapters!!.single().id }
-			assertEquals(LocalMangaSource, chapter.source)
-			assertTrue(local.getPages(chapter).single().url.endsWith("#other-gallery.jpg"))
-		}
+		val replacement = cbz.readBytes()
+		assertNull(resolver.findSavedManga(gallery, null))
+		assertNull(resolver.findSavedManga(gallery, space))
+		assertFalse(deleteLocal.deleteExhentaiCopy(gallery, space, expectedFile = cbz))
+		assertArrayEquals(replacement, cbz.readBytes())
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 		assertEquals(ownership, dao.findEntry(space.dbValue, gallery.id))
 	}
