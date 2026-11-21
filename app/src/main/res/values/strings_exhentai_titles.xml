@@ -3,7 +3,9 @@
     <string name="exhentai_alternative_title">Alternative title</string>
     <string name="exhentai_download_append_id">Add gallery ID to the filename</string>
     <string name="exhentai_download_separate_copy">Download a separate copy</string>
-    <string name="exhentai_download_separate_copy_hint">Keep existing files, even if this gallery looks downloaded</string>
+    <string name="exhentai_download_separate_copy_hint">Create a new file with the selected format and filename options</string>
+    <string name="exhentai_download_reuse">Use the existing archive if available</string>
+    <string name="exhentai_download_reuse_hint">Format and filename options apply when a new file is made.</string>
     <string name="exhentai_use_full_title">Show full gallery title</string>
     <string name="exhentai_use_compact_title">Show compact gallery title</string>
 </resources>

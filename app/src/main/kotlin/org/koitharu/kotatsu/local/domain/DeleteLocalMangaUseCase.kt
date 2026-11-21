@@ -62,29 +62,17 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	}
 
 
-	/** Details can delete an unambiguous destination CBZ; other actions require a verified copy. */
+	/** Reading a legacy title path alone does not authorize deletion. */
 	internal suspend fun deleteExhentaiCopy(
 		remote: Manga,
 		space: FavouriteSpace,
 		expectedFile: File? = null,
 		chapterIds: Set<Long>? = null,
-		useDestination: Boolean = false,
 	): Boolean = mangaLock.withLock(remote) {
 		require(ExhentaiDownloadedCopy.isOfficial(remote))
-		if (useDestination) {
-			val destination = localMangaRepository.findExhentaiDestinationCopy(remote, space)
-			if (destination != null) {
-				val file = destination.file.canonicalFile
-				if (expectedFile != null && expectedFile.canonicalFile != file ||
-					chapterIds != null && destination.manga.chapters.orEmpty().map { it.id }.toSet() != chapterIds) {
-					throw IOException("The selected ExHentai file changed. Files were kept.")
-				}
-				return@withLock localMangaRepository.deleteExhentaiDestinationCopy(destination)
-			}
-		}
 		val saved = downloadedMangaResolver.findSavedManga(remote, space) ?: return@withLock false
 		val file = saved.file.canonicalFile
-		val proven = ExhentaiDownloadedCopy.find(remote, file, withDetails = true)
+		val proven = localMangaRepository.findExhentaiAtPath(remote, file, withDetails = true, space = space)
 		if (!file.isFile || proven?.verified != true || proven.local.file.canonicalFile != file ||
 			(expectedFile != null && expectedFile.canonicalFile != file)) {
 			throw IOException("Cannot verify which ExHentai file belongs to this gallery. Files were kept.")
@@ -92,12 +80,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		if (chapterIds != null && proven.local.manga.chapters?.singleOrNull()?.let { setOf(it.id) } != chapterIds) {
 			throw IOException("The selected ExHentai chapter could not be verified. Files were kept.")
 		}
-		val owners = database.getFavouriteDownloadIndexDao().findEntriesByPath(file.path)
-		if (owners.any { it.space != space.dbValue || it.mangaId != remote.id }) {
-			throw IOException("This file is shared with another library entry. Files were kept.")
-		}
-		invoke(proven.local.manga)
-		true
+		localMangaRepository.deleteExhentaiDestinationCopy(proven.local)
 	}
 
 	/**

@@ -468,6 +468,19 @@ abstract class ChaptersPagesViewModel(
 				.collect { onDownloadComplete(it) }
 		}
 		launchJob(Dispatchers.Default) {
+			interactor.exhentaiDownloads.collect { event ->
+				if (event.space != favouriteSpace || isSmartLocal || !event.local.file.exists()) return@collect
+				mangaDetails.update { current ->
+					if (current == null || current.id != event.mangaId || !current.isOfficialExhentai) {
+						current
+					} else {
+						val details = current.copy(localManga = event.local)
+						if (isScanlatorsMerged.value) details.withMergedBranches() else details
+					}
+				}
+			}
+		}
+		launchJob(Dispatchers.Default) {
 			LocalMangaIndex.rebuildEvents.collect {
 				if (!isSmartLocal) onLocalIndexRebuilt()
 			}
@@ -813,7 +826,7 @@ abstract class ChaptersPagesViewModel(
 		launchLoadingJob(Dispatchers.Default) {
 			val remote = details?.sourceManga
 			if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
-				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file, useDestination = true)) {
+				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {
 					"Downloaded ExHentai gallery is unavailable"
 				}
 			} else deleteLocalMangaUseCase(m)
@@ -899,6 +912,8 @@ abstract class ChaptersPagesViewModel(
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		if (isSmartLocal) return
 		val current = mangaDetails.value ?: return
+		// Official ExHentai publications carry an explicit space; the generic signal is for Local.
+		if (downloadedManga != null && current.isOfficialExhentai) return
 		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
 		if (downloadedManga != null) {
 			val matchingRoot = expectedRoots.filter { downloadedManga.file.isInside(it) }

@@ -70,12 +70,15 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 		space: FavouriteSpace?,
 		file: File,
 		verified: Boolean,
+		physicalMangaId: Long? = null,
 	): Boolean {
 		val physical = file.canonicalFile
 		val paths = if (verified) listOf(physical.path)
 		else listOfNotNull(physical.path, physical.takeIf(File::isFile)?.parentFile?.path)
 		return db.getFavouriteDownloadIndexDao().findEntriesByPaths(paths).any {
-			(space != null && it.space != space.dbValue) || (!verified && it.mangaId != mangaId)
+			// Older installs also indexed the physical Local id from the generic storage event.
+			val localAlias = verified && it.mangaId == physicalMangaId && it.mangaId != mangaId
+			!localAlias && ((space != null && it.space != space.dbValue) || it.mangaId != mangaId)
 		}
 	}
 

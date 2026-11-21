@@ -385,6 +385,24 @@ class GlobalValidationActivity : FragmentActivity() {
 		val alternative = "[Alt prefix] Alternative [Alt suffix]"
 		val gallery = "/g/4323075/testtoken/"
 		val requests = java.util.concurrent.ConcurrentLinkedQueue<String>()
+		val pageScenario = java.util.concurrent.atomic.AtomicReference("single")
+		fun indexHtml(page: Int, scenario: String): String {
+			val expected = if (scenario == "single") 2 else 4
+			val images = when {
+				page == 0 || scenario == "repeated" -> 1..2
+				scenario == "empty" -> IntRange.EMPTY
+				else -> 3..4
+			}
+			val pager = when (scenario) {
+				"single", "noPager" -> ""
+				"footer" -> """<table class="ptb"><tr><td><a href="?p=1">2</a></td></tr></table>"""
+				else -> """<table class="ptt"><tr><td><a href="?p=1">2</a></td></tr></table>"""
+			}
+			return """
+				<div id="gdd"><table><tr><td>Length:</td><td>$expected pages</td></tr></table></div>
+				$pager<div id="gdt">${images.joinToString("") { """<a href="/sample/image-$it"></a>""" }}</div>
+			""".trimIndent()
+		}
 		val client = OkHttpClient.Builder().addInterceptor { chain ->
 			val request = chain.request()
 			val path = request.url.encodedPath
@@ -399,7 +417,7 @@ class GlobalValidationActivity : FragmentActivity() {
 					<div class="gm"><div id="gd2">
 					<h1 id="gn">$fullTitle</h1><h1 id="gj">$alternative</h1>
 					</div></div>
-				""".trimIndent()
+				""".trimIndent() + indexHtml(request.url.queryParameter("p")?.toIntOrNull() ?: 0, pageScenario.get())
 				else -> error("Unexpected fixture request: $path")
 			}
 			Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
@@ -426,6 +444,25 @@ class GlobalValidationActivity : FragmentActivity() {
 		check(details.title == fullTitle && full == fullTitle && compact == "Fixture (Ongoing)") { "Repository or presentation changed the source title" }
 		check(EhentaiSourceFamily.isOfficialSource(details.source.name))
 		Log.i(TAG, "TITLE_FIXTURE_OK")
+
+		val chapter = checkNotNull(details.chapters).single()
+		for ((scenario, expected) in listOf("single" to 2, "normal" to 4, "footer" to 4)) {
+			pageScenario.set(scenario)
+			val pages = repository.getFreshPages(chapter)
+			check(pages.map { it.url.substringAfterLast('/') } == (1..expected).map { "image-$it" }) {
+				"Expected ordered, complete pages for $scenario"
+			}
+		}
+		for (scenario in listOf("repeated", "empty", "noPager")) {
+			pageScenario.set(scenario)
+			val failure = org.koitharu.kotatsu.parsers.util.runCatchingCancellable {
+				repository.getFreshPages(chapter)
+			}.exceptionOrNull()
+			check(failure is java.io.IOException && failure.message.orEmpty().contains("Please retry")) {
+				"An incomplete $scenario gallery was accepted or failed without a retryable error: $failure"
+			}
+		}
+		Log.i(TAG, "GALLERY_PAGES_FIXTURE_OK")
 	}
 
 	private companion object {

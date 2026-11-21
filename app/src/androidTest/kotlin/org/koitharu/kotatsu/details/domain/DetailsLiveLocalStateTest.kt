@@ -10,7 +10,12 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -264,6 +269,65 @@ class DetailsLiveLocalStateTest {
 	}
 
 	@Test
+	fun officialExhentaiOnlyAcceptsScopedDownloadEvents() = runBlocking {
+		val source = MangaSource("TSUKI:MIYORARE:miyorare-global:EXHENTAI")
+		val seed = remote()
+		val chapter = seed.chapters.orEmpty().first().copy(source = source)
+		val gallery = seed.copy(source = source, chapters = listOf(chapter))
+		val file = cbz(root, 1)
+		val parsed = LocalMangaParser(file).getManga(withDetails = false)
+		val saved = parsed.copy(manga = parsed.manga.copy(chapters = listOf(
+			chapter.copy(source = LocalMangaSource, url = file.toUri().toString()),
+		)))
+		val normal = viewModel(MangaDetails(gallery), FavouriteSpace.NORMAL)
+		val private = viewModel(MangaDetails(gallery), FavouriteSpace.PRIVATE)
+		withTimeout(5_000L) {
+			normal.chapters.first { it.size == 1 }
+			private.chapters.first { it.size == 1 }
+			events.subscriptionCount.first { it >= 2 }
+			emit(saved.copy(manga = saved.manga.copy(id = gallery.id)))
+			while (private.mangaDetails.value?.local == null) {
+				localRepository.publishExhentaiDownload(gallery.id, FavouriteSpace.PRIVATE, saved)
+				kotlinx.coroutines.yield()
+			}
+			assertEquals(file.canonicalFile, private.mangaDetails.value?.local?.file?.canonicalFile)
+			assertEquals(null, normal.mangaDetails.value?.local)
+			assertEquals(0, private.reloads.get())
+		}
+	}
+
+	@Test
+	fun localExhentaiCopyIsVisibleBeforeSlowRemoteMetadataAndSurvivesItsArrival() = runBlocking {
+		val gallery = remote()
+		val file = cbz(root, 1)
+		val local = LocalMangaParser(file).getManga(withDetails = false)
+		val allowRemote = CompletableDeferred<Unit>()
+		val early = CompletableDeferred<Unit>()
+		val source = flow {
+			emit(MangaDetails(gallery))
+			allowRemote.await()
+			emit(MangaDetails(gallery.copy(title = "Fresh metadata")).copy(isLoaded = true))
+		}
+		val snapshots = async {
+			source.withEarlyLocalCopy(flow {
+				emit(null)
+				emit(local)
+			}).onEach {
+				if (!it.isLoaded && it.local == local) early.complete(Unit)
+			}.toList()
+		}
+		try {
+			withTimeout(5_000L) { early.await() }
+			assertFalse(allowRemote.isCompleted)
+		} finally {
+			allowRemote.complete(Unit)
+		}
+		val final = snapshots.await().last()
+		assertEquals("Fresh metadata", final.sourceManga.title)
+		assertEquals(local, final.local)
+	}
+
+	@Test
 	fun firstDownloadIsAcceptedThroughAliasDespiteStaleNonEmptyRemoteIndexRow() = runBlocking {
 		cbz(root, 1)
 		val remote = remote()
@@ -490,7 +554,7 @@ class DetailsLiveLocalStateTest {
 
 	private fun viewModel(initial: MangaDetails, space: FavouriteSpace = FavouriteSpace.NORMAL): TestViewModel =
 		TestViewModel(space).also {
-			viewModels.put("details", it)
+			viewModels.put("details-${space.name}", it)
 			it.mangaDetails.value = initial
 		}
 
