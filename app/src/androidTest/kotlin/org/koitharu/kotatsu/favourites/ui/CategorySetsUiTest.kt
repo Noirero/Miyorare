@@ -544,32 +544,36 @@ class CategorySetsUiTest {
 		types.setLastCategoryId(type, normalCategory, normal)
 		types.setLastCategoryId(type, privateCategory, privateSpace)
 
-		fun <A : FragmentActivity> awaitCategory(
-			scenario: ActivityScenario<A>,
-			categoryId: Long,
-		): FavouritesContainerFragment {
-			var selected: FavouritesContainerFragment? = null
-			await {
-				scenario.onActivity { activity ->
-					val container = descendants(activity.supportFragmentManager.fragments)
-						.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
-					val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
-					if (container != null && pager != null) {
-						val current = container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment
-						if (current?.categoryId == categoryId) selected = container
-					}
-				}
-				selected != null
-			}
-			return checkNotNull(selected)
+		fun selectedContainer(activity: FragmentActivity, categoryId: Long): FavouritesContainerFragment? {
+			val container = descendants(activity.supportFragmentManager.fragments)
+				.filterIsInstance<FavouritesContainerFragment>().firstOrNull() ?: return null
+			val pager = container.view?.findViewById<ViewPager2>(R.id.pager) ?: return null
+			val current = container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment
+			return container.takeIf { current?.categoryId == categoryId }
 		}
 
 		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { normalScenario ->
-			val normalContainer = awaitCategory(normalScenario, normalCategory)
+			var selectedNormal: FavouritesContainerFragment? = null
+			await {
+				normalScenario.onActivity { selectedNormal = selectedContainer(it, normalCategory) }
+				selectedNormal != null
+			}
+			val normalContainer = checkNotNull(selectedNormal)
 			val privateIntent = Intent(context, FavouritesActivity::class.java)
 				.putExtra(EXTRA_FAVOURITE_SPACE, privateSpace.dbValue)
-			ActivityScenario.launch<FavouritesActivity>(privateIntent).use { privateScenario ->
-				awaitCategory(privateScenario, privateCategory)
+			var privateActivity: FavouritesActivity? = null
+			try {
+				// Start from Normal so its activity and pager stay in the same back stack.
+				normalScenario.onActivity { it.startActivity(privateIntent) }
+				await {
+					var ready = false
+					instrumentation.runOnMainSync {
+						privateActivity = ActivityLifecycleMonitorRegistry.getInstance()
+							.getActivitiesInStage(Stage.RESUMED).filterIsInstance<FavouritesActivity>().singleOrNull()
+						ready = privateActivity?.let { selectedContainer(it, privateCategory) } != null
+					}
+					ready
+				}
 				assertEquals(privateCategory, types.getLastCategoryId(type, privateSpace))
 
 				// Mirror completion at the ownership index boundary while the Normal view is retained.
@@ -594,6 +598,9 @@ class CategorySetsUiTest {
 				}
 				assertEquals("Normal badge refresh changed the Private category", privateCategory, types.getLastCategoryId(type, privateSpace))
 				assertEquals(normalCategory, types.getLastCategoryId(type, normal))
+			} finally {
+				instrumentation.runOnMainSync { privateActivity?.finish() }
+				instrumentation.waitForIdleSync()
 			}
 		}
 	}
