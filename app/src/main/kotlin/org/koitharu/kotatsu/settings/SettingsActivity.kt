@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.settings
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.ViewGroup
@@ -52,7 +51,6 @@ import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
 import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import org.koitharu.kotatsu.settings.fonts.FontSettingsFragment
-import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelFragment
 import org.koitharu.kotatsu.settings.search.SettingsItem
 import org.koitharu.kotatsu.settings.search.SettingsSearchFragment
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
@@ -62,7 +60,6 @@ import org.koitharu.kotatsu.settings.sources.migration.BrokenSourcesMigrationFra
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
-import kotlin.math.abs
 
 @AndroidEntryPoint
 class SettingsActivity :
@@ -118,58 +115,6 @@ class SettingsActivity :
 		viewModel.isSearchActive.observe(this, ::toggleSearchMode)
 		viewModel.onNavigateToPreference.observeEvent(this, ::navigateToPreference)
 		observeFoldHinge()
-	}
-
-	// Horizontal swipes on the root Settings screen and on the Journey panel are
-	// tracked here, at activity level, because every touch entering the window
-	// passes dispatchTouchEvent before any view or Compose content sees it;
-	// detectors planted inside the root screen's own view/composition never
-	// observed the gestures on device. Observe-only: events are never consumed.
-	// Swipe right on root Settings opens the Journey panel; swipe left inside
-	// the panel returns to Settings.
-	private var journeyDownX = 0f
-	private var journeyDownY = 0f
-	private var journeySwipeFired = false
-
-	override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-		trackJourneySwipe(ev)
-		return super.dispatchTouchEvent(ev)
-	}
-
-	private fun trackJourneySwipe(ev: MotionEvent) {
-		val fm = supportFragmentManager
-		val root = (fm.findFragmentById(R.id.container) as? RootSettingsFragment)
-			?: (fm.findFragmentById(R.id.container_master) as? RootSettingsFragment)
-		val inPanel = fm.findFragmentById(R.id.container) is SettingsJourneyPanelFragment
-		if (root == null && !inPanel) {
-			journeySwipeFired = false
-			return
-		}
-		val density = resources.displayMetrics.density
-		when (ev.actionMasked) {
-			MotionEvent.ACTION_DOWN -> {
-				journeyDownX = ev.x
-				journeyDownY = ev.y
-				journeySwipeFired = false
-			}
-
-			MotionEvent.ACTION_MOVE -> {
-				if (!journeySwipeFired) {
-					val dx = ev.x - journeyDownX
-					val dy = ev.y - journeyDownY
-					val threshold = 44f * density
-					if (root != null && dx > threshold && dx > abs(dy) * 1.25f) {
-						journeySwipeFired = true
-						root.openJourneyPanel()
-					} else if (inPanel && dx < -threshold && -dx > abs(dy) * 1.25f) {
-						journeySwipeFired = true
-						fm.popBackStack()
-					}
-				}
-			}
-
-			MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> journeySwipeFired = false
-		}
 	}
 
 	override fun isPrivateVaultContent(): Flow<Boolean> = flowOf(isPrivateSettings)
@@ -261,24 +206,19 @@ class SettingsActivity :
         return super.onSupportNavigateUp()
     }
 
-	fun openFragment(
-		fragmentClass: Class<out Fragment>,
-		args: Bundle?,
-		isFromRoot: Boolean,
-		transitionForward: Boolean = true,
-	) {
+	fun openFragment(fragmentClass: Class<out Fragment>, args: Bundle?, isFromRoot: Boolean) {
 		viewModel.discardSearch()
 		val fm = supportFragmentManager
 		val current = fm.findFragmentById(R.id.container)
 		val hasFragment = current != null
 		current?.apply {
-			exitTransition = settingsTransition(forward = transitionForward)
-			reenterTransition = settingsTransition(forward = !transitionForward)
+			exitTransition = settingsTransition(forward = true)
+			reenterTransition = settingsTransition(forward = false)
 		}
 		val fragment = fm.fragmentFactory.instantiate(classLoader, fragmentClass.name).apply {
 			arguments = args
-			enterTransition = settingsTransition(forward = transitionForward)
-			returnTransition = settingsTransition(forward = !transitionForward)
+			enterTransition = settingsTransition(forward = true)
+			returnTransition = settingsTransition(forward = false)
 		}
 		fm.commit {
 			setReorderingAllowed(true)
