@@ -1235,6 +1235,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_STATS_MATURE_MODE, "PRIVATE") ?: "PRIVATE"
 		set(value) = prefs.edit { putString(KEY_STATS_MATURE_MODE, value) }
 
+	/** Visual model key for the Settings Journey panel; see JourneyPanelModel. */
+	var journeyPanelModel: String
+		get() = prefs.getString(KEY_JOURNEY_PANEL_MODEL, "night") ?: "night"
+		set(value) = prefs.edit { putString(KEY_JOURNEY_PANEL_MODEL, value) }
+
 	val isAutoLocalChaptersCleanupEnabled: Boolean
 		get() = prefs.getBoolean(KEY_CHAPTERS_CLEAR_AUTO, false)
 
@@ -1456,6 +1461,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_EPUB_FONT_FAMILY = "epub_font_family"
 		const val KEY_APP_FONT_PACK_ID = "app_font_pack_id"
 		const val KEY_APP_ICON_PACK_ID = "app_icon_pack_id"
+		const val KEY_JOURNEY_PANEL_MODEL = "journey_panel_model"
 		const val KEY_EPUB_FONT_WEIGHT = "epub_font_weight"
 		const val KEY_EPUB_LINE_HEIGHT = "epub_line_height"
 		const val KEY_EPUB_PARAGRAPH_SPACING = "epub_paragraph_spacing"

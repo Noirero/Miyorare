@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.settings
 
 import android.os.Bundle
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Column
@@ -48,12 +50,14 @@ import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelFragment
 import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
+import kotlin.math.abs
 
 @AndroidEntryPoint
 class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
@@ -80,6 +84,35 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                 )
             }
         }
+        // Swipe right anywhere on the root Settings screen opens the Journey panel.
+        // Observe-only listener: it never consumes events, so Compose scrolling,
+        // clicks and the search UI keep working exactly as before.
+        val journeyGestureDetector = GestureDetector(
+            requireContext(),
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onFling(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float,
+                ): Boolean {
+                    if (e1 != null) {
+                        val density = resources.displayMetrics.density
+                        val dx = e2.x - e1.x
+                        if (dx > 96f * density && velocityX > 320f * density &&
+                            abs(velocityX) > abs(velocityY) * 1.5f
+                        ) {
+                            this@RootSettingsFragment.openJourneyPanel()
+                        }
+                    }
+                    return false
+                }
+            },
+        )
+        setOnTouchListener { _, event ->
+            journeyGestureDetector.onTouchEvent(event)
+            false
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -93,6 +126,11 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
     private fun openSection(section: SettingsSection) {
         val activity = activity as? SettingsActivity ?: return
         activity.openFragment(section.fragmentClass, null, isFromRoot = true)
+    }
+
+    private fun openJourneyPanel() {
+        val activity = activity as? SettingsActivity ?: return
+        activity.openFragment(SettingsJourneyPanelFragment::class.java, null, isFromRoot = true)
     }
 }
 
