@@ -15,6 +15,9 @@ enum class JourneyDisplayMode(
 	KARTU("kartu");
 
 	companion object {
-		fun fromKey(key: String?): JourneyDisplayMode = entries.firstOrNull { it.key == key } ?: UTAMA
+		fun fromKey(
+			key: String?,
+			default: JourneyDisplayMode = UTAMA,
+		): JourneyDisplayMode = entries.firstOrNull { it.key == key } ?: default
 	}
 }
