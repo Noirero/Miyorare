@@ -2,9 +2,6 @@ package org.koitharu.kotatsu.settings
 
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Column
@@ -33,10 +30,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import androidx.lifecycle.Lifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
@@ -96,27 +91,6 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
             SettingsSearchMenuProvider(searchViewModel),
             viewLifecycleOwner,
         )
-        // TEMP DIAGNOSTIC (remove after the gesture is confirmed on device):
-        // a toolbar entry that opens the Journey panel without any gesture,
-        // so the panel itself can be verified even if swipe delivery fails.
-        requireActivity().addMenuProvider(
-            object : MenuProvider {
-                override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-                    menu.add(0, MENU_ITEM_JOURNEY_DIAG, 0, "Journey panel (sementara) · G4")
-                        .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-                }
-
-                override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-                    if (menuItem.itemId == MENU_ITEM_JOURNEY_DIAG) {
-                        openJourneyPanel()
-                        return true
-                    }
-                    return false
-                }
-            },
-            viewLifecycleOwner,
-            Lifecycle.State.RESUMED,
-        )
     }
 
     private fun openSection(section: SettingsSection) {
@@ -126,11 +100,12 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
 
     fun openJourneyPanel() {
         val activity = activity as? SettingsActivity ?: return
-        activity.openFragment(SettingsJourneyPanelFragment::class.java, null, isFromRoot = true)
-    }
-
-    private companion object {
-        const val MENU_ITEM_JOURNEY_DIAG = 0x4A4F55
+        activity.openFragment(
+            SettingsJourneyPanelFragment::class.java,
+            null,
+            isFromRoot = true,
+            transitionForward = false,
+        )
     }
 }
 

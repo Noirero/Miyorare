@@ -8,7 +8,6 @@ import android.view.View
 import android.view.WindowManager
 import android.view.ViewGroup
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
@@ -53,6 +52,7 @@ import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
 import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import org.koitharu.kotatsu.settings.fonts.FontSettingsFragment
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelFragment
 import org.koitharu.kotatsu.settings.search.SettingsItem
 import org.koitharu.kotatsu.settings.search.SettingsSearchFragment
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
@@ -120,11 +120,13 @@ class SettingsActivity :
 		observeFoldHinge()
 	}
 
-	// Swipe right on the root Settings screen opens the Reader Journey panel.
-	// Tracked here, at activity level, because every touch entering the window
+	// Horizontal swipes on the root Settings screen and on the Journey panel are
+	// tracked here, at activity level, because every touch entering the window
 	// passes dispatchTouchEvent before any view or Compose content sees it;
 	// detectors planted inside the root screen's own view/composition never
 	// observed the gestures on device. Observe-only: events are never consumed.
+	// Swipe right on root Settings opens the Journey panel; swipe left inside
+	// the panel returns to Settings.
 	private var journeyDownX = 0f
 	private var journeyDownY = 0f
 	private var journeySwipeFired = false
@@ -135,9 +137,11 @@ class SettingsActivity :
 	}
 
 	private fun trackJourneySwipe(ev: MotionEvent) {
-		val root = (supportFragmentManager.findFragmentById(R.id.container) as? RootSettingsFragment)
-			?: (supportFragmentManager.findFragmentById(R.id.container_master) as? RootSettingsFragment)
-		if (root == null) {
+		val fm = supportFragmentManager
+		val root = (fm.findFragmentById(R.id.container) as? RootSettingsFragment)
+			?: (fm.findFragmentById(R.id.container_master) as? RootSettingsFragment)
+		val inPanel = fm.findFragmentById(R.id.container) is SettingsJourneyPanelFragment
+		if (root == null && !inPanel) {
 			journeySwipeFired = false
 			return
 		}
@@ -147,19 +151,19 @@ class SettingsActivity :
 				journeyDownX = ev.x
 				journeyDownY = ev.y
 				journeySwipeFired = false
-				// TEMP DIAGNOSTIC (remove after the gesture is confirmed on device)
-				Toast.makeText(this, "Journey diag G4: activity touch", Toast.LENGTH_SHORT).show()
 			}
 
 			MotionEvent.ACTION_MOVE -> {
 				if (!journeySwipeFired) {
 					val dx = ev.x - journeyDownX
 					val dy = ev.y - journeyDownY
-					if (dx > 56f * density && dx > abs(dy) * 1.5f) {
+					val threshold = 44f * density
+					if (root != null && dx > threshold && dx > abs(dy) * 1.25f) {
 						journeySwipeFired = true
-						// TEMP DIAGNOSTIC (remove after the gesture is confirmed on device)
-						Toast.makeText(this, "Journey diag G4: opening panel", Toast.LENGTH_SHORT).show()
 						root.openJourneyPanel()
+					} else if (inPanel && dx < -threshold && -dx > abs(dy) * 1.25f) {
+						journeySwipeFired = true
+						fm.popBackStack()
 					}
 				}
 			}
@@ -257,19 +261,24 @@ class SettingsActivity :
         return super.onSupportNavigateUp()
     }
 
-	fun openFragment(fragmentClass: Class<out Fragment>, args: Bundle?, isFromRoot: Boolean) {
+	fun openFragment(
+		fragmentClass: Class<out Fragment>,
+		args: Bundle?,
+		isFromRoot: Boolean,
+		transitionForward: Boolean = true,
+	) {
 		viewModel.discardSearch()
 		val fm = supportFragmentManager
 		val current = fm.findFragmentById(R.id.container)
 		val hasFragment = current != null
 		current?.apply {
-			exitTransition = settingsTransition(forward = true)
-			reenterTransition = settingsTransition(forward = false)
+			exitTransition = settingsTransition(forward = transitionForward)
+			reenterTransition = settingsTransition(forward = !transitionForward)
 		}
 		val fragment = fm.fragmentFactory.instantiate(classLoader, fragmentClass.name).apply {
 			arguments = args
-			enterTransition = settingsTransition(forward = true)
-			returnTransition = settingsTransition(forward = false)
+			enterTransition = settingsTransition(forward = transitionForward)
+			returnTransition = settingsTransition(forward = !transitionForward)
 		}
 		fm.commit {
 			setReorderingAllowed(true)
