@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -477,20 +478,27 @@ private fun DottedLine(color: Color, modifier: Modifier = Modifier) {
 
 @Composable
 private fun JourneyPanelNight(data: JourneyPanelData, numberFormat: NumberFormat) {
-	val night = Color(0xFF171029)
+	// Malam Anggun keeps its dark hero, but the night itself is tinted by the active
+	// theme: the hero is a deepened primary and the hairline / XP accents come from
+	// the theme's tertiary, lightened enough to stay readable on the dark surface.
+	val scheme = MaterialTheme.colorScheme
+	val night = lerp(scheme.primary, Color.Black, 0.84f)
+	val nightDeep = lerp(scheme.primary, Color.Black, 0.91f)
+	val accent = lerp(scheme.tertiary, Color.White, 0.30f)
+	val accentLight = lerp(scheme.tertiary, Color.White, 0.55f)
 	Column(modifier = Modifier.fillMaxWidth()) {
 		Box(
 			modifier = Modifier
 				.fillMaxWidth()
 				.clip(RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp))
-				.background(night)
+				.background(Brush.linearGradient(listOf(night, nightDeep)))
 				.padding(horizontal = 24.dp, vertical = 24.dp),
 		) {
 			Column {
 				Text(
 					text = stringResource(R.string.reader_journey).uppercase(),
 					style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.7.sp),
-					color = Gold,
+					color = accentLight,
 					fontWeight = FontWeight.Bold,
 				)
 				Text(
@@ -522,7 +530,7 @@ private fun JourneyPanelNight(data: JourneyPanelData, numberFormat: NumberFormat
 						.fillMaxWidth()
 						.height(1.dp)
 						.background(
-							Brush.horizontalGradient(listOf(Gold, Color.Transparent)),
+							Brush.horizontalGradient(listOf(accent, Color.Transparent)),
 						),
 				)
 				Row(
@@ -556,7 +564,7 @@ private fun JourneyPanelNight(data: JourneyPanelData, numberFormat: NumberFormat
 						modifier = Modifier
 							.fillMaxWidth(data.levelFraction)
 							.height(4.dp)
-							.background(Brush.horizontalGradient(listOf(Gold, GoldLight))),
+							.background(Brush.horizontalGradient(listOf(accent, accentLight))),
 					)
 				}
 			}
@@ -585,7 +593,7 @@ private fun JourneyPanelNight(data: JourneyPanelData, numberFormat: NumberFormat
 				currentRank = data.rank,
 				marker = LadderMarker.DOT,
 				doneColor = MaterialTheme.colorScheme.primary,
-				currentColor = Color(0xFFB8860B),
+				currentColor = MaterialTheme.colorScheme.tertiary,
 				lockedColor = MaterialTheme.colorScheme.outlineVariant,
 				nameColor = MaterialTheme.colorScheme.onBackground,
 				lockedNameColor = MaterialTheme.colorScheme.onSurfaceVariant,
