@@ -653,12 +653,15 @@ class DownloadWorker @AssistedInject constructor(
 	}
 
 	private suspend fun registerExhentaiArtifact(manga: Manga, task: DownloadTask, file: File): LocalManga {
-		val local = checkNotNull(ExhentaiDownloadedCopy.find(manga, file, withDetails = false)?.local) {
+		val local = checkNotNull(
+			ExhentaiDownloadedCopy.find(manga, file, withDetails = true, space = task.favouriteSpace, request = id)?.local,
+		) {
 			"Committed ExHentai archive cannot be read"
 		}
 		recordDownloadOwnership(manga.id, task, file, strict = true)
 		localMangaRepository.rememberDownloadedIdentity(manga, local)
 		localStorageChanges.emit(local)
+		localMangaRepository.publishExhentaiDownload(manga.id, task.favouriteSpace, local)
 		return local
 	}
 
@@ -674,6 +677,7 @@ class DownloadWorker @AssistedInject constructor(
 			isIndeterminate = false,
 			isFinalizing = false,
 		))
+		localMangaRepository.publishExhentaiDownload(manga.id, task.favouriteSpace, saved)
 		return true
 	}
 

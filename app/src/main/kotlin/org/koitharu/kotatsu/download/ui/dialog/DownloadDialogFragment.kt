@@ -124,10 +124,15 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 				// Whole manga
 				OptionRow(
 					selected = selectedOption == OPTION_WHOLE_MANGA,
-					title = stringResource(R.string.download_option_whole_manga),
-					subtitle = options.wholeManga.chaptersCount
-						.takeIf { it > 0 }
-						?.let { context.resources.getQuantityStringSafe(R.plurals.chapters, it, it) },
+					title = stringResource(
+						if (viewModel.supportsSeparateExhentaiCopy) R.string.exhentai_download_reuse else R.string.download_option_whole_manga,
+					),
+					subtitle = if (viewModel.supportsSeparateExhentaiCopy) {
+						stringResource(R.string.exhentai_download_reuse_hint)
+					} else {
+						options.wholeManga.chaptersCount.takeIf { it > 0 }
+							?.let { context.resources.getQuantityStringSafe(R.plurals.chapters, it, it) }
+					},
 					onSelect = { selectedOption = OPTION_WHOLE_MANGA },
 				)
 				// All chapters for the selected branch

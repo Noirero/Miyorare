@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
@@ -811,6 +812,7 @@ class DetailsViewModel @Inject constructor(
 	}
 
 	private fun doLoad(force: Boolean) = launchJob(Dispatchers.Default) {
+		var localFromLoad = mangaDetails.value?.local
 		val work = PerformanceDiagnostics.begin("work", "details_load", performanceTrace)
 		var outcome = "complete"
 		var initialLoading = mangaDetails.value?.allChapters.isNullOrEmpty()
@@ -861,7 +863,14 @@ class DetailsViewModel @Inject constructor(
 							selectedBranch.value = resolvedBranch
 						}
 					}
-					mangaDetails.value = it
+					mangaDetails.update { previous ->
+						val local = previous?.local
+						// A confirmed archive can arrive while the source refresh is in flight.
+						if (it.isOfficialExhentai && previous?.id == it.id &&
+							local != null && local !== localFromLoad && local.file.exists()
+						) it.copy(localManga = local) else it
+					}
+					localFromLoad = it.local
 					PerformanceDiagnostics.milestone(performanceTrace, "manga_ready")
 					if (it.allChapters.isNotEmpty() || it.isLoaded) PerformanceDiagnostics.milestone(performanceTrace, "chapters_ready")
 					if (initialLoading && it.allChapters.isNotEmpty()) {

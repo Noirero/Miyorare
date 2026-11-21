@@ -24,13 +24,20 @@ import java.util.zip.ZipFile
 
 /** Resolve one physical artifact, not ownership of a title directory. Never modifies user files. */
 internal object ExhentaiDownloadedCopy {
-	data class Match(val local: LocalManga, val verified: Boolean, val receipt: ExhentaiChapterOwnership.Receipt? = null)
+	data class Match(
+		val local: LocalManga,
+		val verified: Boolean,
+		val receipt: ExhentaiChapterOwnership.Receipt? = null,
+		val physicalMangaId: Long = local.manga.id,
+	)
 
 	fun isOfficial(manga: Manga): Boolean = EhentaiSourceFamily.isOfficialSource(manga.source.name)
 
 	/** Flat chapter CBZs use their current root pages; indexed and split copies keep their own resolver. */
 	suspend fun fromDestination(remote: Manga, file: File): LocalManga? = runCatchingCancellable {
 		if (remote.chapters?.size != 1) return@runCatchingCancellable null
+		val origin = LocalMangaParser.getOrNull(file)?.getMangaInfo()
+		if (origin != null && !originMatches(remote, origin)) return@runCatchingCancellable null
 		val hasPages = ZipFile(file).use { zip ->
 			zip.getEntry("index.json") == null && zip.entries().asSequence().any { entry ->
 				!entry.isDirectory && '/' !in entry.name &&
@@ -78,7 +85,7 @@ internal object ExhentaiDownloadedCopy {
 		space: FavouriteSpace? = null,
 		request: UUID? = null,
 	): Match? {
-		return when (val evidence = ExhentaiChapterOwnership.inspect(file)) {
+		return when (val evidence = ExhentaiChapterOwnership.inspectDestination(file)) {
 			is ExhentaiChapterOwnership.Evidence.Owned -> {
 				if (!evidence.matches(remote.galleryId(), space, request)) return null
 				val match = if (evidence.single) indexedArchive(remote, file, withDetails)
@@ -94,7 +101,7 @@ internal object ExhentaiDownloadedCopy {
 					if (!originMatches(remote, origin)) return null
 					val local = parser.getManga(withDetails)
 					if (withDetails && local.manga.chapters.isNullOrEmpty()) return null
-					Match(LegacyChapterDownloadCompat.linkToRemote(remote, local), true)
+					Match(LegacyChapterDownloadCompat.linkToRemote(remote, local), true, physicalMangaId = local.manga.id)
 				} else if (EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(file.name)) {
 					chapterCopy(remote, file, withDetails, false)
 				} else null
@@ -108,7 +115,7 @@ internal object ExhentaiDownloadedCopy {
 		if (!originMatches(remote, origin)) return null
 		val local = parser.getManga(withDetails)
 		if (withDetails && local.manga.chapters.isNullOrEmpty()) return null
-		return Match(LegacyChapterDownloadCompat.linkToRemote(remote, local), true)
+		return Match(LegacyChapterDownloadCompat.linkToRemote(remote, local), true, physicalMangaId = local.manga.id)
 	}
 
 	private suspend fun findInDirectory(
