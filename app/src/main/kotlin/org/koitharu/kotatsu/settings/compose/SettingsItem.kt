@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,8 +32,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
+import org.koitharu.kotatsu.core.icons.IconPackHolder
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -148,6 +152,7 @@ fun SettingsItem(
 						palette = visualPalette,
 						enabled = enabled,
 						tintIcon = tintIcon,
+						colors = iconColors,
 					)
 					iconColors != null -> SettingsIconBubble(
 						iconRes = icon,
@@ -246,6 +251,45 @@ internal fun MiyorareVisualPalette.forSettingsIconSurface(colors: ColorScheme): 
 		borderHighlight = colors.outlineVariant,
 	)
 
+/**
+ * Renders one settings glyph. When the active Icon Pack provides artwork for
+ * [iconRes] (keyed by the drawable's entry name) and the caller wants the
+ * glyph tinted, the pack artwork is drawn instead of the built-in drawable.
+ * A null [colorFilter] means the caller wants the artwork's own colors, so
+ * monochrome pack glyphs never replace full-color icons.
+ */
+@Composable
+internal fun PackAwareSettingsIcon(
+	@DrawableRes iconRes: Int,
+	modifier: Modifier,
+	colorFilter: ColorFilter?,
+	alpha: Float = 1f,
+) {
+	val context = LocalContext.current
+	val glyphs by IconPackHolder.glyphs.collectAsState()
+	val key = remember(iconRes) {
+		runCatching { context.resources.getResourceEntryName(iconRes) }.getOrNull()
+	}
+	val bitmap = if (colorFilter != null) key?.let { glyphs[it] } else null
+	if (bitmap != null) {
+		androidx.compose.foundation.Image(
+			bitmap = bitmap,
+			contentDescription = null,
+			modifier = modifier,
+			colorFilter = colorFilter,
+			alpha = alpha,
+		)
+	} else {
+		androidx.compose.foundation.Image(
+			painter = rememberAnyDrawablePainter(iconRes),
+			contentDescription = null,
+			modifier = modifier,
+			colorFilter = colorFilter,
+			alpha = alpha,
+		)
+	}
+}
+
 @Composable
 internal fun SettingsIconModern(
 	@DrawableRes iconRes: Int,
@@ -254,9 +298,45 @@ internal fun SettingsIconModern(
 	tintIcon: Boolean,
 	tintOverride: Color? = null,
 	applyImageAlpha: Boolean = true,
+	colors: CategoryIconColors? = null,
 ) {
 	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
+	// Explicit row colors win; otherwise the row inherits the category of
+	// the settings screen it sits on (provided via MiyorareSettingsTheme).
+	val effectiveColors = colors ?: LocalSettingsCategoryColors.current
+	if (effectiveColors != null) {
+		// Category treatment: the bubble takes the section's own category
+		// colors and the glyph is drawn in the paired on-container color at
+		// full strength, instead of bubble and glyph both coming from the
+		// theme palette (which reads flat). Rows without category colors
+		// keep the theme treatment below.
+		Box(
+			modifier = Modifier
+				.size(40.dp)
+				.clip(shape)
+				.background(
+					Brush.linearGradient(
+						listOf(
+							effectiveColors.container.copy(alpha = alpha),
+							effectiveColors.container.copy(alpha = alpha * 0.8f),
+						),
+					),
+				)
+				.border(1.dp, effectiveColors.onContainer.copy(alpha = 0.10f * alpha), shape),
+			contentAlignment = Alignment.Center,
+		) {
+			PackAwareSettingsIcon(
+				iconRes = iconRes,
+				modifier = Modifier.size(21.dp),
+				colorFilter = if (tintIcon) {
+					ColorFilter.tint(effectiveColors.onContainer.copy(alpha = alpha))
+				} else null,
+				alpha = if (applyImageAlpha) alpha else 1f,
+			)
+		}
+		return
+	}
 	val iconSurfacePalette = palette.forSettingsIconSurface(MaterialTheme.colorScheme)
 	Box(
 		modifier = Modifier
@@ -264,9 +344,8 @@ internal fun SettingsIconModern(
 			.miyorareIconSurface(palette = iconSurfacePalette, shape = shape, alpha = alpha),
 		contentAlignment = Alignment.Center,
 	) {
-		androidx.compose.foundation.Image(
-			painter = rememberAnyDrawablePainter(iconRes),
-			contentDescription = null,
+		PackAwareSettingsIcon(
+			iconRes = iconRes,
 			modifier = Modifier.size(21.dp),
 			colorFilter = if (tintIcon) {
 				ColorFilter.tint((tintOverride ?: if (palette.isModern) lerp(palette.primary, palette.secondary, 0.18f) else MaterialTheme.colorScheme.onPrimaryContainer).copy(alpha = alpha))
@@ -293,9 +372,8 @@ internal fun SettingsIconBubble(
 			.background(containerColor),
 		contentAlignment = Alignment.Center,
 	) {
-		androidx.compose.foundation.Image(
-			painter = rememberAnyDrawablePainter(iconRes),
-			contentDescription = null,
+		PackAwareSettingsIcon(
+			iconRes = iconRes,
 			modifier = Modifier.size(if (tintIcon) 22.dp else 24.dp),
 			colorFilter = if (tintIcon) ColorFilter.tint(colors.onContainer.copy(alpha = contentAlpha)) else null,
 		)
@@ -315,9 +393,8 @@ internal fun SettingsIconPlain(
 		modifier = Modifier.size(44.dp),
 		contentAlignment = Alignment.Center,
 	) {
-		androidx.compose.foundation.Image(
-			painter = rememberAnyDrawablePainter(iconRes),
-			contentDescription = null,
+		PackAwareSettingsIcon(
+			iconRes = iconRes,
 			modifier = Modifier.size(24.dp),
 			colorFilter = if (tintIcon) ColorFilter.tint(tint) else null,
 			alpha = if (applyImageAlpha && !enabled) 0.5f else 1f,

@@ -457,6 +457,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_APP_FONT_PACK_ID, null)?.takeIf { it.isNotEmpty() }
 		set(value) = prefs.edit { putString(KEY_APP_FONT_PACK_ID, value) }
 
+	/** Id of the active Icon Pack, or null for the built-in settings icons. */
+	var appIconPackId: String?
+		get() = prefs.getString(KEY_APP_ICON_PACK_ID, null)?.takeIf { it.isNotEmpty() }
+		set(value) = prefs.edit { putString(KEY_APP_ICON_PACK_ID, value) }
+
 	var epubFontWeight: Int
 		get() = prefs.getInt(KEY_EPUB_FONT_WEIGHT, 400).coerceIn(300, 700)
 		set(value) = prefs.edit { putInt(KEY_EPUB_FONT_WEIGHT, value.coerceIn(300, 700)) }
@@ -1450,6 +1455,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_EPUB_FONT_SIZE = "epub_font_size"
 		const val KEY_EPUB_FONT_FAMILY = "epub_font_family"
 		const val KEY_APP_FONT_PACK_ID = "app_font_pack_id"
+		const val KEY_APP_ICON_PACK_ID = "app_icon_pack_id"
 		const val KEY_EPUB_FONT_WEIGHT = "epub_font_weight"
 		const val KEY_EPUB_LINE_HEIGHT = "epub_line_height"
 		const val KEY_EPUB_PARAGRAPH_SPACING = "epub_paragraph_spacing"

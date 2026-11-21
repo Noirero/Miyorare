@@ -9,6 +9,8 @@ data class SettingsItem(
 	val breadcrumbs: List<String>,
 	val searchText: String,
 	val fragmentClass: Class<out Fragment>,
+	val sectionIconRes: Int = 0,
+	val sectionPaletteKey: String = "",
 ) : ListModel {
 
 	override fun areItemsTheSame(other: ListModel): Boolean {

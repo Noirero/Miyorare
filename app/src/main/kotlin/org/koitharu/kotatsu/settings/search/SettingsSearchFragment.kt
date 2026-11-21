@@ -16,11 +16,12 @@ import org.koitharu.kotatsu.core.util.ext.consumeAll
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.FragmentSearchSuggestionBinding
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
+import org.koitharu.kotatsu.list.ui.model.ListModel
 
 @AndroidEntryPoint
 class SettingsSearchFragment : BaseFragment<FragmentSearchSuggestionBinding>(),
 	OnListItemClickListener<SettingsItem>,
-	ListListener<SettingsItem> {
+	ListListener<ListModel> {
 
 	private val viewModel: SettingsSearchViewModel by activityViewModels()
 
@@ -30,7 +31,8 @@ class SettingsSearchFragment : BaseFragment<FragmentSearchSuggestionBinding>(),
 
 	override fun onViewBindingCreated(binding: FragmentSearchSuggestionBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		val adapter = BaseListAdapter<SettingsItem>()
+		val adapter = BaseListAdapter<ListModel>()
+			.addDelegate(ListItemType.HEADER, settingsSectionCardAD(this))
 			.addDelegate(ListItemType.NAV_ITEM, settingsItemAD(this))
 		adapter.addListListener(this)
 		// Bare FastScrollRecyclerView root: its floating scroller would be added to the settings
@@ -56,8 +58,8 @@ class SettingsSearchFragment : BaseFragment<FragmentSearchSuggestionBinding>(),
 	override fun onItemClick(item: SettingsItem, view: View) = viewModel.navigateToPreference(item)
 
 	override fun onCurrentListChanged(
-		previousList: List<SettingsItem?>,
-		currentList: List<SettingsItem?>
+		previousList: List<ListModel?>,
+		currentList: List<ListModel?>
 	) {
 		if (currentList.size != previousList.size) {
 			(viewBinding?.root?.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)

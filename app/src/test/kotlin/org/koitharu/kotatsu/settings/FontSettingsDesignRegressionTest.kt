@@ -5,7 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** Source-level guards for the approved App Font showcase redesign. */
+/** Source-level guards for the approved App Font preview design: a pinned
+ * preview that follows the tapped card, fed by real preview families. */
 class FontSettingsDesignRegressionTest {
 
     @Test
@@ -13,7 +14,9 @@ class FontSettingsDesignRegressionTest {
         val screen = source("kotlin/org/koitharu/kotatsu/settings/fonts/FontSettingsFragment.kt")
         val theme = source("kotlin/org/koitharu/kotatsu/settings/compose/SettingsTheme.kt")
 
-        assertTrue(screen.contains("ActiveFontPreview(name = activeName, family = activeFamily)"))
+        assertTrue(screen.contains("FontPreviewHero("))
+        assertTrue(screen.contains("family = targetFamily"))
+        assertTrue(screen.contains("viewModel.preview(it)"))
         assertTrue(screen.contains("family = googleSansRounded"))
         assertTrue(screen.contains("viewModel.fontFamily(pack)"))
         assertTrue(screen.contains("MaterialTheme.colorScheme"))
@@ -23,13 +26,16 @@ class FontSettingsDesignRegressionTest {
     }
 
     @Test
-    fun `font selection uninstall confirmation and catalog loading remain wired`() {
+    fun `font preview uninstall confirmation and catalog loading remain wired`() {
         val screen = source("kotlin/org/koitharu/kotatsu/settings/fonts/FontSettingsFragment.kt")
         val model = source("kotlin/org/koitharu/kotatsu/settings/fonts/FontSettingsViewModel.kt")
 
-        assertTrue(screen.contains("role = Role.RadioButton"))
-        assertTrue(screen.contains("onSelect = { viewModel.activate(null) }"))
-        assertTrue(screen.contains("onSelect = { viewModel.activate(pack.pack.id) }"))
+        assertTrue(screen.contains("onClick = { showPreview(null) }"))
+        assertTrue(screen.contains("onClick = { showPreview(pack.pack.id) }"))
+        assertTrue(screen.contains("onClick = { showPreview(pack.id) }"))
+        assertTrue(screen.contains("viewModel.activate(null)"))
+        assertTrue(screen.contains("viewModel.activate(targetInstalled.pack.id)"))
+        assertTrue(model.contains("repository.previewFontFamily(pack)"))
         assertTrue(screen.contains("onRemove = { pendingRemoval = pack }"))
         assertTrue(screen.contains("AlertDialog("))
         assertTrue(screen.contains("viewModel.uninstall(pack.pack.id)"))

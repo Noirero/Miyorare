@@ -1,0 +1,292 @@
+package org.koitharu.kotatsu.core.icons
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.toBitmap
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import org.koitharu.kotatsu.core.fonts.FontPackHashes
+import org.koitharu.kotatsu.core.network.BaseHttpClient
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Inject
+import javax.inject.Provider
+import javax.inject.Singleton
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface IconPackEntryPoint {
+	val iconPackRepository: IconPackRepository
+}
+
+/**
+ * Owns the Icon Pack catalog and the packs installed on this device.
+ *
+ * Mirrors the Font Pack flow: the catalog index lists SVG glyphs hosted
+ * upstream (hash-verified), [install] downloads them into
+ * `files/icons/<packId>/`, renders each one to a bitmap up front — so a
+ * glyph that cannot render rejects the whole install instead of failing
+ * later on a settings screen — and the active pack is the one named by
+ * [AppSettings.appIconPackId]. Installed state is derived from disk, so
+ * there is no database to keep in sync.
+ */
+@Singleton
+class IconPackRepository @Inject constructor(
+	@BaseHttpClient private val baseHttpClient: Provider<OkHttpClient>,
+	@ApplicationContext private val context: Context,
+	private val settings: AppSettings,
+) {
+
+	/**
+	 * The shared HTTP client, realized lazily. Creating it is prohibited on
+	 * the main thread (see NetworkModule), and this repository is constructed
+	 * during activity startup to resolve the active pack — so the client may
+	 * only be touched from the IO-dispatched functions below.
+	 */
+	private val okHttp: OkHttpClient get() = baseHttpClient.get()
+
+	private val rootDir = File(context.filesDir, ICONS_DIR)
+
+	private val previewDir = File(context.filesDir, PREVIEW_DIR)
+
+	private val _catalog = MutableStateFlow<List<IconPack>>(emptyList())
+	val catalog = _catalog.asStateFlow()
+
+	private val _installed = MutableStateFlow<List<InstalledIconPack>>(emptyList())
+	val installed = _installed.asStateFlow()
+
+	private val _activePack = MutableStateFlow<InstalledIconPack?>(null)
+	val activePack = _activePack.asStateFlow()
+
+	init {
+		refreshInstalled()
+	}
+
+	/** Re-scans the install directory and re-resolves the active pack. */
+	fun refreshInstalled() {
+		val packs = scanInstalled()
+		_installed.value = packs
+		val activeId = settings.appIconPackId
+		val active = packs.firstOrNull { it.pack.id == activeId }
+		if (activeId != null && active == null) {
+			// The active pack disappeared from disk: fall back to the built-in
+			// icons instead of leaving a dangling preference behind.
+			settings.appIconPackId = null
+		}
+		_activePack.value = active
+		IconPackHolder.set(active?.let { glyphs(it) } ?: emptyMap())
+	}
+
+	suspend fun refreshCatalog() {
+		withContext(Dispatchers.IO) {
+			val request = Request.Builder().get().url(INDEX_URL).build()
+			okHttp.newCall(request).execute().use { response ->
+				check(response.isSuccessful) { "Icon catalog request failed: HTTP ${response.code}" }
+				val body = response.body?.string() ?: error("Empty icon catalog response")
+				_catalog.value = IconPackIndexParser.parse(JSONObject(body))
+			}
+		}
+	}
+
+	/**
+	 * Downloads every glyph of [pack], verifies size and SHA-256, checks the
+	 * SVG is a safe static glyph, renders it to a bitmap, and only then moves
+	 * the pack into place. Any failure leaves nothing installed.
+	 *
+	 * Glyphs are independent of each other, so they are fetched, verified and
+	 * rendered in parallel (bounded by [MAX_PARALLEL_GLYPHS]) instead of one
+	 * at a time; a failure cancels the remaining work and the staging
+	 * directory is discarded, keeping the install all-or-nothing.
+	 * [onProgress] reports how many glyphs are fully done, out of the total.
+	 */
+	suspend fun install(pack: IconPack, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }) {
+		withContext(Dispatchers.IO) {
+			rootDir.mkdirs()
+			val tmpDir = File(rootDir, ".tmp-${pack.id}")
+			tmpDir.deleteRecursively()
+			check(tmpDir.mkdirs()) { "Cannot create a staging directory for ${pack.id}" }
+			try {
+				val completed = AtomicInteger(0)
+				val semaphore = Semaphore(MAX_PARALLEL_GLYPHS)
+				coroutineScope {
+					for (file in pack.files) {
+						launch {
+							semaphore.withPermit {
+								val svgFile = File(tmpDir, file.svgFileName)
+								download(file.url, svgFile)
+								check(svgFile.length() == file.sizeBytes) { "Size mismatch for ${file.key}" }
+								check(FontPackHashes.sha256(svgFile) == file.sha256) { "Hash mismatch for ${file.key}" }
+								val svgText = svgFile.readText()
+								check(IconPackSvg.isSafeGlyph(svgText)) { "Unsafe or malformed SVG: ${file.key}" }
+								renderGlyph(svgFile, File(tmpDir, file.pngFileName))
+								onProgress(completed.incrementAndGet(), pack.files.size)
+							}
+						}
+					}
+				}
+				File(tmpDir, PACK_JSON).writeText(pack.rawJson)
+				val dir = File(rootDir, pack.id)
+				dir.deleteRecursively()
+				check(tmpDir.renameTo(dir)) { "Cannot move the icon pack into place" }
+			} finally {
+				tmpDir.deleteRecursively()
+			}
+		}
+		refreshInstalled()
+	}
+
+	suspend fun uninstall(packId: String) {
+		withContext(Dispatchers.IO) {
+			File(rootDir, packId).deleteRecursively()
+		}
+		if (settings.appIconPackId == packId) {
+			settings.appIconPackId = null
+		}
+		refreshInstalled()
+	}
+
+	fun setActive(packId: String?) {
+		settings.appIconPackId = packId
+		refreshInstalled()
+	}
+
+	/**
+	 * Renders a small sample of a catalog pack's glyphs for preview, without
+	 * installing the pack. Sample SVGs are fetched into a separate preview
+	 * cache (`files/icons-preview/<packId>/`), verified by size, SHA-256
+	 * and the SVG safety gate, and rendered once; later previews reuse the
+	 * rendered bitmaps. A glyph that fails any check is simply absent from
+	 * the result instead of failing the whole preview.
+	 */
+	suspend fun previewGlyphs(pack: IconPack, keys: List<String>): Map<String, ImageBitmap> {
+		_installed.value.firstOrNull { it.pack.id == pack.id }?.let { installedPack ->
+			return glyphs(installedPack).filterKeys { it in keys }
+		}
+		return withContext(Dispatchers.IO) {
+			val dir = File(previewDir, pack.id)
+			dir.mkdirs()
+			val result = mutableMapOf<String, ImageBitmap>()
+			val semaphore = Semaphore(MAX_PARALLEL_GLYPHS)
+			coroutineScope {
+				for (file in pack.files) {
+					if (file.key !in keys) continue
+					launch {
+						semaphore.withPermit {
+							runCatching {
+								val svgFile = File(dir, file.svgFileName)
+								val pngFile = File(dir, file.pngFileName)
+								if (!pngFile.isFile) {
+									val cached = svgFile.isFile && svgFile.length() == file.sizeBytes &&
+										FontPackHashes.sha256(svgFile) == file.sha256 &&
+										IconPackSvg.isSafeGlyph(svgFile.readText())
+									if (!cached) {
+										download(file.url, svgFile)
+										check(svgFile.length() == file.sizeBytes) { "Size mismatch for ${file.key}" }
+										check(FontPackHashes.sha256(svgFile) == file.sha256) { "Hash mismatch for ${file.key}" }
+										check(IconPackSvg.isSafeGlyph(svgFile.readText())) { "Unsafe or malformed SVG: ${file.key}" }
+									}
+									renderGlyph(svgFile, pngFile)
+								}
+								BitmapFactory.decodeFile(pngFile.absolutePath)
+							}.getOrNull()?.let { bitmap ->
+								synchronized(result) { result[file.key] = bitmap.asImageBitmap() }
+							}
+						}
+					}
+				}
+			}
+			result.toMap()
+		}
+	}
+
+	/** The pack's glyphs rendered as bitmaps, keyed by drawable name. */
+	fun glyphs(pack: InstalledIconPack): Map<String, ImageBitmap> {
+		return pack.pack.files.mapNotNull { file ->
+			val png = File(pack.dir, file.pngFileName)
+			val bitmap = runCatching { BitmapFactory.decodeFile(png.absolutePath) }.getOrNull()
+				?: return@mapNotNull null
+			file.key to bitmap.asImageBitmap()
+		}.toMap()
+	}
+
+	private fun scanInstalled(): List<InstalledIconPack> {
+		val dirs = rootDir.listFiles { f -> f.isDirectory && !f.name.startsWith(".tmp-") }
+			?: return emptyList()
+		return dirs.mapNotNull { dir ->
+			val jsonFile = File(dir, PACK_JSON)
+			if (!jsonFile.isFile) return@mapNotNull null
+			val pack = runCatching {
+				IconPackIndexParser.parsePack(JSONObject(jsonFile.readText()))
+			}.getOrNull() ?: return@mapNotNull null
+			if (pack.id != dir.name) return@mapNotNull null
+			if (pack.files.any { !File(dir, it.svgFileName).isFile || !File(dir, it.pngFileName).isFile }) {
+				return@mapNotNull null
+			}
+			InstalledIconPack(pack, dir)
+		}.sortedBy { it.pack.name }
+	}
+
+	private fun download(url: String, target: File) {
+		val request = Request.Builder().get().url(url).build()
+		okHttp.newCall(request).execute().use { response ->
+			check(response.isSuccessful) { "Icon download failed: HTTP ${response.code}" }
+			val body = response.body ?: error("Empty icon download response")
+			body.byteStream().use { input ->
+				target.outputStream().use { output -> input.copyTo(output) }
+			}
+		}
+	}
+
+	/**
+	 * Renders one glyph SVG to a [RENDER_SIZE_PX] bitmap using the app's
+	 * image loader (which carries the SVG decoder). Runs at install time so
+	 * a glyph that cannot be decoded rejects the install while the built-in
+	 * icons are still untouched.
+	 */
+	private suspend fun renderGlyph(svgFile: File, pngFile: File) {
+		val loader = SingletonImageLoader.get(context)
+		val request = ImageRequest.Builder(context)
+			.data(svgFile)
+			.size(RENDER_SIZE_PX, RENDER_SIZE_PX)
+			.build()
+		val result = loader.execute(request)
+		val image = (result as? SuccessResult)?.image
+			?: error("SVG does not render: ${svgFile.name}")
+		val bitmap = image.toBitmap(RENDER_SIZE_PX, RENDER_SIZE_PX)
+		pngFile.outputStream().use { output ->
+			check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+				"Cannot write the rendered glyph: ${svgFile.name}"
+			}
+		}
+	}
+
+	companion object {
+		const val INDEX_URL =
+			"https://raw.githubusercontent.com/Noirero/Miyorare-Source-Packs/main/icons/index.json"
+		private const val ICONS_DIR = "icons"
+		private const val PREVIEW_DIR = "icons-preview"
+		private const val PACK_JSON = "pack.json"
+		private const val RENDER_SIZE_PX = 96
+		private const val MAX_PARALLEL_GLYPHS = 8
+	}
+}

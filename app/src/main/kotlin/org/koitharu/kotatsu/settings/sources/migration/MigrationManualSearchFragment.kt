@@ -53,7 +53,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -67,7 +67,7 @@ class MigrationManualSearchFragment : BaseComposeSettingsFragment(R.string.manga
 		ComposeView(requireContext()).apply {
 			setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 			setContent {
-				MiyorareTheme {
+				MiyorareSettingsTheme("extensions") {
 					Surface(
 						modifier = Modifier.fillMaxSize(),
 						color = Color.Transparent,

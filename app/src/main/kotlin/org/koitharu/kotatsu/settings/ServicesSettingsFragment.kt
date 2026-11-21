@@ -47,7 +47,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
@@ -69,7 +69,7 @@ class ServicesSettingsFragment : BaseComposeSettingsFragment(R.string.settings_i
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("services") {
 				InsightsSettingsScreen(
 					onOpenSuggestions = {
 						(activity as? SettingsActivity)?.openFragment(
@@ -102,7 +102,7 @@ class ConnectedServicesSettingsFragment : BaseComposeSettingsFragment(R.string.s
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("services") {
 				val summaries by scrobblerSummary.asStateFlow().collectAsState()
 				ConnectedServicesSettingsScreen(
 					scrobblerSummaries = summaries,

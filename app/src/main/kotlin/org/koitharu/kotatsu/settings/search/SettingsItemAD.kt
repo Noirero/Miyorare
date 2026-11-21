@@ -5,11 +5,12 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
+import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.databinding.ItemPreferenceBinding
 
 fun settingsItemAD(
 	listener: OnListItemClickListener<SettingsItem>,
-) = adapterDelegateViewBinding<SettingsItem, SettingsItem, ItemPreferenceBinding>(
+) = adapterDelegateViewBinding<SettingsItem, ListModel, ItemPreferenceBinding>(
 	{ layoutInflater, parent -> ItemPreferenceBinding.inflate(layoutInflater, parent, false) },
 ) {
 

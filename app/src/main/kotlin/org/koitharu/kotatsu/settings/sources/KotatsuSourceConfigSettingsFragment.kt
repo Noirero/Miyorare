@@ -41,7 +41,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.kotatsu.runtime.KotatsuRuntimeManager
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import javax.inject.Inject
@@ -63,7 +63,7 @@ class KotatsuSourceConfigSettingsFragment : BaseComposeSettingsFragment(R.string
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			MiyorareTheme {
+			MiyorareSettingsTheme("extensions") {
 				KotatsuSourceConfigScreen(
 					state = uiState,
 					onValueChanged = ::setConfigValue,

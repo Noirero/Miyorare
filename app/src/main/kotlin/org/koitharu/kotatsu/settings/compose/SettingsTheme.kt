@@ -176,6 +176,23 @@ private val miyorareTypography = bumpedTypography(googleSansRounded)
  * Miyorare Modern swaps presentation colors and Miyorare geometry while retaining the same content,
  * navigation and data behavior.
  */
+/**
+ * [MiyorareTheme] plus the category identity of a settings screen: every
+ * settings row composed inside [content] inherits the [categoryKey]'s
+ * colors (the same keys the root Settings screen uses per section), unless
+ * the row passes its own colors.
+ */
+@Composable
+fun MiyorareSettingsTheme(categoryKey: String, content: @Composable () -> Unit) {
+	MiyorareTheme {
+		CompositionLocalProvider(
+			LocalSettingsCategoryColors provides CategoryPalette.forKey(categoryKey),
+		) {
+			content()
+		}
+	}
+}
+
 @Composable
 fun MiyorareTheme(content: @Composable () -> Unit) {
 	val ctx = LocalContext.current

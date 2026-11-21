@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:layout_marginStart="16dp"
+	android:layout_marginTop="6dp"
+	android:layout_marginEnd="16dp"
+	android:layout_marginBottom="6dp"
+	android:orientation="vertical"
+	android:paddingBottom="6dp">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="center_vertical"
+		android:orientation="horizontal"
+		android:paddingStart="16dp"
+		android:paddingTop="14dp"
+		android:paddingEnd="16dp"
+		android:paddingBottom="4dp">
+
+		<ImageView
+			android:id="@+id/imageView_icon"
+			android:layout_width="30dp"
+			android:layout_height="30dp"
+			android:contentDescription="@null"
+			android:padding="6dp"
+			tools:src="@drawable/ic_appearance" />
+
+		<TextView
+			android:id="@+id/textView_title"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="10dp"
+			android:textAppearance="?textAppearanceTitleMedium"
+			android:textStyle="bold"
+			tools:text="Appearance" />
+	</LinearLayout>
+
+	<LinearLayout
+		android:id="@+id/container_items"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="vertical" />
+</LinearLayout>

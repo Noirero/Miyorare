@@ -58,6 +58,10 @@ class FontPackRepository @Inject constructor(
 
 	private val rootDir = File(context.filesDir, FONTS_DIR)
 
+	private val previewDir = File(context.filesDir, PREVIEW_DIR)
+
+	private val previewFamilyCache = mutableMapOf<String, FontFamily>()
+
 	private val _catalog = MutableStateFlow<List<FontPack>>(emptyList())
 	val catalog = _catalog.asStateFlow()
 
@@ -171,12 +175,16 @@ class FontPackRepository @Inject constructor(
 		}
 	}
 
+	/** The file that represents a pack at a glance: upright, regular weight when present. */
+	private fun baseFile(pack: FontPack): FontPackFile? {
+		return pack.files.firstOrNull { !it.italic && (it.variable || (it.weight ?: 400) == 400) }
+			?: pack.files.firstOrNull { !it.italic }
+			?: pack.files.firstOrNull()
+	}
+
 	/** The pack's upright base typeface, for the View system and the EPUB reader. */
 	fun baseTypeface(pack: InstalledFontPack): Typeface? {
-		val file = pack.pack.files.firstOrNull { !it.italic && (it.variable || (it.weight ?: 400) == 400) }
-			?: pack.pack.files.firstOrNull { !it.italic }
-			?: pack.pack.files.firstOrNull()
-			?: return null
+		val file = baseFile(pack.pack) ?: return null
 		val fontFile = File(pack.dir, file.file)
 		return runCatching {
 			if (file.variable) {
@@ -187,6 +195,54 @@ class FontPackRepository @Inject constructor(
 				Typeface.createFromFile(fontFile)
 			}
 		}.getOrNull()
+	}
+
+	/**
+	 * A [FontFamily] for previewing a catalog pack that is not installed.
+	 * Only the pack's base file is fetched, into a separate preview cache
+	 * (`files/fonts-preview/<packId>/`), verified by size and SHA-256 like
+	 * an install. The pack is not installed and never becomes active
+	 * through this path; the cached file is reused by later previews.
+	 */
+	@OptIn(ExperimentalTextApi::class)
+	suspend fun previewFontFamily(pack: FontPack): FontFamily {
+		previewFamilyCache[pack.id]?.let { return it }
+		_installed.value.firstOrNull { it.pack.id == pack.id }?.let { return composeFontFamily(it) }
+		val file = baseFile(pack) ?: error("Font pack has no previewable file: ${pack.id}")
+		val target = withContext(Dispatchers.IO) {
+			val dir = File(previewDir, pack.id)
+			dir.mkdirs()
+			val target = File(dir, file.file)
+			val cached = target.isFile && target.length() == file.sizeBytes &&
+				FontPackHashes.sha256(target) == file.sha256
+			if (!cached) {
+				download(file.url, target)
+				check(target.length() == file.sizeBytes) { "Size mismatch for ${file.file}" }
+				check(FontPackHashes.sha256(target) == file.sha256) { "Hash mismatch for ${file.file}" }
+				checkNotNull(Typeface.createFromFile(target)) { "Font does not load: ${file.file}" }
+			}
+			target
+		}
+		val style = if (file.italic) FontStyle.Italic else FontStyle.Normal
+		val family = if (file.variable) {
+			FontFamily(
+				Font(
+					file = target,
+					weight = FontWeight(400),
+					style = style,
+					variationSettings = FontVariation.Settings(FontVariation.weight(400)),
+				),
+				Font(
+					file = target,
+					weight = FontWeight(600),
+					style = style,
+					variationSettings = FontVariation.Settings(FontVariation.weight(600)),
+				),
+			)
+		} else {
+			FontFamily(Font(file = target, weight = FontWeight(file.weight ?: 400), style = style))
+		}
+		return family.also { previewFamilyCache[pack.id] = it }
 	}
 
 	/** A Compose [FontFamily] covering every file and weight of the pack. */
@@ -225,6 +281,7 @@ class FontPackRepository @Inject constructor(
 		const val INDEX_URL =
 			"https://raw.githubusercontent.com/Noirero/Miyorare-Source-Packs/main/fonts/index.json"
 		private const val FONTS_DIR = "fonts"
+		private const val PREVIEW_DIR = "fonts-preview"
 		private const val PACK_JSON = "pack.json"
 	}
 }

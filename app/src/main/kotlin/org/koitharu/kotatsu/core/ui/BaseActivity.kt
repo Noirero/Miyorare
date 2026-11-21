@@ -30,6 +30,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.viewbinding.ViewBinding
+import com.google.android.material.appbar.CollapsingToolbarLayout
 import dagger.hilt.android.EntryPointAccessors
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.fonts.AppFontContextWrapper
+import org.koitharu.kotatsu.core.fonts.AppFontHolder
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.util.ActionModeDelegate
 import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
@@ -83,6 +85,9 @@ abstract class BaseActivity<B : ViewBinding> :
 		// Resolve the active Font Pack before any view inflation happens, so
 		// AppFontHolder is populated when the inflater factory starts working.
 		entryPoint.fontPackRepository
+		// Same for the active Icon Pack: constructing the repository loads the
+		// pack's rendered glyphs into IconPackHolder for the settings screens.
+		entryPoint.iconPackRepository
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
 			AppCompatDelegate.setApplicationLocales(entryPoint.settings.appLocales)
 		}
@@ -95,6 +100,8 @@ abstract class BaseActivity<B : ViewBinding> :
 		// Register before super restores fragments, so created events are observable on API 26+.
 		PerformanceDiagnostics.registerFragments(this)
 		val settings = entryPoint.settings
+		// The platform remembers this override for the next cold-start splash (API 31+).
+		SplashThemeController.sync(this, settings.theme)
 		isAmoledTheme = settings.isAmoledTheme
 		setTheme(settings.colorScheme.styleResId)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
@@ -216,6 +223,23 @@ abstract class BaseActivity<B : ViewBinding> :
 			it.applyTonalTopBarStyle()
 			takeOverToolbarBackHandling(it)
 		}
+		applyAppFontToCollapsingToolbar(binding.root)
+	}
+
+	/**
+	 * A [CollapsingToolbarLayout] draws its title and subtitle with its own text
+	 * helper instead of real TextViews, so the inflater wrapper never sees them
+	 * and they would keep the built-in font while the rest of the screen follows
+	 * the active Font Pack. Hand the layout the pack version of each state's
+	 * current typeface (weight and slant preserved). Without an active pack —
+	 * or on screens without a collapsing toolbar — nothing changes.
+	 */
+	private fun applyAppFontToCollapsingToolbar(root: View) {
+		val ctl = root.findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout) ?: return
+		AppFontHolder.styledLike(ctl.collapsedTitleTypeface)?.let { ctl.setCollapsedTitleTypeface(it) }
+		AppFontHolder.styledLike(ctl.expandedTitleTypeface)?.let { ctl.setExpandedTitleTypeface(it) }
+		AppFontHolder.styledLike(ctl.collapsedSubtitleTypeface)?.let { ctl.setCollapsedSubtitleTypeface(it) }
+		AppFontHolder.styledLike(ctl.expandedSubtitleTypeface)?.let { ctl.setExpandedSubtitleTypeface(it) }
 	}
 
 	/**
