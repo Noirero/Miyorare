@@ -866,7 +866,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		if (pendingCategoryRestore != null) return
 		val type = displayedContentType ?: return
 		val category = currentCategory() ?: return
-		contentTypeStore.setLastCategoryId(type, category.id)
+		contentTypeStore.setLastCategoryId(type, category.id, viewModel.favouriteSpace)
 	}
 
 	private fun currentFavouritesList(): FavouritesListFragment? =
