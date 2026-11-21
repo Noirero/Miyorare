@@ -1016,7 +1016,7 @@ private fun LibraryBarcode(modifier: Modifier) {
 		val barColor = Color.White.copy(alpha = 0.92f)
 		while (x < size.width) {
 			seed = (seed * 31 + 17) % 997
-			val barWidth = (1 + (seed % 3)).dp.toPx()
+			val barWidth = (1 + (seed % 3).toInt()).dp.toPx()
 			if (seed % 4L != 0L) {
 				drawRect(
 					color = barColor,
@@ -1024,7 +1024,7 @@ private fun LibraryBarcode(modifier: Modifier) {
 					size = Size(barWidth, size.height * 0.78f),
 				)
 			}
-			x += barWidth + (1 + (seed % 2)).dp.toPx()
+			x += barWidth + (1 + (seed % 2).toInt()).dp.toPx()
 		}
 	}
 }
