@@ -23,6 +23,14 @@ class MainNavigationPreferencesTest {
 		val available = NavItem.entries.toSet() - setOf(NavItem.FEED, NavItem.SUGGESTIONS, NavItem.UPDATED)
 		assertEquals(listOf(NavItem.FAVORITES, NavItem.HISTORY, NavItem.DISCOVERY_HUB, NavItem.EXPLORE, NavItem.LOCAL), Policy.primary(listOf("FEED", "SUGGESTIONS", "UPDATED"), available))
 	}
+	@Test fun `legacy three slot configuration keeps home in the centre`() {
+		assertEquals(listOf(NavItem.FAVORITES, NavItem.LOCAL, NavItem.DISCOVERY_HUB, NavItem.EXPLORE, NavItem.BOOKMARKS), Policy.primary(listOf("LOCAL", "EXPLORE", "BOOKMARKS")))
+	}
+	@Test fun `four slot configuration without home is kept as configured`() {
+		val result = Policy.primary(listOf("LOCAL", "EXPLORE", "BOOKMARKS", "HISTORY"))
+		assertEquals(listOf(NavItem.FAVORITES, NavItem.LOCAL, NavItem.EXPLORE, NavItem.BOOKMARKS, NavItem.HISTORY), result)
+		assertFalse(NavItem.DISCOVERY_HUB in result)
+	}
 	@Test fun `normalized preference is stable and never stores a fixed root`() {
 		val slots = Policy.configurable(listOf(" EXPLORE ", "LOCAL", "HISTORY"))
 		assertEquals(slots, Policy.configurable(slots.map { it.name }))
