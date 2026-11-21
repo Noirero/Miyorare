@@ -15,7 +15,23 @@ import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
 import org.koitharu.kotatsu.stats.domain.StatsMatureMode
 import org.koitharu.kotatsu.stats.domain.StatsPeriod
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
+
+/** Snapshot of the weekly reading goal shown on the panel's Overview tab. */
+data class WeeklyGoalState(
+	val goal: Int = 0,
+	val thisWeek: Long = 0,
+	val lastWeek: Long? = null,
+) {
+	val reached: Boolean
+		get() = goal > 0 && thisWeek >= goal
+
+	val fraction: Float
+		get() = if (goal <= 0) 0f else (thisWeek.toFloat() / goal).coerceIn(0f, 1f)
+}
 
 /**
  * Data for the Settings swipe-in Reader Journey panel.
@@ -46,6 +62,8 @@ class SettingsJourneyPanelViewModel @Inject constructor(
 
 	val model = MutableStateFlow(JourneyPanelModel.fromKey(settings.journeyPanelModel))
 
+	val weeklyGoal = MutableStateFlow(WeeklyGoalState(goal = settings.journeyWeeklyGoal))
+
 	init {
 		launchJob(Dispatchers.Default) {
 			repository.observeReaderJourneyChanges()
@@ -59,6 +77,7 @@ class SettingsJourneyPanelViewModel @Inject constructor(
 							matureMode = matureMode,
 						)
 					}
+					resolveWeeklyGoal(stats.value.journeyCompletedChapters)
 				}
 		}
 	}
@@ -68,4 +87,56 @@ class SettingsJourneyPanelViewModel @Inject constructor(
 		settings.journeyPanelModel = value.key
 		model.value = value
 	}
+
+	fun setWeeklyGoal(value: Int) {
+		settings.journeyWeeklyGoal = value
+		resolveWeeklyGoal(stats.value.journeyCompletedChapters)
+	}
+
+	/**
+	 * The weekly goal counts verified Journey chapters inside the current
+	 * Monday–Sunday week. The app stores no per-day chapter history, so the count
+	 * is anchored: at the start of a week the lifetime chapter total is saved as
+	 * the baseline, and in-week progress is the lifetime delta since then. When a
+	 * week rolls over, the finished week's delta becomes last week's count — but
+	 * only when the stored anchor is exactly the previous week; after a longer
+	 * absence the previous count is unknown and the trend stays hidden instead of
+	 * being guessed.
+	 */
+	private fun resolveWeeklyGoal(lifetimeChapters: Long) {
+		val goal = settings.journeyWeeklyGoal
+		if (goal <= 0) {
+			weeklyGoal.value = WeeklyGoalState(goal = 0)
+			return
+		}
+		val monday = currentWeekMonday()
+		val storedStart = settings.journeyGoalWeekStart
+		when {
+			storedStart == 0L -> anchorGoalWeek(monday, lifetimeChapters, lastWeek = -1L)
+			monday > storedStart -> {
+				val finished = (lifetimeChapters - settings.journeyGoalBaseline).coerceAtLeast(0L)
+				anchorGoalWeek(
+					monday,
+					lifetimeChapters,
+					lastWeek = if (monday - storedStart == 7L) finished else -1L,
+				)
+			}
+		}
+		val lastWeek = settings.journeyGoalLastWeek
+		weeklyGoal.value = WeeklyGoalState(
+			goal = goal,
+			thisWeek = (lifetimeChapters - settings.journeyGoalBaseline).coerceAtLeast(0L),
+			lastWeek = if (lastWeek >= 0L) lastWeek else null,
+		)
+	}
+
+	private fun anchorGoalWeek(monday: Long, lifetimeChapters: Long, lastWeek: Long) {
+		settings.journeyGoalWeekStart = monday
+		settings.journeyGoalBaseline = lifetimeChapters
+		settings.journeyGoalLastWeek = lastWeek
+	}
+
+	private fun currentWeekMonday(): Long = LocalDate.now()
+		.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+		.toEpochDay()
 }

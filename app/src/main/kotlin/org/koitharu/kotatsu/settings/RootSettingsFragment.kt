@@ -96,6 +96,7 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                 val journeyStats by journeyViewModel.stats.collectAsState()
                 val journeyProfile by journeyViewModel.profile.collectAsState()
                 val journeyModel by journeyViewModel.model.collectAsState()
+                val journeyGoal by journeyViewModel.weeklyGoal.collectAsState()
                 // Root Settings and the Reader Journey panel are two pages of one
                 // pager — the same stable swipe pattern as the Favourites tabs:
                 // the pages follow the finger and settle into place, instead of a
@@ -136,6 +137,8 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                             profile = journeyProfile,
                             model = journeyModel,
                             onModelChange = journeyViewModel::setModel,
+                            weeklyGoal = journeyGoal,
+                            onWeeklyGoalChange = journeyViewModel::setWeeklyGoal,
                         )
                     }
                 }
