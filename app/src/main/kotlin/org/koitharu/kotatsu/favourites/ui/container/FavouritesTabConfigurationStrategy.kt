@@ -56,7 +56,7 @@ import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
-class FavouritesTabConfigurationStrategy(
+internal class FavouritesTabConfigurationStrategy(
 	private val adapter: FavouritesContainerAdapter,
 	private val viewModel: FavouritesContainerViewModel,
 	private val router: AppRouter,

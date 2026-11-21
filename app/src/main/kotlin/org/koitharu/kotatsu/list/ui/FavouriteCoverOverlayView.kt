@@ -160,7 +160,12 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			unread.setPadding(padding, padding, padding, padding)
 			number.backgroundTintList = null
 			number.background = shape(readingFill, readingOutline, px(metrics.unreadSize) / 2f)
-			number.setTextColor(Color.WHITE)
+			val readingBadgeForeground = if (value.useDarkReadingBadgeForeground) {
+				color(R.color.cover_reading_badge_foreground)
+			} else {
+				Color.WHITE
+			}
+			number.setTextColor(if (value.readingState == ModernCoverReadingState.IN_PROGRESS) readingBadgeForeground else Color.WHITE)
 			number.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.badgeSp)
 			number.includeFontPadding = false
 			val diameter = maxOf(px(metrics.unreadSize), number.paint.measureText(number.text.toString()).roundToInt() + padding * 2,
@@ -169,7 +174,7 @@ class FavouriteCoverOverlayView @JvmOverloads constructor(context: Context, attr
 			number.layoutParams = LayoutParams(diameter, diameter)
 			caughtUp.backgroundTintList = null
 			caughtUp.background = shape(R.color.cover_caught_up, R.color.cover_caught_up_outline, diameter / 2f)
-			caughtUp.imageTintList = ColorStateList.valueOf(Color.WHITE)
+			caughtUp.imageTintList = ColorStateList.valueOf(readingBadgeForeground)
 			caughtUp.setPadding(padding, padding, padding, padding)
 			caughtUp.layoutParams = LayoutParams(diameter, diameter)
 			// Chapter/update counts retain their host meaning; a stack glyph and rectangular shield

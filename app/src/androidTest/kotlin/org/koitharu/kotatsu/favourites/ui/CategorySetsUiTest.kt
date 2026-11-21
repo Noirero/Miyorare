@@ -18,6 +18,8 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -27,6 +29,7 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -39,19 +42,28 @@ import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.domain.*
 import org.koitharu.kotatsu.favourites.ui.categories.FavouriteCategoriesActivity
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
 import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerAdapter
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerViewModel
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListViewModel
+import org.koitharu.kotatsu.favourites.ui.list.LocalFavouritesListFragment
+import org.koitharu.kotatsu.favourites.ui.list.LocalFavouritesListViewModel
+import org.koitharu.kotatsu.list.ui.config.ListConfigSection
+import org.koitharu.kotatsu.list.ui.config.ListConfigViewModel
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.list.domain.ListSortOrder
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.main.ui.MainActivity
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
@@ -68,6 +80,7 @@ class CategorySetsUiTest {
 	@Inject lateinit var quickFilters: FavouriteQuickFilterStore
 	@Inject lateinit var sourceFilters: FavouriteSourceFilterStore
 	@Inject lateinit var display: FavouriteDisplayPreferences
+	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var privateSessionProvider: javax.inject.Provider<PrivateFavouritesSession>
 	@Inject lateinit var imageLoaderProvider: javax.inject.Provider<coil3.ImageLoader>
 	private lateinit var privateSession: PrivateFavouritesSession
@@ -445,6 +458,153 @@ class CategorySetsUiTest {
 		}
 	}
 
+	@Test fun localListModeUsesItsExistingPreferenceAndUpdatesTheList() {
+		val previousGlobal = settings.listMode
+		val previousLocal = settings.favoritesListMode
+		settings.listMode = ListMode.COVER_ONLY
+		settings.favoritesListMode = ListMode.GRID
+		types.setLastCategoryId(FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, FavouriteSpace.NORMAL)
+		try {
+			ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+				val local = AtomicReference<LocalFavouritesListViewModel?>()
+				await {
+					scenario.onActivity { activity ->
+						val fragment = descendants(activity.supportFragmentManager.fragments)
+							.filterIsInstance<LocalFavouritesListFragment>().firstOrNull()
+						val model = fragment?.let { ViewModelProvider(it)[LocalFavouritesListViewModel::class.java] }
+						local.set(model)
+					}
+					local.get()?.listMode?.value == ListMode.GRID
+				}
+				scenario.onActivity {
+					val config = ListConfigViewModel(
+						SavedStateHandle(mapOf(AppRouter.KEY_LIST_SECTION to ListConfigSection.LocalFavourites)),
+						settings, types, display,
+					)
+					assertEquals(ListMode.GRID, config.listMode)
+					config.listMode = ListMode.LIST
+				}
+				await { local.get()?.listMode?.value == ListMode.LIST }
+				assertEquals(ListMode.LIST, settings.favoritesListMode)
+				assertEquals(ListMode.COVER_ONLY, settings.listMode)
+			}
+		} finally {
+			settings.listMode = previousGlobal
+			settings.favoritesListMode = previousLocal
+		}
+	}
+
+	@Test fun contentTypeRestoresItsCategoryAcrossSetsWithLocalHidden() {
+		val space = FavouriteSpace.NORMAL
+		val mangaCategory = categoryIds.getValue(space).first()[3]
+		val novelCategory = categoryIds.getValue(space)[1][6]
+		types.setCategoryType(novelCategory, FavouriteContentType.NOVEL)
+		selection.select(sets.getValue(space)[1], space, FavouriteContentType.NOVEL)
+		types.setLastCategoryId(FavouriteContentType.MANGA, mangaCategory, space)
+		types.setLastCategoryId(FavouriteContentType.NOVEL, novelCategory, space)
+		display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, false)
+
+		try {
+			ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+				fun awaitCategory(expected: Long) = await {
+					var selected: Long? = null
+					scenario.onActivity { activity ->
+						val container = descendants(activity.supportFragmentManager.fragments)
+							.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
+						val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
+						if (container != null && pager != null) {
+							selected = (container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment)?.categoryId
+						}
+					}
+					selected == expected
+				}
+
+				awaitCategory(mangaCategory)
+				scenario.onActivity { types.setSelectedType(FavouriteContentType.NOVEL, space) }
+				awaitCategory(novelCategory)
+				scenario.onActivity { types.setSelectedType(FavouriteContentType.MANGA, space) }
+				awaitCategory(mangaCategory)
+				assertEquals(novelCategory, types.getLastCategoryId(FavouriteContentType.NOVEL, space))
+			}
+		} finally {
+			display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, true)
+		}
+	}
+
+	@Test fun normalDownloadedBadgeRefreshKeepsTheLastPrivateCategory() {
+		val normal = FavouriteSpace.NORMAL
+		val privateSpace = FavouriteSpace.PRIVATE
+		val type = FavouriteContentType.MANGA
+		val normalCategory = categoryIds.getValue(normal).first()[3]
+		val privateCategory = categoryIds.getValue(privateSpace).first()[6]
+		runBlocking {
+			repository.updateCategoryMemberships(listOf(manga), mapOf(normalCategory to true), normal)
+			repository.updateCategoryMemberships(listOf(otherManga), mapOf(privateCategory to true), privateSpace)
+		}
+		types.setLastCategoryId(type, normalCategory, normal)
+		types.setLastCategoryId(type, privateCategory, privateSpace)
+
+		fun selectedContainer(activity: FragmentActivity, categoryId: Long): FavouritesContainerFragment? {
+			val container = descendants(activity.supportFragmentManager.fragments)
+				.filterIsInstance<FavouritesContainerFragment>().firstOrNull() ?: return null
+			val pager = container.view?.findViewById<ViewPager2>(R.id.pager) ?: return null
+			val current = container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment
+			return container.takeIf { current?.categoryId == categoryId }
+		}
+
+		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { normalScenario ->
+			var selectedNormal: FavouritesContainerFragment? = null
+			await {
+				normalScenario.onActivity { selectedNormal = selectedContainer(it, normalCategory) }
+				selectedNormal != null
+			}
+			val normalContainer = checkNotNull(selectedNormal)
+			val privateIntent = Intent(context, FavouritesActivity::class.java)
+				.putExtra(EXTRA_FAVOURITE_SPACE, privateSpace.dbValue)
+			var privateActivity: FavouritesActivity? = null
+			try {
+				// Start from Normal so its activity and pager stay in the same back stack.
+				normalScenario.onActivity { it.startActivity(privateIntent) }
+				await {
+					var ready = false
+					instrumentation.runOnMainSync {
+						privateActivity = ActivityLifecycleMonitorRegistry.getInstance()
+							.getActivitiesInStage(Stage.RESUMED).filterIsInstance<FavouritesActivity>().singleOrNull()
+						ready = privateActivity?.let { selectedContainer(it, privateCategory) } != null
+					}
+					ready
+				}
+				assertEquals(privateCategory, types.getLastCategoryId(type, privateSpace))
+
+				// Mirror completion at the ownership index boundary while the Normal view is retained.
+				val root = checkNotNull(destinations.effectiveRoot(normal))
+				val downloadDir = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
+				runBlocking {
+					database.getFavouriteDownloadIndexDao().upsert(
+						listOf(FavouriteDownloadIndexEntity(manga.id, normal.dbValue, File(downloadDir, "badge-fixture.cbz").absolutePath)),
+					)
+				}
+				await {
+					var count: Int? = null
+					instrumentation.runOnMainSync {
+						val pager = normalContainer.view?.findViewById<ViewPager2>(R.id.pager)
+						val adapter = pager?.adapter as? FavouritesContainerAdapter
+						count = adapter?.let { rows ->
+							(0 until rows.itemCount).asSequence().map(rows::getItem)
+								.firstOrNull { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID }?.count
+						}
+					}
+					count == 1
+				}
+				assertEquals("Normal badge refresh changed the Private category", privateCategory, types.getLastCategoryId(type, privateSpace))
+				assertEquals(normalCategory, types.getLastCategoryId(type, normal))
+			} finally {
+				instrumentation.runOnMainSync { privateActivity?.finish() }
+				instrumentation.waitForIdleSync()
+			}
+		}
+	}
+
 	@Test fun mainFavouritesNavigationAllCountsAndVirtualShelvesFollowSetSelection() {
 		val first = categoryIds.getValue(FavouriteSpace.NORMAL)[0]
 		val second = categoryIds.getValue(FavouriteSpace.NORMAL)[1]
@@ -457,14 +617,14 @@ class CategorySetsUiTest {
 			await { scenario.onActivity { activity -> container.set(descendants(activity.supportFragmentManager.fragments).filterIsInstance<FavouritesContainerFragment>().firstOrNull()) }; container.get()?.view != null }
 			val model = AtomicReference<FavouritesContainerViewModel>()
 			scenario.onActivity { model.set(ViewModelProvider(container.get()!!)[FavouritesContainerViewModel::class.java]) }
-			val before = runBlocking { withTimeout(30_000) { model.get().categories.first { it.count { row -> row.id > 0 } == 80 && it.firstOrNull { row -> row.id == 0L }?.count == 1 } } }
+			val before = runBlocking { withTimeout(30_000) { model.get().categories.filterNotNull().first { it.items.count { row -> row.id > 0 } == 80 && it.items.firstOrNull { row -> row.id == 0L }?.count == 1 }.items } }
 			assertTrue(before.any { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID })
 			assertTrue(before.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID })
 			scenario.onActivity { assertNavigationGeometry(it, tabsMode = true) }
 			capture("normal-manga-tabs")
 			scenario.onActivity { it.findViewById<android.view.View>(R.id.button_category_set).performClick() }
 			tapNativeMenu("Second")
-			val after = runBlocking { withTimeout(30_000) { model.get().categories.first { it.count { row -> row.id > 0 } == 15 && it.firstOrNull { row -> row.id == 0L }?.count == 1 } } }
+			val after = runBlocking { withTimeout(30_000) { model.get().categories.filterNotNull().first { it.items.count { row -> row.id > 0 } == 15 && it.items.firstOrNull { row -> row.id == 0L }?.count == 1 }.items } }
 			assertEquals(second.toSet(), after.filter { it.id > 0 }.map { it.id }.toSet())
 			assertTrue(after.any { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID })
 			assertTrue(after.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID })
@@ -494,7 +654,7 @@ class CategorySetsUiTest {
 			assertEquals(setOf(first[0], first[1]), memberships())
 			scenario.onActivity { it.findViewById<android.view.View>(R.id.button_category_set).performClick() }
 			tapNativeMenu("Utama")
-			await { model.get().categories.value.count { it.id > 0 } == 80 }
+			await { model.get().categories.value?.items?.count { it.id > 0 } == 80 }
 			await { runBlocking { allModel.get()!!.getAllSelectableIds() == setOf(manga.id) }
 			}
 		}
@@ -691,7 +851,7 @@ class CategorySetsUiTest {
 			runBlocking { repository.renameSet(sets.getValue(space)[0].setId, longName + " populated", space) }
 			// Populated Set: measure the actual navigation row at narrow, reference and landscape widths.
 			instrumentation.runOnMainSync { types.setSelectedType(FavouriteContentType.MANGA, space); selection.select(sets.getValue(space)[0], space, FavouriteContentType.MANGA) }
-			await { model.get().categories.value.count { it.id > 0 } == 80 }
+			await { model.get().categories.value?.items?.count { it.id > 0 } == 80 }
 			for (widthDp in listOf(320, 432, 720)) {
 				for (tabs in listOf(true, false)) {
 					instrumentation.runOnMainSync { display.setShowCategoryTabs(FavouriteContentType.MANGA, tabs) }

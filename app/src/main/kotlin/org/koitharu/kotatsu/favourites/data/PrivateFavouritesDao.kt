@@ -25,6 +25,8 @@ import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_COMPLETED
 import org.koitharu.kotatsu.list.domain.toOrderBy
 
+internal const val PRIVATE_ISOLATION_DISABLED = "EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)"
+
 @Dao
 abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 
@@ -84,12 +86,12 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findActiveMangaIds(): List<Long>
 
 	@Query(
-		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+		"SELECT $PRIVATE_ISOLATION_DISABLED",
 	)
 	abstract suspend fun isIsolationDisabled(): Boolean
 
 	@Query(
-		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+		"SELECT $PRIVATE_ISOLATION_DISABLED",
 	)
 	abstract fun observeIsolationDisabled(): Flow<Boolean>
 

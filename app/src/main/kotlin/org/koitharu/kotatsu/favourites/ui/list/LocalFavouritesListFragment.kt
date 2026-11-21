@@ -12,7 +12,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.databinding.FragmentListBinding
-import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
@@ -22,6 +22,12 @@ import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 class LocalFavouritesListFragment : MangaListFragment() {
 
 	override val viewModel by viewModels<LocalFavouritesListViewModel>()
+
+	internal val favouriteSpace: FavouriteSpace
+		get() = viewModel.favouriteSpace
+
+	override val offersContinueReadingInSelection: Boolean
+		get() = favouriteSpace == FavouriteSpace.NORMAL
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)

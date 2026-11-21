@@ -156,6 +156,9 @@ class MangaDataRepository @Inject constructor(
 		return stored.toManga(chapters)
 	}
 
+	/** Load selected rows beyond the current page without exceeding SQLite's bind limit. */
+	suspend fun findMangaByIds(ids: Collection<Long>): List<Manga> =
+		ids.chunked(500).flatMap { batch -> db.getMangaDao().findByIds(batch).map { it.toManga() } }
 
 	suspend fun findMangaByPublicUrl(publicUrl: String): Manga? {
 		return db.getMangaDao().findByPublicUrl(publicUrl)?.toManga()

@@ -420,7 +420,7 @@ fun mangaGridItemAD(
 			try {
 			binding.favouriteCoverOverlays.bind(
 				ModernCoverState.from(item, if (localCinematic) ModernCoverContext.COLLECTION else coverContext)
-					.copy(title = displayTitle)
+					.copy(title = displayTitle, useDarkReadingBadgeForeground = isNormalModernFavourites)
 					.let { if (localCinematic) it.copy(legacyCounter = item.counter, isLocalSource = true, languageLabel = null) else it },
 			) { view ->
 				clickListener.onReadClick(item.toMangaWithOverride(), view)

@@ -25,14 +25,25 @@ class ListConfigViewModel @Inject constructor(
 	val isFavouriteSection: Boolean
 		get() = section is ListConfigSection.Favorites
 
+	val isLocalFavouritesSection: Boolean
+		get() = section == ListConfigSection.LocalFavourites
+
+	private val usesFavouriteCoverOptions: Boolean
+		get() = isFavouriteSection || isLocalFavouritesSection
+
 	/** The shelf cannot change while this sheet is open, so snapshot it when the sheet is created. */
-	private val favouriteType: FavouriteContentType = contentTypeStore.selectedType.value
+	private val favouriteType = if (isLocalFavouritesSection) {
+		FavouriteContentType.MANGA
+	} else {
+		contentTypeStore.selectedType.value
+	}
 
 	private fun favouriteOptions() = favouriteDisplayPreferences.current(favouriteType)
 
 	var listMode: ListMode
 		get() = when (section) {
 			is ListConfigSection.Favorites -> favouriteOptions().listMode
+			ListConfigSection.LocalFavourites -> settings.favoritesListMode
 			ListConfigSection.History -> settings.historyListMode
 			ListConfigSection.Suggestions -> settings.suggestionsListMode
 			ListConfigSection.General,
@@ -41,6 +52,7 @@ class ListConfigViewModel @Inject constructor(
 		set(value) {
 			when (section) {
 				is ListConfigSection.Favorites -> favouriteDisplayPreferences.setListMode(favouriteType, value)
+				ListConfigSection.LocalFavourites -> settings.favoritesListMode = value
 				ListConfigSection.History -> settings.historyListMode = value
 				ListConfigSection.Suggestions -> settings.suggestionsListMode = value
 				ListConfigSection.Updated,
@@ -63,9 +75,9 @@ class ListConfigViewModel @Inject constructor(
 		}
 
 	var isTitleOverCover: Boolean
-		get() = if (isFavouriteSection) favouriteOptions().titleOverCover else settings.isTitleOverCover
+		get() = if (usesFavouriteCoverOptions) favouriteOptions().titleOverCover else settings.isTitleOverCover
 		set(value) {
-			if (isFavouriteSection) {
+			if (usesFavouriteCoverOptions) {
 				favouriteDisplayPreferences.setTitleOverCover(favouriteType, value)
 			} else {
 				settings.isTitleOverCover = value
@@ -73,9 +85,9 @@ class ListConfigViewModel @Inject constructor(
 		}
 
 	var isGridSpacingIncreased: Boolean
-		get() = if (isFavouriteSection) favouriteOptions().gridSpacingIncreased else settings.isGridSpacingIncreased
+		get() = if (usesFavouriteCoverOptions) favouriteOptions().gridSpacingIncreased else settings.isGridSpacingIncreased
 		set(value) {
-			if (isFavouriteSection) {
+			if (usesFavouriteCoverOptions) {
 				favouriteDisplayPreferences.setGridSpacingIncreased(favouriteType, value)
 			} else {
 				settings.isGridSpacingIncreased = value
