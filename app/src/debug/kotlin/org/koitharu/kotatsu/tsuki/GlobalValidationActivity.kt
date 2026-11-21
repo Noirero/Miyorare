@@ -455,11 +455,13 @@ class GlobalValidationActivity : FragmentActivity() {
 		}
 		for (scenario in listOf("repeated", "empty", "noPager")) {
 			pageScenario.set(scenario)
-			val failure = org.koitharu.kotatsu.parsers.util.runCatchingCancellable {
+			try {
 				repository.getFreshPages(chapter)
-			}.exceptionOrNull()
-			check(failure is java.io.IOException && failure.message.orEmpty().contains("Please retry")) {
-				"An incomplete $scenario gallery was accepted or failed without a retryable error: $failure"
+				error("An incomplete $scenario gallery was accepted")
+			} catch (failure: java.io.IOException) {
+				check(failure.message.orEmpty().contains("Please retry")) {
+					"An incomplete $scenario gallery failed without a retryable message: $failure"
+				}
 			}
 		}
 		Log.i(TAG, "GALLERY_PAGES_FIXTURE_OK")

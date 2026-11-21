@@ -270,6 +270,10 @@ class DetailsLiveLocalStateTest {
 
 	@Test
 	fun officialExhentaiOnlyAcceptsScopedDownloadEvents() = runBlocking {
+		PreferenceManager.getDefaultSharedPreferences(context).edit(commit = true) {
+			remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT)
+		}
+		assertEquals(destinations.effectiveRoot(FavouriteSpace.NORMAL), destinations.effectiveRoot(FavouriteSpace.PRIVATE))
 		val source = MangaSource("TSUKI:MIYORARE:miyorare-global:EXHENTAI")
 		val seed = remote()
 		val chapter = seed.chapters.orEmpty().first().copy(source = source)

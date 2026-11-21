@@ -80,7 +80,15 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		if (chapterIds != null && proven.local.manga.chapters?.singleOrNull()?.let { setOf(it.id) } != chapterIds) {
 			throw IOException("The selected ExHentai chapter could not be verified. Files were kept.")
 		}
-		localMangaRepository.deleteExhentaiDestinationCopy(proven.local)
+		val victim = proven.local.manga
+		val original = localMangaRepository.getRemoteManga(victim)
+		if (!localMangaRepository.deleteExhentaiDestinationCopy(proven.local)) return@withLock false
+		// A physical Local entry can have its own reading history. Keep the remote history intact.
+		if (victim.id != remote.id) {
+			runCatchingCancellable { historyRepository.deleteOrSwap(victim, original) }
+				.onFailure(Throwable::printStackTraceDebug)
+		}
+		true
 	}
 
 	/**
