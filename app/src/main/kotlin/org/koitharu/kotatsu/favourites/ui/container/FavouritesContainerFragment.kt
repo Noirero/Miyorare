@@ -70,7 +70,7 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
-import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import kotlinx.coroutines.flow.filterNotNull
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListWorkOwner
 import org.koitharu.kotatsu.main.ui.MainActivity
@@ -296,7 +296,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			installFavouriteSearchHandler()
 		}
 		actionModeDelegate.addListener(this)
-		viewModel.categories.observe(viewLifecycleOwner, adapter)
+		viewModel.categories.filterNotNull().observe(viewLifecycleOwner, adapter)
 		viewModel.isEmpty.observe(viewLifecycleOwner, ::onEmptyStateChanged)
 		contentTypeStore.selectedType.observe(viewLifecycleOwner, ::onContentTypeChanged)
 		displayPreferences.state.observe(viewLifecycleOwner) {
@@ -382,6 +382,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		searchBackCallback = null
 		pagerAdapter = null
 		categories = emptyList()
+		displayedContentType = null
 		isActionModeActive = false
 		searchScopeActive.value = false
 		detachTabsFromAppBar()
@@ -507,21 +508,23 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		applyCategoryNavigation(displayPreferences.current(type))
 	}
 
-	private fun onCategoriesCommitted(value: List<FavouriteTabModel>) {
+	private fun onCategoriesCommitted(tabs: FavouriteTabs) {
+		val binding = viewBinding ?: return
+		if (tabs.type != contentTypeStore.selectedType.value) return
+		if (displayedContentType != tabs.type) onContentTypeChanged(tabs.type)
+		val value = tabs.items
 		categories = value
 		activity?.invalidateOptionsMenu()
-		val binding = viewBinding ?: return
 		val restoreType = pendingCategoryRestore
-		if (restoreType != null && isCategoryListForType(value, restoreType)) {
-			val categoryId = contentTypeStore.getLastCategoryId(restoreType)
+		if (restoreType == tabs.type && value.isNotEmpty()) {
+			val categoryId = contentTypeStore.getLastCategoryId(restoreType, viewModel.favouriteSpace)
 			val target = value.indexOfFirst { it.id == categoryId }.takeIf { it >= 0 } ?: 0
-			if (value.isNotEmpty()) {
-				binding.pager.setCurrentItem(target, false)
-				contentTypeStore.setLastCategoryId(restoreType, value[target].id)
-			}
+			binding.pager.setCurrentItem(target, false)
+			contentTypeStore.setLastCategoryId(restoreType, value[target].id, viewModel.favouriteSpace)
 			pendingCategoryRestore = null
-		} else if (restoreType == null && value.isNotEmpty() && binding.pager.currentItem >= value.size) {
-			binding.pager.setCurrentItem(0, false)
+		} else if (restoreType == null && value.isNotEmpty()) {
+			if (binding.pager.currentItem >= value.size) binding.pager.setCurrentItem(0, false)
+			rememberCurrentCategory()
 		}
 		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
 		PerformanceDiagnostics.milestone(this, "favourites_set_tabs_committed")
@@ -535,11 +538,6 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			)
 		}
 	}
-
-	private fun isCategoryListForType(
-		items: List<FavouriteTabModel>,
-		type: FavouriteContentType,
-	): Boolean = items.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID } == (type == FavouriteContentType.MANGA)
 
 	private fun onEmptyStateChanged(isEmpty: Boolean) {
 		isEmptyState = isEmpty
@@ -865,6 +863,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun rememberCurrentCategory() {
+		if (pendingCategoryRestore != null) return
 		val type = displayedContentType ?: return
 		val category = currentCategory() ?: return
 		contentTypeStore.setLastCategoryId(type, category.id)

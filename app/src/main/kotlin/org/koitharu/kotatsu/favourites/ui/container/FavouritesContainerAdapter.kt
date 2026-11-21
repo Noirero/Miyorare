@@ -30,11 +30,11 @@ import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.LocalFavouritesListFragment
 import kotlin.coroutines.suspendCoroutine
 
-class FavouritesContainerAdapter(
+internal class FavouritesContainerAdapter(
 	private val fragment: Fragment,
 	private val showCategoryCounts: () -> Boolean,
-	private val onListCommitted: (List<FavouriteTabModel>) -> Unit = {},
-) : FragmentStateAdapter(fragment), FlowCollector<List<FavouriteTabModel>> {
+	private val onListCommitted: (FavouriteTabs) -> Unit,
+) : FragmentStateAdapter(fragment), FlowCollector<FavouriteTabs> {
 
 	private val favouriteSpace = FavouriteSpace.fromArgument(
 		fragment.arguments?.getInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)
@@ -110,7 +110,8 @@ class FavouritesContainerAdapter(
 		}
 	}
 
-	override suspend fun emit(value: List<FavouriteTabModel>) = suspendCoroutine { cont ->
+	override suspend fun emit(tabs: FavouriteTabs) = suspendCoroutine { cont ->
+		val value = tabs.items
 		val pager = fragment.view?.findViewById<ViewPager2>(R.id.pager)
 		val previousItems = differ.currentList
 		val previousIndex = pager?.currentItem ?: RecyclerView.NO_POSITION
@@ -143,7 +144,7 @@ class FavouritesContainerAdapter(
 			// Count-only changes never alter ViewPager structure/content. Update the attached badge and
 			// its reserved space directly, avoiding any TabLayoutMediator rebuild for live count updates.
 			updateTabBadgeNumbers(value)
-			onListCommitted(differ.currentList)
+			onListCommitted(tabs)
 			if (startedNs != 0L && PerformanceDiagnostics.enabled) {
 				logPagerDiagnostic(
 					"categories_commit",

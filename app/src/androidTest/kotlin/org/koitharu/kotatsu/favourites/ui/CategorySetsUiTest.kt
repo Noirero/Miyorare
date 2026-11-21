@@ -27,6 +27,7 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -445,6 +446,43 @@ class CategorySetsUiTest {
 		}
 	}
 
+	@Test fun contentTypeRestoresItsCategoryWithLocalHidden() {
+		val space = FavouriteSpace.NORMAL
+		val mangaCategory = categoryIds.getValue(space).first()[3]
+		val novelCategory = categoryIds.getValue(space).first()[6]
+		types.setCategoryType(novelCategory, FavouriteContentType.NOVEL)
+		selection.select(sets.getValue(space).first(), space, FavouriteContentType.NOVEL)
+		types.setLastCategoryId(FavouriteContentType.MANGA, mangaCategory, space)
+		types.setLastCategoryId(FavouriteContentType.NOVEL, novelCategory, space)
+		display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, false)
+
+		try {
+			ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+				fun awaitCategory(expected: Long) = await {
+					var selected: Long? = null
+					scenario.onActivity { activity ->
+						val container = descendants(activity.supportFragmentManager.fragments)
+							.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
+						val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
+						if (container != null && pager != null) {
+							selected = (container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment)?.categoryId
+						}
+					}
+					selected == expected
+				}
+
+				awaitCategory(mangaCategory)
+				scenario.onActivity { types.setSelectedType(FavouriteContentType.NOVEL, space) }
+				awaitCategory(novelCategory)
+				scenario.onActivity { types.setSelectedType(FavouriteContentType.MANGA, space) }
+				awaitCategory(mangaCategory)
+				assertEquals(novelCategory, types.getLastCategoryId(FavouriteContentType.NOVEL, space))
+			}
+		} finally {
+			display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, true)
+		}
+	}
+
 	@Test fun mainFavouritesNavigationAllCountsAndVirtualShelvesFollowSetSelection() {
 		val first = categoryIds.getValue(FavouriteSpace.NORMAL)[0]
 		val second = categoryIds.getValue(FavouriteSpace.NORMAL)[1]
@@ -457,14 +495,14 @@ class CategorySetsUiTest {
 			await { scenario.onActivity { activity -> container.set(descendants(activity.supportFragmentManager.fragments).filterIsInstance<FavouritesContainerFragment>().firstOrNull()) }; container.get()?.view != null }
 			val model = AtomicReference<FavouritesContainerViewModel>()
 			scenario.onActivity { model.set(ViewModelProvider(container.get()!!)[FavouritesContainerViewModel::class.java]) }
-			val before = runBlocking { withTimeout(30_000) { model.get().categories.first { it.count { row -> row.id > 0 } == 80 && it.firstOrNull { row -> row.id == 0L }?.count == 1 } } }
+			val before = runBlocking { withTimeout(30_000) { model.get().categories.filterNotNull().first { it.items.count { row -> row.id > 0 } == 80 && it.items.firstOrNull { row -> row.id == 0L }?.count == 1 }.items } }
 			assertTrue(before.any { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID })
 			assertTrue(before.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID })
 			scenario.onActivity { assertNavigationGeometry(it, tabsMode = true) }
 			capture("normal-manga-tabs")
 			scenario.onActivity { it.findViewById<android.view.View>(R.id.button_category_set).performClick() }
 			tapNativeMenu("Second")
-			val after = runBlocking { withTimeout(30_000) { model.get().categories.first { it.count { row -> row.id > 0 } == 15 && it.firstOrNull { row -> row.id == 0L }?.count == 1 } } }
+			val after = runBlocking { withTimeout(30_000) { model.get().categories.filterNotNull().first { it.items.count { row -> row.id > 0 } == 15 && it.items.firstOrNull { row -> row.id == 0L }?.count == 1 }.items } }
 			assertEquals(second.toSet(), after.filter { it.id > 0 }.map { it.id }.toSet())
 			assertTrue(after.any { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID })
 			assertTrue(after.any { it.id == LOCAL_FAVOURITES_CATEGORY_ID })
@@ -494,7 +532,7 @@ class CategorySetsUiTest {
 			assertEquals(setOf(first[0], first[1]), memberships())
 			scenario.onActivity { it.findViewById<android.view.View>(R.id.button_category_set).performClick() }
 			tapNativeMenu("Utama")
-			await { model.get().categories.value.count { it.id > 0 } == 80 }
+			await { model.get().categories.value?.items?.count { it.id > 0 } == 80 }
 			await { runBlocking { allModel.get()!!.getAllSelectableIds() == setOf(manga.id) }
 			}
 		}
@@ -691,7 +729,7 @@ class CategorySetsUiTest {
 			runBlocking { repository.renameSet(sets.getValue(space)[0].setId, longName + " populated", space) }
 			// Populated Set: measure the actual navigation row at narrow, reference and landscape widths.
 			instrumentation.runOnMainSync { types.setSelectedType(FavouriteContentType.MANGA, space); selection.select(sets.getValue(space)[0], space, FavouriteContentType.MANGA) }
-			await { model.get().categories.value.count { it.id > 0 } == 80 }
+			await { model.get().categories.value?.items?.count { it.id > 0 } == 80 }
 			for (widthDp in listOf(320, 432, 720)) {
 				for (tabs in listOf(true, false)) {
 					instrumentation.runOnMainSync { display.setShowCategoryTabs(FavouriteContentType.MANGA, tabs) }

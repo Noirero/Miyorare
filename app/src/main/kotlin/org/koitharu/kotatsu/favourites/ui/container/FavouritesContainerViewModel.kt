@@ -204,7 +204,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, CountSnapshot.EMPTY)
 
-	val categories = combine(
+	internal val categories = combine(
 		categoryStructure.filterNotNull(),
 		countState,
 		searchQuery,
@@ -218,22 +218,25 @@ class FavouritesContainerViewModel @Inject constructor(
 			downloadedFilters = downloadedFilters(filters, structure.type),
 		)
 		val counts = snapshot.takeIf { it.key == expectedKey }
-		structure.categories.toUi(
-			showAll = structure.showAll,
-			allCount = counts?.allCount ?: 0,
-			counts = counts?.counts.orEmpty(),
-			includeDownloaded = structure.includeDownloaded,
-			includeLocal = structure.includeLocal,
-			includePrivateInProgress = structure.includePrivateInProgress,
-			includePrivateCompleted = structure.includePrivateCompleted,
-			localCount = counts?.localCount ?: 0,
-			downloadedCount = counts?.downloadedCount ?: 0,
+		FavouriteTabs(
+			type = structure.type,
+			items = structure.categories.toUi(
+				showAll = structure.showAll,
+				allCount = counts?.allCount ?: 0,
+				counts = counts?.counts.orEmpty(),
+				includeDownloaded = structure.includeDownloaded,
+				includeLocal = structure.includeLocal,
+				includePrivateInProgress = structure.includePrivateInProgress,
+				includePrivateCompleted = structure.includePrivateCompleted,
+				localCount = counts?.localCount ?: 0,
+				downloadedCount = counts?.downloadedCount ?: 0,
+			),
 		)
 	}.withErrorHandling()
 		.distinctUntilChanged()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
-	val isEmpty = categories.map { it.isEmpty() }
+	val isEmpty = categories.map { it?.items?.isEmpty() == true }
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	private suspend fun calculateRemoteCounts(
