@@ -18,6 +18,7 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
@@ -43,11 +44,13 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.domain.*
 import org.koitharu.kotatsu.favourites.ui.categories.FavouriteCategoriesActivity
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
 import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerAdapter
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerViewModel
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
@@ -58,7 +61,9 @@ import org.koitharu.kotatsu.list.ui.config.ListConfigSection
 import org.koitharu.kotatsu.list.ui.config.ListConfigViewModel
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.list.domain.ListSortOrder
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.main.ui.MainActivity
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
@@ -75,6 +80,7 @@ class CategorySetsUiTest {
 	@Inject lateinit var quickFilters: FavouriteQuickFilterStore
 	@Inject lateinit var sourceFilters: FavouriteSourceFilterStore
 	@Inject lateinit var display: FavouriteDisplayPreferences
+	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var privateSessionProvider: javax.inject.Provider<PrivateFavouritesSession>
 	@Inject lateinit var imageLoaderProvider: javax.inject.Provider<coil3.ImageLoader>
 	private lateinit var privateSession: PrivateFavouritesSession
@@ -522,6 +528,73 @@ class CategorySetsUiTest {
 			}
 		} finally {
 			display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, true)
+		}
+	}
+
+	@Test fun normalDownloadedBadgeRefreshKeepsTheLastPrivateCategory() {
+		val normal = FavouriteSpace.NORMAL
+		val privateSpace = FavouriteSpace.PRIVATE
+		val type = FavouriteContentType.MANGA
+		val normalCategory = categoryIds.getValue(normal).first()[3]
+		val privateCategory = categoryIds.getValue(privateSpace).first()[6]
+		runBlocking {
+			repository.updateCategoryMemberships(listOf(manga), mapOf(normalCategory to true), normal)
+			repository.updateCategoryMemberships(listOf(otherManga), mapOf(privateCategory to true), privateSpace)
+		}
+		types.setLastCategoryId(type, normalCategory, normal)
+		types.setLastCategoryId(type, privateCategory, privateSpace)
+
+		fun <A : FragmentActivity> awaitCategory(
+			scenario: ActivityScenario<A>,
+			categoryId: Long,
+		): FavouritesContainerFragment {
+			var selected: FavouritesContainerFragment? = null
+			await {
+				scenario.onActivity { activity ->
+					val container = descendants(activity.supportFragmentManager.fragments)
+						.filterIsInstance<FavouritesContainerFragment>().firstOrNull()
+					val pager = container?.view?.findViewById<ViewPager2>(R.id.pager)
+					if (container != null && pager != null) {
+						val current = container.childFragmentManager.findCurrentPagerFragment(pager) as? FavouritesListFragment
+						if (current?.categoryId == categoryId) selected = container
+					}
+				}
+				selected != null
+			}
+			return checkNotNull(selected)
+		}
+
+		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { normalScenario ->
+			val normalContainer = awaitCategory(normalScenario, normalCategory)
+			val privateIntent = Intent(context, FavouritesActivity::class.java)
+				.putExtra(EXTRA_FAVOURITE_SPACE, privateSpace.dbValue)
+			ActivityScenario.launch<FavouritesActivity>(privateIntent).use { privateScenario ->
+				awaitCategory(privateScenario, privateCategory)
+				assertEquals(privateCategory, types.getLastCategoryId(type, privateSpace))
+
+				// Mirror completion at the ownership index boundary while the Normal view is retained.
+				val root = checkNotNull(destinations.effectiveRoot(normal))
+				val downloadDir = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
+				runBlocking {
+					database.getFavouriteDownloadIndexDao().upsert(
+						listOf(FavouriteDownloadIndexEntity(manga.id, normal.dbValue, File(downloadDir, "badge-fixture.cbz").absolutePath)),
+					)
+				}
+				await {
+					var count: Int? = null
+					instrumentation.runOnMainSync {
+						val pager = normalContainer.view?.findViewById<ViewPager2>(R.id.pager)
+						val adapter = pager?.adapter as? FavouritesContainerAdapter
+						count = adapter?.let { rows ->
+							(0 until rows.itemCount).asSequence().map(rows::getItem)
+								.firstOrNull { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID }?.count
+						}
+					}
+					count == 1
+				}
+				assertEquals("Normal badge refresh changed the Private category", privateCategory, types.getLastCategoryId(type, privateSpace))
+				assertEquals(normalCategory, types.getLastCategoryId(type, normal))
+			}
 		}
 	}
 
