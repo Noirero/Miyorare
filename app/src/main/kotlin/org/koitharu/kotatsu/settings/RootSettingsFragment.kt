@@ -1,15 +1,15 @@
 package org.koitharu.kotatsu.settings
 
 import android.os.Bundle
-import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +29,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -87,88 +91,13 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                     updateAvailable = update != null,
                     onSectionClick = { section -> openSection(section) },
                     onUpdateClick = { router.openAppUpdate() },
+                    onOpenJourney = { openJourneyPanel() },
                 )
             }
         }
-        // Swipe right anywhere on the root Settings screen opens the Journey panel.
-        // Observe-only listener: it never consumes events, so Compose scrolling,
-        // clicks and the search UI keep working exactly as before.
-        // TEMP DIAGNOSTIC (remove after the gesture is confirmed on device):
-        // toasts mark how far a rightward gesture gets — drag seen, then opening.
-        val journeyGestureDetector = GestureDetector(
-            requireContext(),
-            object : GestureDetector.SimpleOnGestureListener() {
-                private var horizontalDrag = 0f
-                private var verticalDrag = 0f
-                private var triggered = false
-                private var dragToastShown = false
-
-                override fun onDown(e: MotionEvent): Boolean {
-                    horizontalDrag = 0f
-                    verticalDrag = 0f
-                    triggered = false
-                    dragToastShown = false
-                    return false
-                }
-
-                override fun onScroll(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    distanceX: Float,
-                    distanceY: Float,
-                ): Boolean {
-                    if (!triggered) {
-                        // distanceX is positive when the finger moves left.
-                        horizontalDrag -= distanceX
-                        verticalDrag -= distanceY
-                        val density = resources.displayMetrics.density
-                        if (!dragToastShown && horizontalDrag > 20f * density) {
-                            dragToastShown = true
-                            Toast.makeText(
-                                requireContext(),
-                                "Journey diag: rightward drag seen",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                        if (horizontalDrag > 48f * density &&
-                            horizontalDrag > abs(verticalDrag) * 1.2f
-                        ) {
-                            fire()
-                        }
-                    }
-                    return false
-                }
-
-                override fun onFling(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float,
-                ): Boolean {
-                    if (!triggered && e1 != null) {
-                        val dx = e2.x - e1.x
-                        if (dx > 40f * resources.displayMetrics.density && velocityX > 0f) {
-                            fire()
-                        }
-                    }
-                    return false
-                }
-
-                private fun fire() {
-                    triggered = true
-                    Toast.makeText(
-                        requireContext(),
-                        "Journey diag: opening panel",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                    this@RootSettingsFragment.openJourneyPanel()
-                }
-            },
-        )
-        setOnTouchListener { _, event ->
-            journeyGestureDetector.onTouchEvent(event)
-            false
-        }
+        // The swipe-right gesture that opens the Journey panel lives inside the
+        // Compose content itself (see RootSettingsContent): a View-level touch
+        // listener on the ComposeView never observed the gestures on device.
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -382,10 +311,42 @@ private fun RootSettingsContent(
     updateAvailable: Boolean,
     onSectionClick: (SettingsSection) -> Unit,
     onUpdateClick: () -> Unit,
+    onOpenJourney: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val modern = LocalMiyorareVisualPalette.current.isModern
-    SettingsScaffold {
+    // Swipe right anywhere on the root Settings screen opens the Journey panel.
+    // The gesture is observed in the Initial pointer pass and never consumes
+    // changes, so vertical scrolling, clicks and the search UI are unaffected.
+    // TEMP DIAGNOSTIC (remove after the gesture is confirmed on device):
+    // toasts mark how far a rightward gesture gets — drag seen, then opening.
+    val journeySwipeModifier = Modifier.pointerInput(onOpenJourney) {
+        awaitEachGesture {
+            val down = awaitFirstDown(pass = PointerEventPass.Initial, requireUnconsumed = false)
+            var dragX = 0f
+            var dragY = 0f
+            var dragToastShown = false
+            var fired = false
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (change.changedToUp()) break
+                val delta = change.positionChange()
+                dragX += delta.x
+                dragY += delta.y
+                if (!dragToastShown && dragX > 20.dp.toPx()) {
+                    dragToastShown = true
+                    Toast.makeText(ctx, "Journey diag: rightward drag seen", Toast.LENGTH_SHORT).show()
+                }
+                if (!fired && dragX > 48.dp.toPx() && dragX > abs(dragY) * 1.2f) {
+                    fired = true
+                    Toast.makeText(ctx, "Journey diag: opening panel", Toast.LENGTH_SHORT).show()
+                    onOpenJourney()
+                }
+            }
+        }
+    }
+    SettingsScaffold(modifier = journeySwipeModifier) {
         if (updateAvailable) {
             item {
                 UpdateBanner(onClick = onUpdateClick)
