@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.favourites.domain
 import androidx.room.withTransaction
 import dagger.Reusable
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
@@ -16,6 +15,9 @@ import kotlinx.coroutines.flow.onEach
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITE_CATEGORIES
+import org.koitharu.kotatsu.core.db.TABLE_HISTORY
+import org.koitharu.kotatsu.core.db.TABLE_MANGA
+import org.koitharu.kotatsu.core.db.TABLE_MANGA_TAGS
 import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
@@ -29,6 +31,8 @@ import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetAssignmentEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteSearchEntry
+import org.koitharu.kotatsu.favourites.data.PRIVATE_ISOLATION_DISABLED
 import org.koitharu.kotatsu.favourites.data.FavouriteMembership
 import org.koitharu.kotatsu.favourites.data.FavouriteSourceCount
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -98,27 +102,21 @@ class FavouritesRepository @Inject constructor(
 	suspend fun isPrivateIsolationDisabled(): Boolean =
 		db.getPrivateFavouritesDao().isIsolationDisabled()
 
-	/**
-	 * Virtual Downloaded rows share local_index, but each favourites space owns only the physical
-	 * download roots assigned to that space. Private membership/isolation is applied after the path
-	 * boundary so Normal and Private destinations are never merged accidentally.
-	 */
+	/** Canonical Downloaded rows, with physical ownership and vault visibility applied together. */
 	suspend fun getDownloadedEntries(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
-	): List<org.koitharu.kotatsu.favourites.data.FavouriteSearchEntry> {
-		val downloadedIds = downloadedContentClassifier.getDownloadedIds(space)
-		if (downloadedIds.isEmpty()) return emptyList()
-		val base = db.getFavouritesDao().findDownloadedSearchEntries().filter { entry ->
-			entry.mangaId in downloadedIds
-		}
-		val privateDao = db.getPrivateFavouritesDao()
-		val privateIds = privateDao.findAllActiveMangaIds().toHashSet()
-		if (space == FavouriteSpace.PRIVATE) {
-			return if (privateIds.isEmpty()) emptyList() else base.filter { it.mangaId in privateIds }
-		}
-		if (privateIds.isEmpty() || privateDao.isIsolationDisabled()) return base
-		val normalIds = db.getFavouritesDao().findMemberships().mapTo(HashSet()) { it.mangaId }
-		return base.filterNot { it.mangaId in privateIds && it.mangaId !in normalIds }
+		filterOptions: Set<ListFilterOption> = emptySet(),
+	): List<FavouriteSearchEntry> =
+		db.getFavouritesDao().findDownloadedSearchEntries(downloadedShelfCondition(space), filterOptions)
+
+	private fun downloadedShelfCondition(space: FavouriteSpace): String {
+		val ownership = downloadedContentClassifier.getDownloadedCondition(space, "manga.manga_id")
+		val inPrivate = "EXISTS(SELECT 1 FROM private_favourites WHERE " +
+			"private_favourites.manga_id = manga.manga_id AND private_favourites.deleted_at = 0)"
+		if (space == FavouriteSpace.PRIVATE) return "$ownership AND $inPrivate"
+		val inNormal = "EXISTS(SELECT 1 FROM favourites WHERE " +
+			"favourites.manga_id = manga.manga_id AND favourites.deleted_at = 0)"
+		return "$ownership AND (NOT($inPrivate) OR $inNormal OR $PRIVATE_ISOLATION_DISABLED)"
 	}
 
 	suspend fun getDownloadedCountsBySource(
@@ -174,29 +172,9 @@ class FavouritesRepository @Inject constructor(
 		limit: Int,
 		pinned: List<Long> = emptyList(),
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
-	): Flow<List<Manga>> {
-		if (space == FavouriteSpace.NORMAL) {
-			return combine(
-				localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned, space),
-				observePrivateMembershipIds(),
-				observeNormalMembershipIds(),
-				db.getPrivateFavouritesDao().observeIsolationDisabled(),
-			) { items, privateIds, normalIds, isolationDisabled ->
-				val sequence = items.asSequence()
-					.let { values ->
-						if (isolationDisabled) values
-						else values.filterNot { it.id in privateIds && it.id !in normalIds }
-					}
-				sequence.take(limit).toList()
-			}.distinctUntilChanged()
-		}
-		return combine(
-			localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned, space),
-			observePrivateMembershipIds(),
-		) { items, privateIds ->
-			items.asSequence().filter { it.id in privateIds }.take(limit).toList()
-		}.distinctUntilChanged()
-	}
+	): Flow<List<Manga>> = db.getFavouritesDao()
+		.observeDownloaded(downloadedShelfCondition(space), order, filterOptions, limit, pinned)
+		.map { it.toMangaList() }
 
 	fun observeAll(
 		order: ListSortOrder,
@@ -274,6 +252,14 @@ class FavouritesRepository @Inject constructor(
 
 	fun observeDownloadedChanges(): Flow<Unit> = db.invalidationTracker.createFlow(
 		tables = arrayOf("local_index", "favourite_download_index"),
+		emitInitialState = true,
+	).map { Unit }
+
+	fun observeDownloadedShelfChanges(): Flow<Unit> = db.invalidationTracker.createFlow(
+		tables = arrayOf(
+			"local_index", "favourite_download_index", TABLE_PRIVATE_FAVOURITES,
+			TABLE_FAVOURITE_CATEGORIES, TABLE_MANGA, TABLE_MANGA_TAGS, TABLE_HISTORY, "tracks",
+		),
 		emitInitialState = true,
 	).map { Unit }
 
@@ -765,16 +751,6 @@ class FavouritesRepository @Inject constructor(
 	}
 
 	/** Actual Private membership is retained even when app-wide isolation is disabled. */
-	private fun observePrivateMembershipIds(): Flow<Set<Long>> =
-		db.invalidationTracker.createFlow(TABLE_PRIVATE_FAVOURITES, emitInitialState = true)
-			.mapLatest { db.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet() }
-			.distinctUntilChanged()
-
-	private fun observeNormalMembershipIds(): Flow<Set<Long>> =
-		db.invalidationTracker.createFlow(TABLE_FAVOURITES, emitInitialState = true)
-			.mapLatest { db.getFavouritesDao().findMemberships().mapTo(HashSet()) { it.mangaId } }
-			.distinctUntilChanged()
-
 	private companion object {
 		val categorySnapshots = ConcurrentHashMap<String, FavouriteCategory>()
 		fun snapshotKey(space: FavouriteSpace, id: Long) = "${space.dbValue}:$id"

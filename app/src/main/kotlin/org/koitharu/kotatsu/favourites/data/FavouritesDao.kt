@@ -18,13 +18,16 @@ import org.intellij.lang.annotations.Language
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
+import org.koitharu.kotatsu.core.db.entity.MangaTagsEntity
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.favourites.domain.model.Cover
+import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_COMPLETED
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.list.domain.toOrderBy
+import org.koitharu.kotatsu.tracker.data.TrackEntity
 
 @Dao
 abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
@@ -67,20 +70,15 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findSearchEntries(): List<FavouriteSearchEntry>
 
-	@Query(
-		"SELECT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.description AS description, manga.source AS source " +
-			"FROM local_index INNER JOIN manga ON manga.manga_id = local_index.manga_id " +
-			"WHERE manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%'",
-	)
-	abstract suspend fun findDownloadedSearchEntries(): List<FavouriteSearchEntry>
-
-	@Query(
-		"SELECT manga.source AS source, COUNT(DISTINCT local_index.manga_id) AS item_count " +
-			"FROM local_index INNER JOIN manga ON manga.manga_id = local_index.manga_id " +
-			"WHERE manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%' " +
-			"GROUP BY manga.source",
-	)
-	abstract suspend fun findDownloadedCountsBySource(): List<FavouriteSourceCount>
+	suspend fun findDownloadedSearchEntries(
+		ownershipCondition: String,
+		filterOptions: Set<ListFilterOption>,
+	): List<FavouriteSearchEntry> {
+		val query = downloadedQuery(ownershipCondition, filterOptions).build()
+		return findDownloadedSearchEntriesImpl(
+			SimpleSQLiteQuery("SELECT manga_id, title, author, description, source FROM (${query.sql})"),
+		)
+	}
 
 	@Transaction
 	@Query("SELECT * FROM favourites WHERE deleted_at = 0 GROUP BY manga_id ORDER BY created_at DESC LIMIT :limit")
@@ -138,24 +136,25 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		pinned: List<Long> = emptyList(),
 	): Flow<List<FavouriteManga>> = observeAll(0L, order, filterOptions, limit, pinned)
 
-	/**
-	 * Virtual Downloaded shelf. Unlike the normal favourites query, local_index is the root table so
-	 * an on-device title does not have to be favourited to appear here.
-	 */
+	/** Page canonical titles using the same eligibility as the Downloaded counter. */
 	fun observeDownloaded(
+		ownershipCondition: String,
 		order: ListSortOrder,
 		filterOptions: Set<ListFilterOption>,
 		limit: Int,
 		pinned: List<Long> = emptyList(),
 	): Flow<List<MangaWithTags>> = observeDownloadedImpl(
-		MangaQueryBuilder("manga", ::getDownloadedCondition)
-			.join("INNER JOIN local_index ON local_index.manga_id = manga.manga_id")
-			.where("manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%'")
-			.filters(filterOptions - ListFilterOption.Downloaded)
-			.orderBy(getDownloadedOrderBy(order, pinned))
+		downloadedQuery(ownershipCondition, filterOptions)
+			.orderBy("${getDownloadedOrderBy(order, pinned)}, manga.manga_id")
 			.limit(limit)
 			.build(),
 	)
+
+	private fun downloadedQuery(ownershipCondition: String, filterOptions: Set<ListFilterOption>) =
+		MangaQueryBuilder("manga", ::getDownloadedCondition)
+			.where("manga.source != 'LOCAL'")
+			.where(ownershipCondition)
+			.filters(filterOptions - ListFilterOption.Downloaded - ListFilterOption.NOT_DOWNLOADED)
 
 	@Transaction
 	@Query("SELECT * FROM favourites WHERE deleted_at = 0 ORDER BY created_at DESC LIMIT :limit OFFSET :offset")
@@ -364,8 +363,15 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<FavouriteManga>>
 
 	@Transaction
-	@RawQuery(observedEntities = [LocalMangaIndexEntity::class, MangaEntity::class])
+	@RawQuery(observedEntities = [
+		LocalMangaIndexEntity::class, FavouriteDownloadIndexEntity::class, MangaEntity::class,
+		FavouriteEntity::class, PrivateFavouriteEntity::class, FavouriteCategoryEntity::class,
+		HistoryEntity::class, TrackEntity::class, MangaTagsEntity::class,
+	])
 	protected abstract fun observeDownloadedImpl(query: SupportSQLiteQuery): Flow<List<MangaWithTags>>
+
+	@RawQuery
+	protected abstract suspend fun findDownloadedSearchEntriesImpl(query: SupportSQLiteQuery): List<FavouriteSearchEntry>
 
 	@RawQuery
 	protected abstract suspend fun findCoversImpl(query: SupportSQLiteQuery): List<Cover>

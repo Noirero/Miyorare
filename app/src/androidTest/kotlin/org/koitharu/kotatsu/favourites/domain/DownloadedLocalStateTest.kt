@@ -396,6 +396,77 @@ class DownloadedLocalStateTest {
 		}
 	}
 
+	@Test fun downloadedShelfUsesOwnedTitlesBeforePagingAndSelection() = runBlocking {
+		val neverFavourited = remote(810_024L)
+		val keptFile = remote(810_025L)
+		val hidden = remote(810_026L)
+		val active = remote(810_027L)
+		val privateTitle = remote(810_028L)
+		favourite(keptFile)
+		favourite(active)
+		favourite(privateTitle, FavouriteSpace.PRIVATE)
+		favourite(remote(810_029L))
+		val hiddenCategory = repository.createCategory("Hidden", ListSortOrder.NEWEST, false, false, false)
+		repository.updateCategoryMemberships(listOf(hidden), mapOf(hiddenCategory.id to true), FavouriteSpace.NORMAL)
+		data.storeManga(neverFavourited, replaceExisting = true)
+
+		val owned = listOf(neverFavourited, keptFile, hidden, active)
+		val copies = owned.associate { it.id to download(root, it) }
+		db.getFavouriteDownloadIndexDao().upsert(copies.map { (id, copy) ->
+			FavouriteDownloadIndexEntity(id, FavouriteSpace.NORMAL.dbValue, copy.file.canonicalPath)
+		} + FavouriteDownloadIndexEntity(
+			privateTitle.id, FavouriteSpace.PRIVATE.dbValue, download(privateRoot, privateTitle).file.canonicalPath,
+		))
+		repository.removeFromFavourites(setOf(keptFile.id))
+		assertTrue(copies.getValue(keptFile.id).file.exists())
+		assertTrue(repository.getCategoriesIds(keptFile.id).isEmpty())
+
+		val expected = owned.map { it.id }.toSet()
+		assertEquals(expected, repository.getDownloadedEntries().map { it.mangaId }.toSet())
+		assertEquals(
+			listOf(neverFavourited.id, keptFile.id),
+			repository.observeDownloaded(ListSortOrder.ALPHABETIC, emptySet(), limit = 2).first().map { it.id },
+		)
+		assertEquals(listOf(privateTitle.id), repository.getDownloadedEntries(FavouriteSpace.PRIVATE).map { it.mangaId })
+		val vm = favouritesViewModel(DOWNLOADED_FAVOURITES_CATEGORY_ID)
+		vm.awaitContent("all indexed Normal downloads") { cards ->
+			cards.filterIsInstance<MangaGridModel>().map { it.id }.toSet() == expected
+		}
+		assertEquals(expected, vm.getAllSelectableIds())
+		try {
+			FavouritesContainerFragment.searchQuery.value = keptFile.title
+			vm.awaitContent("Downloaded search") { cards ->
+				cards.filterIsInstance<MangaGridModel>().map { it.id } == listOf(keptFile.id)
+			}
+			assertEquals(setOf(keptFile.id), vm.getAllSelectableIds())
+		} finally {
+			FavouritesContainerFragment.searchQuery.value = ""
+		}
+	}
+
+	@Test fun sharedDestinationShelfRequiresOwnershipAndHonorsVaultMembership() = runBlocking {
+		PreferenceManager.getDefaultSharedPreferences(context).edit(commit = true) {
+			remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT)
+		}
+		val normalTitle = remote(810_031L)
+		val privateTitle = remote(810_032L)
+		val unownedTitle = remote(810_034L)
+		favourite(privateTitle, FavouriteSpace.PRIVATE)
+		data.storeManga(normalTitle, replaceExisting = true)
+		data.storeManga(unownedTitle, replaceExisting = true)
+		val normalCopy = download(root, normalTitle)
+		val privateCopy = download(root, privateTitle)
+		local.rememberDownloadedIdentity(unownedTitle, download(root, unownedTitle))
+		db.getFavouriteDownloadIndexDao().upsert(listOf(
+			FavouriteDownloadIndexEntity(normalTitle.id, FavouriteSpace.NORMAL.dbValue, normalCopy.file.canonicalPath),
+			FavouriteDownloadIndexEntity(privateTitle.id, FavouriteSpace.PRIVATE.dbValue, privateCopy.file.canonicalPath),
+			FavouriteDownloadIndexEntity(privateTitle.id, FavouriteSpace.NORMAL.dbValue, privateCopy.file.canonicalPath),
+		))
+
+		assertEquals(listOf(normalTitle.id), repository.getDownloadedEntries().map { it.mangaId })
+		assertEquals(listOf(privateTitle.id), repository.getDownloadedEntries(FavouriteSpace.PRIVATE).map { it.mangaId })
+	}
+
 	@Test fun selectAllInSimilarTitleScanMatchesTheCurrentSearch() = runBlocking {
 		val first = remote(810_021L).copy(title = "Same Story", description = "Translated edition")
 		val second = remote(810_022L).copy(
@@ -460,11 +531,11 @@ class DownloadedLocalStateTest {
 		return LocalMangaParser(output.rootFile).getManga(withDetails = true).also { ids += it.manga.id }
 	}
 
-	private fun favouritesViewModel(): FavouritesListViewModel {
+	private fun favouritesViewModel(categoryId: Long = 0L): FavouritesListViewModel {
 		lateinit var vm: FavouritesListViewModel
 		instrumentation.runOnMainSync {
 			vm = FavouritesListViewModel(
-				SavedStateHandle(mapOf(AppRouter.KEY_ID to 0L)), repository, mapper, markAsRead, filters,
+				SavedStateHandle(mapOf(AppRouter.KEY_ID to categoryId)), repository, mapper, markAsRead, filters,
 				settings, data, events, search, contentType, display, index, classifier, unread, sources,
 				detailsCache, downloadedSort, groups, duplicates, setSelection,
 			)

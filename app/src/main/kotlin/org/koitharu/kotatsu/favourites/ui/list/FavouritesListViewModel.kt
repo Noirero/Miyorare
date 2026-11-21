@@ -35,6 +35,7 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -154,6 +155,7 @@ class FavouritesListViewModel @Inject constructor(
 		}.stateIn(viewModelScope, SharingStarted.Eagerly, null) else MutableStateFlow(emptyList())
 
 	private val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
+	private val usesIndexedDownloadedShelf = isDownloadedShelf && favouriteSpace == FavouriteSpace.NORMAL
 	private val isLocalShelf = categoryId == LOCAL_FAVOURITES_CATEGORY_ID
 	private val usesSpaceScopedDownloadStatus = !isLocalShelf
 	private val pinnedPreferenceId = if (favouriteSpace == FavouriteSpace.PRIVATE) {
@@ -456,15 +458,11 @@ class FavouritesListViewModel @Inject constructor(
 		val hasNotDownloadedFilter = filters.any {
 			it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
 		}
-		val filterDownloadedIds = if (
-			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter)
-		) {
-			downloadedContentClassifier.getKnownDownloadedIds(
-				favouriteSpace,
-				canonicalCandidates.map { it.id },
-			)
-		} else {
-			null
+		val filterDownloadedIds = when {
+			usesIndexedDownloadedShelf -> canonicalCandidates.mapTo(HashSet()) { it.id }
+			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter) ->
+				downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, canonicalCandidates.map { it.id })
+			else -> null
 		}
 		val statusFiltered = when {
 			filterDownloadedIds == null -> canonicalCandidates
@@ -678,6 +676,12 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	private suspend fun querySelectableIds(scope: SelectionContext): Set<Long> {
+		if (usesIndexedDownloadedShelf) {
+			val wantNovel = scope.type == FavouriteContentType.NOVEL
+			val entries = repository.getDownloadedEntries(favouriteSpace, scope.filters)
+				.filter { MangaSource(it.source).isNovelSource == wantNovel }
+			return searchMatcher.matchingIds(entries, scope.query)
+		}
 		val order = sortOrder.filterNotNull().first()
 		val filters = systemShelfFilters(scope.filters)
 		val queryFilters = scopeDownloadStatusFilters(filters)
@@ -1219,13 +1223,11 @@ class FavouritesListViewModel @Inject constructor(
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)
 		val queryOrder = if (bottom) order.type.toSortOrder(!order.isAscending) else order
 		when (categoryId) {
-			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeAll(
-				queryOrder,
-				queryFilters,
-				effectiveLimit,
-				effectivePinned,
-				favouriteSpace,
-			)
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> if (usesIndexedDownloadedShelf) {
+				repository.observeDownloaded(queryOrder, categoryFilters, effectiveLimit, effectivePinned, favouriteSpace)
+			} else {
+				repository.observeAll(queryOrder, queryFilters, effectiveLimit, effectivePinned, favouriteSpace)
+			}
 			LOCAL_FAVOURITES_CATEGORY_ID -> repository.observeAll(
 				queryOrder,
 				localShelfFilters(categoryFilters),
