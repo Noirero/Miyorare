@@ -23,8 +23,11 @@ class LocalFavouritesListFragment : MangaListFragment() {
 
 	override val viewModel by viewModels<LocalFavouritesListViewModel>()
 
+	internal val favouriteSpace: FavouriteSpace
+		get() = viewModel.favouriteSpace
+
 	override val offersContinueReadingInSelection: Boolean
-		get() = viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		get() = favouriteSpace == FavouriteSpace.NORMAL
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)

@@ -24,7 +24,7 @@ class MangaListMenuProvider(
 			is HistoryListFragment -> ListConfigSection.History
 			is SuggestionsFragment -> ListConfigSection.Suggestions
 			is FavouritesListFragment -> ListConfigSection.Favorites(fragment.categoryId)
-			is LocalFavouritesListFragment -> if (fragment.viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+			is LocalFavouritesListFragment -> if (fragment.favouriteSpace == FavouriteSpace.NORMAL) {
 				ListConfigSection.LocalFavourites
 			} else {
 				ListConfigSection.General
