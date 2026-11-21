@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.list.FitHeightGridLayoutManager
@@ -55,6 +56,7 @@ import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupUiModel
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
 import org.koitharu.kotatsu.list.ui.model.ListModel
+import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
@@ -88,6 +90,7 @@ abstract class MangaListFragment :
 	private val spanSizeLookup = SpanSizeLookup()
 	open val isSwipeRefreshEnabled = true
 	protected open val paginationOffset = 4
+	protected open val offersContinueReadingInSelection = false
 
 	protected abstract val viewModel: MangaListViewModel
 
@@ -204,6 +207,9 @@ abstract class MangaListFragment :
 	private suspend fun onListChanged(list: List<ListModel>) {
 		PerformanceDiagnostics.measure("render", "adapter_emit", PerformanceDiagnostics.ownerTrace(this)) { listAdapter?.emit(list) }
 		PerformanceDiagnostics.milestone(this, "adapter_ready")
+		if (offersContinueReadingInSelection && selectionController?.count == 1) {
+			selectionController?.invalidateActionMode()
+		}
 		spanSizeLookup.invalidateCache()
 		viewBinding?.recyclerView?.let {
 			paginationListener?.postInvalidate(it)
@@ -336,6 +342,7 @@ abstract class MangaListFragment :
 		menu.findItem(R.id.action_save)?.isVisible = hasNoLocal
 		menu.findItem(R.id.action_fix)?.isVisible = hasNoLocal
 		menu.findItem(R.id.action_edit_override)?.isVisible = isSingleSelection
+		menu.findItem(R.id.action_continue_reading)?.isVisible = selectedTitleToContinue() != null
 		return super.onPrepareActionMode(controller, mode, menu)
 	}
 
@@ -360,6 +367,13 @@ abstract class MangaListFragment :
 			R.id.action_share, R.id.action_favourite, R.id.action_save, R.id.action_edit_override ->
 				onMangaSelectionAction(item.itemId, mode)
 
+			R.id.action_continue_reading -> {
+				val title = selectedTitleToContinue() ?: return false
+				mode?.finish()
+				router.openReader(title.toMangaWithOverride())
+				true
+			}
+
 			R.id.action_fix -> {
 				val itemsSnapshot = selectedItemsIds
 				buildAlertDialog(context ?: return false, isCentered = true) {
@@ -377,6 +391,13 @@ abstract class MangaListFragment :
 
 			else -> false
 		}
+	}
+
+	private fun selectedTitleToContinue(): MangaGridModel? {
+		if (!offersContinueReadingInSelection || settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN) return null
+		val id = selectedItemsIds.singleOrNull() ?: return null
+		val item = listAdapter?.items?.firstOrNull { it is MangaGridModel && it.id == id } as? MangaGridModel
+		return item?.takeIf { it.showContinueReading }
 	}
 
 	protected open fun onMangaSelectionAction(actionId: Int, mode: ActionMode?): Boolean =

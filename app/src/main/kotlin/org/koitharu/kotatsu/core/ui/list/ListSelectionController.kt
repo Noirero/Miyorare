@@ -76,6 +76,8 @@ class ListSelectionController(
 		notifySelectionChanged()
 	}
 
+	fun invalidateActionMode() = actionMode?.invalidate()
+
 	fun attachToRecyclerView(recyclerView: RecyclerView) {
 		recyclerView.addItemDecoration(decoration)
 	}

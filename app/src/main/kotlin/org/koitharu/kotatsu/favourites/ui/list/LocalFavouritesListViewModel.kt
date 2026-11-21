@@ -72,7 +72,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 	private val favouritesRepository: FavouritesRepository,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges) {
 
-	private val favouriteSpace = FavouriteSpace.fromArgument(
+	internal val favouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
 	private val pinnedPreferenceId = if (favouriteSpace == FavouriteSpace.PRIVATE) {
