@@ -78,7 +78,9 @@ class FavouritesContainerViewModel @Inject constructor(
 	)
 
 	val sets = favouritesRepository.observeSets(favouriteSpace).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-	val activeSet = setSelection.observe(favouriteSpace, contentTypeStore.selectedType(favouriteSpace))
+	private val selectedSet = setSelection.observeSelection(favouriteSpace, contentTypeStore.selectedType(favouriteSpace))
+		.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+	val activeSet = selectedSet.map { it?.set }
 		.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 	fun selectSet(set: org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity) =
 		setSelection.select(set, favouriteSpace, contentTypeStore.selectedType(favouriteSpace).value)
@@ -110,11 +112,14 @@ class FavouritesContainerViewModel @Inject constructor(
 		LocalMangaIndex.rebuildEvents,
 	)
 
-	private val categoriesStateFlow = activeSet.filterNotNull().flatMapLatest { favouritesRepository.observeCategoriesForLibrary(it.setId, favouriteSpace) }
+	private val categoriesStateFlow = selectedSet.filterNotNull().flatMapLatest { selection ->
+		favouritesRepository.observeCategoriesForLibrary(selection.set.setId, favouriteSpace)
+			.map { ScopedCategories(selection.type, it) }
+	}
 		.withErrorHandling()
 		.distinctUntilChanged { old, new ->
-			old.size == new.size && old.indices.all { index ->
-				old[index].id == new[index].id && old[index].title == new[index].title
+			old.type == new.type && old.items.size == new.items.size && old.items.indices.all { index ->
+				old.items[index].id == new.items[index].id && old.items[index].title == new.items[index].title
 			}
 		}
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
@@ -135,13 +140,14 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val categoryStructure = combine(
 		categoriesStateFlow.filterNotNull(),
 		observeAllFavouritesVisibility(),
-		contentTypeStore.selectedType(favouriteSpace),
 		contentTypeStore.novelCategoryIds,
-		displayPreferences.observeHiddenVirtualCategoryIds(favouriteSpace),
-	) { list, showAll, type, novelCategoryIds, hiddenVirtualCategoryIds ->
+		displayPreferences.hiddenVirtualCategoryIds,
+	) { scope, showAll, novelCategoryIds, hiddenBySpace ->
+		val type = scope.type
+		val hiddenVirtualCategoryIds = hiddenBySpace[favouriteSpace]?.get(type).orEmpty()
 		CategoryStructure(
 			type = type,
-			categories = list.filter { category ->
+			categories = scope.items.filter { category ->
 				val isNovel = category.id in novelCategoryIds
 				if (type == FavouriteContentType.NOVEL) isNovel else !isNovel
 			},
@@ -169,9 +175,10 @@ class FavouritesContainerViewModel @Inject constructor(
 		contentTypeState,
 		searchQuery,
 		countFilters,
-	) { list, _, state, query, filters ->
+	) { scope, _, state, query, filters ->
+		if (scope.type != state.type) return@combine null
 		CountRequest(
-			categories = list.filter { contentTypeStore.isCategoryForType(it.id, state.type) },
+			categories = scope.items.filter { contentTypeStore.isCategoryForType(it.id, state.type) },
 			state = state,
 			query = query,
 			downloadStatus = filters.quick.filtersFor(state.type).downloadStatus(),
@@ -179,7 +186,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 	}
 
-	private val countState = countRequests.mapLatest { request ->
+	private val countState = countRequests.filterNotNull().mapLatest { request ->
 		val typedCategories = request.categories
 		val state = request.state
 		val query = request.query
@@ -440,6 +447,8 @@ class FavouritesContainerViewModel @Inject constructor(
 		ListFilterOption.NOT_DOWNLOADED in this -> DownloadStatus.NOT_DOWNLOADED
 		else -> null
 	}
+
+	private data class ScopedCategories(val type: FavouriteContentType, val items: List<FavouriteCategory>)
 
 	private data class ContentTypeState(
 		val type: FavouriteContentType,

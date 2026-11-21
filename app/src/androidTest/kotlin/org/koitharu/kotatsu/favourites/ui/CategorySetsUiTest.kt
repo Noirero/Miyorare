@@ -487,12 +487,12 @@ class CategorySetsUiTest {
 		}
 	}
 
-	@Test fun contentTypeRestoresItsCategoryWithLocalHidden() {
+	@Test fun contentTypeRestoresItsCategoryAcrossSetsWithLocalHidden() {
 		val space = FavouriteSpace.NORMAL
 		val mangaCategory = categoryIds.getValue(space).first()[3]
-		val novelCategory = categoryIds.getValue(space).first()[6]
+		val novelCategory = categoryIds.getValue(space)[1][6]
 		types.setCategoryType(novelCategory, FavouriteContentType.NOVEL)
-		selection.select(sets.getValue(space).first(), space, FavouriteContentType.NOVEL)
+		selection.select(sets.getValue(space)[1], space, FavouriteContentType.NOVEL)
 		types.setLastCategoryId(FavouriteContentType.MANGA, mangaCategory, space)
 		types.setLastCategoryId(FavouriteContentType.NOVEL, novelCategory, space)
 		display.setVirtualCategoryVisible(space, FavouriteContentType.MANGA, LOCAL_FAVOURITES_CATEGORY_ID, false)
