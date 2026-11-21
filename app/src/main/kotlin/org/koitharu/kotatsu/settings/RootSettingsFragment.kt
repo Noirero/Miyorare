@@ -7,9 +7,6 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,10 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.changedToUp
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -67,7 +60,6 @@ import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
-import kotlin.math.abs
 
 @AndroidEntryPoint
 class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
@@ -91,13 +83,11 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                     updateAvailable = update != null,
                     onSectionClick = { section -> openSection(section) },
                     onUpdateClick = { router.openAppUpdate() },
-                    onOpenJourney = { openJourneyPanel() },
                 )
             }
         }
-        // The swipe-right gesture that opens the Journey panel lives inside the
-        // Compose content itself (see RootSettingsContent): a View-level touch
-        // listener on the ComposeView never observed the gestures on device.
+        // The swipe-right gesture that opens the Journey panel is tracked at
+        // activity level in SettingsActivity.dispatchTouchEvent.
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -112,7 +102,7 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
         requireActivity().addMenuProvider(
             object : MenuProvider {
                 override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-                    menu.add(0, MENU_ITEM_JOURNEY_DIAG, 0, "Journey panel (sementara)")
+                    menu.add(0, MENU_ITEM_JOURNEY_DIAG, 0, "Journey panel (sementara) · G4")
                         .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
                 }
 
@@ -134,7 +124,7 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
         activity.openFragment(section.fragmentClass, null, isFromRoot = true)
     }
 
-    private fun openJourneyPanel() {
+    fun openJourneyPanel() {
         val activity = activity as? SettingsActivity ?: return
         activity.openFragment(SettingsJourneyPanelFragment::class.java, null, isFromRoot = true)
     }
@@ -311,42 +301,13 @@ private fun RootSettingsContent(
     updateAvailable: Boolean,
     onSectionClick: (SettingsSection) -> Unit,
     onUpdateClick: () -> Unit,
-    onOpenJourney: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val modern = LocalMiyorareVisualPalette.current.isModern
-    // Swipe right anywhere on the root Settings screen opens the Journey panel.
-    // The gesture is observed in the Initial pointer pass and never consumes
-    // changes, so vertical scrolling, clicks and the search UI are unaffected.
-    // TEMP DIAGNOSTIC (remove after the gesture is confirmed on device):
-    // toasts mark how far a rightward gesture gets — drag seen, then opening.
-    val journeySwipeModifier = Modifier.pointerInput(onOpenJourney) {
-        awaitEachGesture {
-            val down = awaitFirstDown(pass = PointerEventPass.Initial, requireUnconsumed = false)
-            var dragX = 0f
-            var dragY = 0f
-            var dragToastShown = false
-            var fired = false
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (change.changedToUp()) break
-                val delta = change.positionChange()
-                dragX += delta.x
-                dragY += delta.y
-                if (!dragToastShown && dragX > 20.dp.toPx()) {
-                    dragToastShown = true
-                    Toast.makeText(ctx, "Journey diag: rightward drag seen", Toast.LENGTH_SHORT).show()
-                }
-                if (!fired && dragX > 48.dp.toPx() && dragX > abs(dragY) * 1.2f) {
-                    fired = true
-                    Toast.makeText(ctx, "Journey diag: opening panel", Toast.LENGTH_SHORT).show()
-                    onOpenJourney()
-                }
-            }
-        }
-    }
-    SettingsScaffold(modifier = journeySwipeModifier) {
+    // The swipe-right gesture that opens the Journey panel is tracked at
+    // activity level in SettingsActivity.dispatchTouchEvent: detectors planted
+    // inside this screen's view/composition never observed gestures on device.
+    SettingsScaffold {
         if (updateAvailable) {
             item {
                 UpdateBanner(onClick = onUpdateClick)

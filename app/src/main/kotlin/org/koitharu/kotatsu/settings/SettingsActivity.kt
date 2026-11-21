@@ -3,10 +3,12 @@ package org.koitharu.kotatsu.settings
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
@@ -60,6 +62,7 @@ import org.koitharu.kotatsu.settings.sources.migration.BrokenSourcesMigrationFra
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
+import kotlin.math.abs
 
 @AndroidEntryPoint
 class SettingsActivity :
@@ -115,6 +118,54 @@ class SettingsActivity :
 		viewModel.isSearchActive.observe(this, ::toggleSearchMode)
 		viewModel.onNavigateToPreference.observeEvent(this, ::navigateToPreference)
 		observeFoldHinge()
+	}
+
+	// Swipe right on the root Settings screen opens the Reader Journey panel.
+	// Tracked here, at activity level, because every touch entering the window
+	// passes dispatchTouchEvent before any view or Compose content sees it;
+	// detectors planted inside the root screen's own view/composition never
+	// observed the gestures on device. Observe-only: events are never consumed.
+	private var journeyDownX = 0f
+	private var journeyDownY = 0f
+	private var journeySwipeFired = false
+
+	override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+		trackJourneySwipe(ev)
+		return super.dispatchTouchEvent(ev)
+	}
+
+	private fun trackJourneySwipe(ev: MotionEvent) {
+		val root = (supportFragmentManager.findFragmentById(R.id.container) as? RootSettingsFragment)
+			?: (supportFragmentManager.findFragmentById(R.id.container_master) as? RootSettingsFragment)
+		if (root == null) {
+			journeySwipeFired = false
+			return
+		}
+		val density = resources.displayMetrics.density
+		when (ev.actionMasked) {
+			MotionEvent.ACTION_DOWN -> {
+				journeyDownX = ev.x
+				journeyDownY = ev.y
+				journeySwipeFired = false
+				// TEMP DIAGNOSTIC (remove after the gesture is confirmed on device)
+				Toast.makeText(this, "Journey diag G4: activity touch", Toast.LENGTH_SHORT).show()
+			}
+
+			MotionEvent.ACTION_MOVE -> {
+				if (!journeySwipeFired) {
+					val dx = ev.x - journeyDownX
+					val dy = ev.y - journeyDownY
+					if (dx > 56f * density && dx > abs(dy) * 1.5f) {
+						journeySwipeFired = true
+						// TEMP DIAGNOSTIC (remove after the gesture is confirmed on device)
+						Toast.makeText(this, "Journey diag G4: opening panel", Toast.LENGTH_SHORT).show()
+						root.openJourneyPanel()
+					}
+				}
+			}
+
+			MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> journeySwipeFired = false
+		}
 	}
 
 	override fun isPrivateVaultContent(): Flow<Boolean> = flowOf(isPrivateSettings)
