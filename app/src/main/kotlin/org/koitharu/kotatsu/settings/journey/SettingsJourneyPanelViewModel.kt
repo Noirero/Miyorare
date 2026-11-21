@@ -62,6 +62,15 @@ class SettingsJourneyPanelViewModel @Inject constructor(
 
 	val model = MutableStateFlow(JourneyPanelModel.fromKey(settings.journeyPanelModel))
 
+	/**
+	 * Presentation of the Settings Journey page itself. Independent from the main
+	 * Reader Journey screen's display mode: the page starts on Kartu and remembers
+	 * only its own last choice.
+	 */
+	val displayMode = MutableStateFlow(
+		JourneyDisplayMode.fromKey(settings.journeyPanelDisplayMode, JourneyDisplayMode.KARTU),
+	)
+
 	val weeklyGoal = MutableStateFlow(WeeklyGoalState(goal = settings.journeyWeeklyGoal))
 
 	init {
@@ -86,6 +95,12 @@ class SettingsJourneyPanelViewModel @Inject constructor(
 		if (model.value == value) return
 		settings.journeyPanelModel = value.key
 		model.value = value
+	}
+
+	fun setDisplayMode(value: JourneyDisplayMode) {
+		if (displayMode.value == value) return
+		settings.journeyPanelDisplayMode = value.key
+		displayMode.value = value
 	}
 
 	fun setWeeklyGoal(value: Int) {
