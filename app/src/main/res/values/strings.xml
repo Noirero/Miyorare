@@ -1446,6 +1446,9 @@
     <string name="journey_panel_heatmap_empty">No reading activity recorded yet.</string>
     <string name="journey_panel_heatmap_caption">%1$d active days · last 126 days</string>
     <string name="journey_panel_genres_title">Top genres</string>
+    <string name="journey_display_header">Journey display</string>
+    <string name="journey_display_utama">Utama</string>
+    <string name="journey_display_kartu">Kartu</string>
     <string name="journey_panel_empty_title">Your journey has not started yet</string>
     <string name="journey_panel_empty_text">Finish your first chapter and this panel fills with your level, streaks, achievements and weekly goal.</string>
     <string name="reader_journey_lifetime_xp">Lifetime XP: %d</string>
