@@ -87,21 +87,38 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
         // Swipe right anywhere on the root Settings screen opens the Journey panel.
         // Observe-only listener: it never consumes events, so Compose scrolling,
         // clicks and the search UI keep working exactly as before.
+        // The trigger is drag-based (accumulated rightward travel), not a fling:
+        // a slow, deliberate drag to the right must open the panel too, while
+        // vertical list scrolling stays dominant on the Y axis and never fires it.
         val journeyGestureDetector = GestureDetector(
             requireContext(),
             object : GestureDetector.SimpleOnGestureListener() {
-                override fun onFling(
+                private var horizontalDrag = 0f
+                private var verticalDrag = 0f
+                private var triggered = false
+
+                override fun onDown(e: MotionEvent): Boolean {
+                    horizontalDrag = 0f
+                    verticalDrag = 0f
+                    triggered = false
+                    return false
+                }
+
+                override fun onScroll(
                     e1: MotionEvent?,
                     e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float,
+                    distanceX: Float,
+                    distanceY: Float,
                 ): Boolean {
-                    if (e1 != null) {
-                        val density = resources.displayMetrics.density
-                        val dx = e2.x - e1.x
-                        if (dx > 96f * density && velocityX > 320f * density &&
-                            abs(velocityX) > abs(velocityY) * 1.5f
+                    if (!triggered) {
+                        // distanceX is positive when the finger moves left.
+                        horizontalDrag -= distanceX
+                        verticalDrag -= distanceY
+                        val threshold = 64f * resources.displayMetrics.density
+                        if (horizontalDrag > threshold &&
+                            horizontalDrag > abs(verticalDrag) * 1.8f
                         ) {
+                            triggered = true
                             this@RootSettingsFragment.openJourneyPanel()
                         }
                     }
