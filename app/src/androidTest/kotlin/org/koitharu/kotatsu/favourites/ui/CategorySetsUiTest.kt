@@ -465,7 +465,8 @@ class CategorySetsUiTest {
 					scenario.onActivity { activity ->
 						val fragment = descendants(activity.supportFragmentManager.fragments)
 							.filterIsInstance<LocalFavouritesListFragment>().firstOrNull()
-						local.set(fragment?.viewModel)
+						val model = fragment?.let { ViewModelProvider(it)[LocalFavouritesListViewModel::class.java] }
+						local.set(model)
 					}
 					local.get()?.listMode?.value == ListMode.GRID
 				}
