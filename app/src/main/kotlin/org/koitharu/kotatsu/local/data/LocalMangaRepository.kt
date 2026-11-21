@@ -399,7 +399,10 @@ class LocalMangaRepository @Inject constructor(
 			if (match == null) LegacyCbzTrace.record(LegacyCbzTrace.Stage.ARCHIVE_REJECTED)
 		}
 		if (match == null) return null
-		if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(remote.id, space, match.local.file, match.verified, match.physicalMangaId)) {
+		if (favouriteDownloadOwnershipIndex.hasExhentaiOwnershipConflict(
+				remote.id, space, match.local.file, match.verified, match.physicalMangaId, receipt = match.receipt,
+			)
+		) {
 			LegacyCbzTrace.record(LegacyCbzTrace.Stage.OWNERSHIP_CONFLICT)
 			return null
 		}

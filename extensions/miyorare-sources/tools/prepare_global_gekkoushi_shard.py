@@ -691,14 +691,23 @@ import androidx.collection.MutableIntObjectMap
                     ?.replace(",", "")?.toIntOrNull()?.takeIf { it > 0 }
             }
         }
-        val lastIndex = firstDoc.select("table.ptt a[href], table.ptb a[href]")
-            .mapNotNull { link ->
-                Regex("[?&]p=([0-9]+)(?:&|$)").find(link.attr("href"))
-                    ?.groupValues?.get(1)?.toIntOrNull()
+        val pageParameter = Regex("[?&]p=([0-9]+)(?:[&#]|$)")
+        fun lastAdvertisedIndex(doc: org.jsoup.nodes.Document): Int? =
+            doc.select("table.ptt a[href], table.ptb a[href]").mapNotNull { link ->
+                pageParameter.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
             }.maxOrNull()
-        if (lastIndex == null && expectedImages == null) {
-            throw java.io.IOException("Cannot verify the ExHentai gallery page list. Please retry.")
-        }
+
+        fun confirmsLastIndex(doc: org.jsoup.nodes.Document, index: Int): Boolean =
+            doc.select("table.ptt tr, table.ptb tr").any { row ->
+                val current = row.selectFirst("td.ptds")?.text()?.toIntOrNull()
+                val next = row.select("td").lastOrNull()
+                val nextLink = next?.selectFirst("a[href]")
+                val nextIndex = nextLink?.let {
+                    pageParameter.find(it.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+                }
+                current == index + 1 && next?.text() in setOf(">", "›", "»", "Next") &&
+                    (nextLink == null || nextIndex == index)
+            }
 
         fun parseGalleryPage(doc: org.jsoup.nodes.Document): List<MangaPage> {
             val root = doc.body().requireElementById("gdt")
@@ -734,23 +743,37 @@ import androidx.collection.MutableIntObjectMap
         // that could trigger E-Hentai/ExHentai throttling. awaitAll preserves request order here,
         // so Reader page order remains identical to the website.
         val parallelism = 3
-        var batchStart = 1
-        // The gallery cannot have more nonempty index pages than images.
-        if (lastIndex != null && (lastIndex >= Int.MAX_VALUE - parallelism ||
-                (expectedImages != null && lastIndex >= expectedImages))) {
-            throw java.io.IOException("Invalid ExHentai gallery pagination. Please retry.")
+        // Each index has at least one image. With no declared length cap fallback traversal
+        // so a malformed or endlessly advancing pager cannot keep issuing requests.
+        val indexLimit = expectedImages ?: 512
+        var lastPage = 0
+        fun observePager(doc: org.jsoup.nodes.Document) {
+            val advertised = lastAdvertisedIndex(doc) ?: return
+            if (advertised >= indexLimit || advertised >= Int.MAX_VALUE - parallelism) {
+                throw java.io.IOException("Invalid ExHentai gallery pagination. Please retry.")
+            }
+            lastPage = maxOf(lastPage, advertised)
         }
-        val lastPage = lastIndex ?: 0
+        observePager(firstDoc)
+
+        var lastDocument = firstDoc
+        var batchStart = 1
         while (batchStart <= lastPage) {
             val batchEnd = minOf(lastPage + 1, batchStart + parallelism)
             val batch = (batchStart until batchEnd).map { galleryPage ->
                 async {
-                    val doc = webClient.httpGet("$baseUrl?p=$galleryPage".toAbsoluteUrl(domain)).parseHtml()
-                    parseGalleryPage(doc)
+                    webClient.httpGet("$baseUrl?p=$galleryPage".toAbsoluteUrl(domain)).parseHtml()
                 }
             }.awaitAll()
-            batch.forEach(::addGalleryPage)
+            for (doc in batch) {
+                addGalleryPage(parseGalleryPage(doc))
+                observePager(doc)
+                lastDocument = doc
+            }
             batchStart = batchEnd
+        }
+        if (expectedImages == null && !confirmsLastIndex(lastDocument, lastPage)) {
+            throw java.io.IOException("Cannot verify the end of the ExHentai gallery. Please retry.")
         }
         if (expectedImages != null && pages.size != expectedImages) {
             throw java.io.IOException("ExHentai gallery returned ${pages.size} of $expectedImages images. Please retry.")

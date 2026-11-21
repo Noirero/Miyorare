@@ -55,6 +55,7 @@ import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalDownloadScanner
@@ -97,6 +98,7 @@ class DownloadMaintenanceRegressionTest {
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var deleteLocal: DeleteLocalMangaUseCase
 	@Inject lateinit var favourites: FavouritesRepository
+	@Inject lateinit var ownershipIndex: FavouriteDownloadOwnershipIndex
 	@Inject @org.koitharu.kotatsu.local.data.LocalStorageChanges lateinit var events: kotlinx.coroutines.flow.MutableSharedFlow<LocalManga?>
 	private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 	private lateinit var root: File
@@ -984,6 +986,62 @@ class DownloadMaintenanceRegressionTest {
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 	}
 
+	@Test fun singleCbzPublicationDoesNotReplaceNormalOwnershipForAPrivateTask() = runBlocking {
+		val gallery = offlineExhentaiGallery(812315L)
+		val normal = FavouriteSpace.NORMAL
+		val privateSpace = FavouriteSpace.PRIVATE
+		val normalReceipt = ExhentaiChapterOwnership.Receipt(normal, UUID.randomUUID())
+		val privateReceipt = ExhentaiChapterOwnership.Receipt(privateSpace, UUID.randomUUID())
+		val normalFile = writeGalleryFixture(gallery, false, byteArrayOf(1), DownloadFormat.SINGLE_CBZ, normalReceipt)
+		val privateFile = writeGalleryFixture(gallery, false, byteArrayOf(2), DownloadFormat.SINGLE_CBZ, privateReceipt)
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
+		val dao = db.getFavouriteDownloadIndexDao()
+		val normalRow = FavouriteDownloadIndexEntity(gallery.id, normal.dbValue, normalFile.canonicalPath)
+		val privateRow = FavouriteDownloadIndexEntity(gallery.id, privateSpace.dbValue, privateFile.canonicalPath)
+		dao.upsert(listOf(normalRow, privateRow))
+		val publication = checkNotNull(local.findExhentaiAtPath(
+			gallery, privateFile, withDetails = true, space = privateSpace, request = privateReceipt.request,
+		)).local
+		assertEquals(gallery.id, publication.manga.id)
+		ownershipIndex.emit(publication)
+
+		assertEquals(normalRow, dao.findEntry(normal.dbValue, gallery.id))
+		assertEquals(privateRow, dao.findEntry(privateSpace.dbValue, gallery.id))
+		assertExhentaiLocalRead(gallery, normalFile, normal)
+		assertExhentaiLocalRead(gallery, privateFile, privateSpace)
+	}
+
+	@Test fun singleCbzInAHistoricalSharedRootUsesTheReceiptAfterPrivateMoves() = runBlocking {
+		val gallery = offlineExhentaiGallery(812316L)
+		val normal = FavouriteSpace.NORMAL
+		val privateSpace = FavouriteSpace.PRIVATE
+		prefs.edit(commit = true) { putStringSet("private_download_legacy_roots", setOf(root.path)) }
+		val receipt = ExhentaiChapterOwnership.Receipt(normal, UUID.randomUUID())
+		val cbz = writeGalleryFixture(gallery, false, byteArrayOf(1), DownloadFormat.SINGLE_CBZ, receipt)
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
+		val dao = db.getFavouriteDownloadIndexDao()
+		val normalRow = FavouriteDownloadIndexEntity(gallery.id, normal.dbValue, cbz.canonicalPath)
+		dao.upsert(normalRow)
+		val publication = checkNotNull(local.findExhentaiAtPath(
+			gallery, cbz, withDetails = true, space = normal, request = receipt.request,
+		)).local
+		ownershipIndex.emit(publication)
+		assertNull(dao.findEntry(privateSpace.dbValue, gallery.id))
+
+		// Earlier builds could already have inferred this stale row. The scoped receipt
+		// proves which space may read the existing file without reassigning it.
+		val staleRow = normalRow.copy(space = privateSpace.dbValue)
+		dao.upsert(staleRow)
+		assertExhentaiLocalRead(gallery, cbz, normal)
+		assertNull(resolver.findSavedManga(gallery, privateSpace))
+		assertEquals(staleRow, dao.findEntry(privateSpace.dbValue, gallery.id))
+
+		val foreign = offlineExhentaiGallery(812317L)
+		data.storeManga(foreign, replaceExisting = true, detailsFetched = true)
+		dao.upsert(staleRow.copy(mangaId = foreign.id))
+		assertNull(resolver.findSavedManga(gallery, normal))
+	}
+
 	@Test fun exhentaiFullTitleWinsAcrossLayoutsWithinTheSameRoot() = runBlocking {
 		val gallery = offlineExhentaiGallery(812312L)
 		val compact = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
@@ -1136,7 +1194,7 @@ class DownloadMaintenanceRegressionTest {
 			rows.any { it.chapter.id == chapter.id && it.isDownloaded })
 		val readerChapter = details.allChapters.single { it.id == chapter.id }
 		assertEquals(LocalMangaSource, readerChapter.source)
-		assertEquals(cbz.canonicalFile, File(java.net.URI(readerChapter.url)).canonicalFile)
+		assertEquals(cbz.canonicalFile, File(java.net.URI(readerChapter.url.substringBefore('#'))).canonicalFile)
 		assertTrue("Local CBZ must provide pages without calling the extension", local.getPages(readerChapter).isNotEmpty())
 		assertArrayEquals(bytes, cbz.readBytes())
 		assertEquals(entries, directory.list().orEmpty().toSet())
