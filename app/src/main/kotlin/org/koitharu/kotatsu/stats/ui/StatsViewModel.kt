@@ -19,6 +19,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
+import org.koitharu.kotatsu.settings.journey.JourneyDisplayMode
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.stats.data.StatsRepository
@@ -40,6 +41,15 @@ class StatsViewModel @Inject constructor(
 
 	val period = MutableStateFlow(StatsPeriod.ALL)
 	val scope = MutableStateFlow(StatsContentScope.OVERVIEW)
+
+	/** Presentation of the Reader Journey screen (Utama statistics / Kartu cards). */
+	val displayMode = MutableStateFlow(JourneyDisplayMode.fromKey(settings.journeyDisplayMode))
+
+	fun setDisplayMode(mode: JourneyDisplayMode) {
+		if (displayMode.value == mode) return
+		settings.journeyDisplayMode = mode.key
+		displayMode.value = mode
+	}
 	val matureMode = MutableStateFlow(StatsMatureMode.fromPreference(settings.statsMatureMode))
 	val selectedCategories = MutableStateFlow<Set<Long>>(emptySet())
 	val onActionDone = MutableEventFlow<ReversibleAction>()

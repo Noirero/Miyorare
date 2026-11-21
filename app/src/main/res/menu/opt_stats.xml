@@ -4,6 +4,30 @@
 	xmlns:app="http://schemas.android.com/apk/res-auto">
 
 	<item
+		android:id="@+id/action_journey_display_header"
+		android:enabled="false"
+		android:title="@string/journey_display_header"
+		app:showAsAction="never" />
+
+	<group
+		android:id="@+id/group_journey_display"
+		android:checkableBehavior="single">
+
+		<item
+			android:id="@+id/action_journey_mode_utama"
+			android:checkable="true"
+			android:title="@string/journey_display_utama"
+			app:showAsAction="never" />
+
+		<item
+			android:id="@+id/action_journey_mode_kartu"
+			android:checkable="true"
+			android:title="@string/journey_display_kartu"
+			app:showAsAction="never" />
+
+	</group>
+
+	<item
 		android:id="@+id/action_clear"
 		android:icon="@drawable/ic_delete_all"
 		android:title="@string/clear_stats"

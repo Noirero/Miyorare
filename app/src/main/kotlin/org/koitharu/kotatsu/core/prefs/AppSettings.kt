@@ -1240,6 +1240,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_JOURNEY_PANEL_MODEL, "night") ?: "night"
 		set(value) = prefs.edit { putString(KEY_JOURNEY_PANEL_MODEL, value) }
 
+	/** Presentation of the main Reader Journey screen: "utama" or "kartu". */
+	var journeyDisplayMode: String
+		get() = prefs.getString(KEY_JOURNEY_DISPLAY_MODE, "utama") ?: "utama"
+		set(value) = prefs.edit { putString(KEY_JOURNEY_DISPLAY_MODE, value) }
+
 	/** Weekly reading goal in chapters (Monday–Sunday weeks); 0 means no goal. */
 	var journeyWeeklyGoal: Int
 		get() = prefs.getInt(KEY_JOURNEY_WEEKLY_GOAL, 0)
@@ -1482,6 +1487,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_APP_FONT_PACK_ID = "app_font_pack_id"
 		const val KEY_APP_ICON_PACK_ID = "app_icon_pack_id"
 		const val KEY_JOURNEY_PANEL_MODEL = "journey_panel_model"
+		const val KEY_JOURNEY_DISPLAY_MODE = "journey_display_mode"
 		const val KEY_JOURNEY_WEEKLY_GOAL = "journey_weekly_goal"
 		const val KEY_JOURNEY_GOAL_WEEK_START = "journey_goal_week_start"
 		const val KEY_JOURNEY_GOAL_BASELINE = "journey_goal_baseline"
