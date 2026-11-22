@@ -38,7 +38,10 @@ class ExtensionDetailsStages234RegressionTest {
 
 		assertTrue(loader.contains("deferLocalLookup=!preferLocalBeforeInitialSnapshot"))
 		assertTrue(loader.contains("vallocalLookup=async{"))
-		assertTrue(loader.contains("downloadedMangaResolver.findSavedManga(manga,favouriteSpace)"))
+		assertTrue(loader.contains("downloadedMangaResolver.findSavedManga(manga,favouriteSpace,forExhentaiDetails=true)"))
+		// Only Details opts into this read-only path; other resolver callers remain strict.
+		val resolver = source("org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt")
+		assertTrue(resolver.contains("forExhentaiDetails:Boolean=false"))
 		assertFalse(loader.contains("preferIndexed"))
 		assertTrue(loader.contains("initialSavedManga?:findSavedManga()"))
 		assertTrue(loader.contains("if(preferLocalBeforeCached){"))
