@@ -53,13 +53,16 @@ class DiscoveryHubViewModel @Inject constructor(
 				val next = request()
 				if (next != state.value.request) {
 					val providerChanged = next.service != state.value.request.service
+					if (!providerChanged && next.service == ScrobblerService.MANGABAKA) {
+						// Clear old-filter/old-adult content before the new public request is visible.
+						clearMangaBakaExplore()
+						clearMangaBakaPersonalData()
+					}
 					loader.load(next)
 					if (providerChanged) {
 						refreshAccount(next.service)
-					} else if (next.service == ScrobblerService.MANGABAKA) {
-						clearMangaBakaExplore()
-						clearMangaBakaPersonalData()
-						if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
+					} else if (next.service == ScrobblerService.MANGABAKA && mutableAccount.value.authorized) {
+						refreshMangaBakaPersonal(next)
 					}
 				}
 			}
@@ -77,11 +80,13 @@ class DiscoveryHubViewModel @Inject constructor(
 		if (filter == state.value.request.filter) return
 		settings.discoveryFilter = filter.name
 		val next = request()
-		loader.load(next)
 		if (next.service == ScrobblerService.MANGABAKA) {
 			clearMangaBakaExplore()
 			clearMangaBakaPersonalData()
-			if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
+		}
+		loader.load(next)
+		if (next.service == ScrobblerService.MANGABAKA && mutableAccount.value.authorized) {
+			refreshMangaBakaPersonal(next)
 		}
 	}
 
