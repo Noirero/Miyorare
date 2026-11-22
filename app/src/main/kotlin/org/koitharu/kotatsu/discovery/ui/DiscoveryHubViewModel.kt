@@ -58,6 +58,7 @@ class DiscoveryHubViewModel @Inject constructor(
 						refreshAccount(next.service)
 					} else if (next.service == ScrobblerService.MANGABAKA) {
 						clearMangaBakaExplore()
+						clearMangaBakaPersonalData()
 						if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
 					}
 				}
@@ -79,6 +80,7 @@ class DiscoveryHubViewModel @Inject constructor(
 		loader.load(next)
 		if (next.service == ScrobblerService.MANGABAKA) {
 			clearMangaBakaExplore()
+			clearMangaBakaPersonalData()
 			if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
 		}
 	}
@@ -160,12 +162,14 @@ class DiscoveryHubViewModel @Inject constructor(
 						library = snapshot.library,
 						recommendations = snapshot.recommendations,
 						partial = snapshot.partial,
+						libraryTruncated = snapshot.libraryTruncated,
 						failed = false,
 						authExpired = false,
 					)
 					// The bulk remote library is authoritative for MangaBaka Home badges. This also
 					// removes stale locally-known entries that were deleted on MangaBaka elsewhere.
-					mutableKnownTracking.value = snapshot.library.associate { it.tracking.targetId to it.tracking }
+					val observed = snapshot.library.associate { it.tracking.targetId to it.tracking }
+					mutableKnownTracking.value = if (snapshot.libraryTruncated) mutableKnownTracking.value + observed else observed
 				}
 			} catch (e: CancellationException) {
 				throw e
@@ -179,6 +183,7 @@ class DiscoveryHubViewModel @Inject constructor(
 						library = emptyList(),
 						recommendations = emptyList(),
 						partial = false,
+						libraryTruncated = false,
 						failed = true,
 						authExpired = true,
 					)
@@ -230,6 +235,7 @@ class DiscoveryHubViewModel @Inject constructor(
 			library = emptyList(),
 			recommendations = emptyList(),
 			partial = false,
+			libraryTruncated = false,
 			failed = false,
 			authExpired = false,
 		)

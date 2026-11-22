@@ -30,6 +30,7 @@ data class MangaBakaPersonalHomeSnapshot(
 	val library: List<MangaBakaLibraryItem> = emptyList(),
 	val recommendations: List<TrackerCatalogItem> = emptyList(),
 	val partial: Boolean = false,
+	val libraryTruncated: Boolean = false,
 )
 
 data class MangaBakaPersonalHomeState(
@@ -43,4 +44,5 @@ data class MangaBakaPersonalHomeState(
 	val exploreItems: List<TrackerCatalogItem> = emptyList(),
 	val exploreLoading: Boolean = false,
 	val exploreFailed: Boolean = false,
+	val libraryTruncated: Boolean = false,
 )
