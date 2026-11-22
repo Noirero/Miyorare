@@ -44,6 +44,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var database: MangaDatabase
+	@Inject lateinit var deletion: DeleteLocalMangaUseCase
 
 	private lateinit var root: File
 	private lateinit var prefs: SharedPreferences
@@ -132,6 +133,38 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
 		assertEquals(privateChapter.canonicalFile,
 			resolver.findSavedManga(online, FavouriteSpace.PRIVATE)?.file?.canonicalFile)
+	}
+
+	@Test fun titleOnlyMatchCannotDeleteWithoutTheSourcesOwnRow() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val gekko = gallery(990010, GEKKO_SOURCE)
+		val saved = resolver.findSavedManga(gekko, FavouriteSpace.NORMAL)
+		assertNotNull(saved)
+		val rejection = runCatching {
+			deletion.requireSourceOwnedExhentaiDeletion(gekko, FavouriteSpace.NORMAL, saved!!.file)
+		}
+		assertTrue(rejection.isFailure)
+		assertTrue(chapter.exists())
+	}
+
+	@Test fun adoptedMainReceiptCannotBeDeletedByGekkoEvenWithItsOwnIndex() = runBlocking {
+		val comment = ExhentaiChapterOwnership.scopedComment(
+			990011, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
+		)
+		val chapter = archive("Legacy Gallery", "Chapter.cbz", comment = comment)
+		val gekko = gallery(990012, GEKKO_SOURCE)
+		database.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(gekko.id, FavouriteSpace.NORMAL.dbValue, chapter.parentFile.canonicalPath),
+		)
+		try {
+			val failure = runCatching {
+				deletion.requireSourceOwnedExhentaiDeletion(gekko, FavouriteSpace.NORMAL, chapter.parentFile)
+			}
+			assertTrue(failure.isFailure)
+			assertTrue(chapter.exists())
+		} finally {
+			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, gekko.id)
+		}
 	}
 
 	@Test fun sharedRootRequiresExistingSpaceProofAndNeverWritesOwnership() = runBlocking {

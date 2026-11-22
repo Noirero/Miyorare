@@ -15,6 +15,8 @@ import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -42,6 +44,15 @@ class DeleteLocalMangaUseCase @Inject constructor(
 ) {
 
 	suspend operator fun invoke(manga: Manga) {
+		if (!manga.isLocal && EhentaiSourceFamily.supportsTitleMatchedDownloads(manga.source.name) &&
+			!ExhentaiDownloadedCopy.isOfficial(manga)
+		) {
+			val saved = downloadedMangaResolver.findSavedManga(manga, FavouriteSpace.NORMAL)
+				?: throw UnverifiedDownloadRemovalException("No source-owned ExHentai download was found.")
+			requireSourceOwnedExhentaiDeletion(manga, FavouriteSpace.NORMAL, saved.file)
+			invoke(saved.manga)
+			return
+		}
 		if (ExhentaiDownloadedCopy.isOfficial(manga)) {
 			check(deleteExhentaiCopy(manga, FavouriteSpace.NORMAL)) { "Downloaded ExHentai gallery is unavailable" }
 			return
@@ -61,6 +72,50 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		}
 	}
 
+
+	/**
+	 * A Gekko/other ExHentai title fallback is readable but never grants delete rights.
+	 * Require the exact source's download row and reject a foreign Main-owned CBZ even
+	 * when a generic downloader previously adopted the same directory.
+	 */
+	internal suspend fun requireSourceOwnedExhentaiDeletion(
+		remote: Manga,
+		space: FavouriteSpace,
+		expectedFile: File,
+	) {
+		require(EhentaiSourceFamily.supportsTitleMatchedDownloads(remote.source.name) &&
+			!ExhentaiDownloadedCopy.isOfficial(remote))
+		val row = database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, remote.id)
+			?: throw UnverifiedDownloadRemovalException("A title-only ExHentai match cannot be deleted. Files were kept.")
+		val owned = File(row.path).canonicalFile
+		val expected = expectedFile.canonicalFile
+		if (owned != expected && !(owned.isDirectory && expected.parentFile == owned)) {
+			throw UnverifiedDownloadRemovalException("The selected file is not the source-owned download. Files were kept.")
+		}
+		if (downloadDestinationStore.readableRoots(space).none { isInsideDownloadRoot(it, owned) }) {
+			throw UnverifiedDownloadRemovalException("The source-owned download is outside its configured storage. Files were kept.")
+		}
+		val archive = if (owned.isDirectory) {
+			owned.listFiles { file -> file.isFile && file.extension.equals("cbz", ignoreCase = true) }
+				?.singleOrNull()
+		} else owned.takeIf { it.isFile && it.extension.equals("cbz", ignoreCase = true) }
+			?: throw UnverifiedDownloadRemovalException("The ExHentai chapter is ambiguous or missing. Files were kept.")
+		if (archive == null || ExhentaiChapterOwnership.inspectDestination(archive) != ExhentaiChapterOwnership.Evidence.Unmarked) {
+			throw UnverifiedDownloadRemovalException("This ExHentai chapter is not verified as source-owned. Files were kept.")
+		}
+		val owners = database.getFavouriteDownloadIndexDao().findEntriesByPaths(
+			listOf(owned.path, archive.canonicalPath),
+		)
+		if (owners.any { it.mangaId != remote.id || it.space != space.dbValue }) {
+			throw UnverifiedDownloadRemovalException("Another source or space owns this file. Files were kept.")
+		}
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		if (favouritesRepository.isFavorite(remote.id, otherSpace) &&
+			downloadDestinationStore.readableRoots(otherSpace).any { isInsideDownloadRoot(it, owned) }
+		) {
+			throw UnverifiedDownloadRemovalException("The file may belong to both favourite spaces. Files were kept.")
+		}
+	}
 
 	/** Reading a legacy title path alone does not authorize deletion. */
 	internal suspend fun deleteExhentaiCopy(
@@ -132,6 +187,9 @@ class DeleteLocalMangaUseCase @Inject constructor(
 					?: throw UnverifiedDownloadRemovalException("Cannot verify the selected ExHentai archive. Files were kept.")
 				exact.local.file.canonicalFile
 			} else {
+				if (EhentaiSourceFamily.supportsTitleMatchedDownloads(lockedManga.source.name)) {
+					requireSourceOwnedExhentaiDeletion(lockedManga, space, file)
+				}
 				val output = LocalMangaOutput.get(selectedRoot, lockedManga)
 					?: throw UnverifiedDownloadRemovalException("Cannot match the selected download to its saved file. Files were kept.")
 				try {
@@ -207,6 +265,13 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			val manga = mangaDataRepository.findMangaById(mangaId, withChapters = true) ?: continue
 			if (ExhentaiDownloadedCopy.isOfficial(manga)) {
 				if (deleteExhentaiCopy(manga, favouriteSpace)) removed++
+				continue
+			}
+			if (EhentaiSourceFamily.supportsTitleMatchedDownloads(manga.source.name)) {
+				val candidate = downloadedMangaResolver.findSavedManga(manga, favouriteSpace) ?: continue
+				requireSourceOwnedExhentaiDeletion(manga, favouriteSpace, candidate.file)
+				invoke(candidate.manga)
+				removed++
 				continue
 			}
 			val target = if (manga.isLocal) {
