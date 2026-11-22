@@ -368,7 +368,7 @@ fun DetailsExpressiveScreen(
 					}
 
 					// Show only when the resolver explicitly chose a read-only title match.
-					if (details.local?.matchedByTitle == true) {
+					if (details?.local?.matchedByTitle == true) {
 						item(key = "title-match:${manga.id}", contentType = "title-match") {
 							ExhentaiTitleMatchNotice()
 						}
