@@ -62,6 +62,7 @@ class CategorySetsUiTest {
 	@get:Rule(order = 1) val compose = createEmptyComposeRule()
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var repository: FavouritesRepository
+	@Inject lateinit var groupRepository: org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 	@Inject lateinit var types: FavouriteContentTypeStore
 	@Inject lateinit var selection: FavouriteSetSelectionStore
 	@Inject lateinit var settings: AppSettings
@@ -593,6 +594,123 @@ class CategorySetsUiTest {
 					arrayOf(groupId),
 				)
 			}
+		}
+	}
+
+
+	/**
+	 * A1 regression: a manga visible in Set B may already belong to a Group owned
+	 * by Set A. The source Group stays hidden in Set B's picker, but conflict
+	 * discovery must surface it before any explicit member move is attempted.
+	 * The Repository must reject unconfirmed cross-Set moves without mutation.
+	 */
+	@Test fun selectedSetA1CrossSetConflictIsDetectedBeforeExplicitMove() {
+		val space = FavouriteSpace.NORMAL
+		val sourceSet = sets.getValue(space)[0]
+		val targetSet = sets.getValue(space)[1]
+		val sourceCategory = categoryIds.getValue(space)[0][0]
+		val targetCategory = categoryIds.getValue(space)[1][0]
+		val targetMemberA = manga.copy(id = 9_900_003L, title = "SET_B_MEMBER_A")
+		val targetMemberB = manga.copy(id = 9_900_004L, title = "SET_B_MEMBER_B")
+		val (sourceGroupId, targetGroupId) = runBlocking {
+			repository.updateCategoryMemberships(listOf(manga, otherManga), mapOf(sourceCategory to true))
+			repository.updateCategoryMemberships(
+				listOf(manga, targetMemberA, targetMemberB),
+				mapOf(targetCategory to true),
+			)
+			val sourceId = groupRepository.createGroup(
+				title = "Source Set A", mangaIds = listOf(manga.id, otherManga.id),
+				space = space, setId = sourceSet.setId,
+			)
+			val targetId = groupRepository.createGroup(
+				title = "Destination Set B",
+				mangaIds = listOf(targetMemberA.id, targetMemberB.id),
+				space = space, setId = targetSet.setId,
+			)
+			sourceId to targetId
+		}
+		try {
+			instrumentation.runOnMainSync {
+				selection.select(targetSet, space, FavouriteContentType.MANGA)
+			}
+			ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+				val container = AtomicReference<FavouritesContainerFragment?>()
+				await {
+					scenario.onActivity { activity ->
+						container.set(descendants(activity.supportFragmentManager.fragments)
+							.filterIsInstance<FavouritesContainerFragment>().firstOrNull())
+					}
+					container.get()?.view != null
+				}
+				await {
+					var selected = false
+					scenario.onActivity { activity ->
+						selected = activity.findViewById<android.widget.TextView>(R.id.button_category_set)
+							?.text?.toString() == targetSet.title
+					}
+					selected
+				}
+				val allModel = AtomicReference<FavouritesListViewModel?>()
+				await {
+					scenario.onActivity {
+						allModel.set(descendants(container.get()!!.childFragmentManager.fragments)
+							.filterIsInstance<FavouritesListFragment>()
+							.map { fragment -> ViewModelProvider(fragment)[FavouritesListViewModel::class.java] }
+							.firstOrNull { it.categoryId == 0L })
+					}
+					allModel.get() != null
+				}
+				val model = checkNotNull(allModel.get())
+				await { model.getLibraryGroupsForAdd().any { it.id == targetGroupId } }
+				assertFalse(
+					"A1: other Set's Group must remain hidden in the Set B picker",
+					model.getLibraryGroupsForAdd().any { it.id == sourceGroupId },
+				)
+				val dao = database.getLibraryGroupsDao()
+				val before = runBlocking {
+					dao.findMembers(sourceGroupId) to dao.findMembers(targetGroupId)
+				}
+				val rejected = runBlocking {
+					runCatching {
+						model.addToLibraryGroup(targetGroupId, listOf(manga.id), moveFromExistingGroups = false)
+					}.exceptionOrNull()
+				}
+				assertTrue("Repository must reject unconfirmed cross-Set membership", rejected is IllegalArgumentException)
+				assertEquals(
+					"Rejected move must preserve both Groups' membership",
+					before,
+					runBlocking { dao.findMembers(sourceGroupId) to dao.findMembers(targetGroupId) },
+				)
+				assertEquals(
+					"A1: Group conflict discovery must expose the hidden source Group for explicit confirmation",
+					listOf(sourceGroupId),
+					model.getLibraryGroupConflicts(targetGroupId, setOf(manga.id)).map { it.id },
+				)
+				val moved = runBlocking {
+					model.addToLibraryGroup(targetGroupId, listOf(manga.id), moveFromExistingGroups = true)
+				}
+				assertEquals(1, moved.addedCount)
+				assertEquals(1, moved.movedCount)
+				assertEquals(1, moved.dissolvedGroupCount)
+				assertNull("Explicit move may dissolve the under-two-member source Group", runBlocking {
+					dao.findGroup(sourceGroupId)
+				})
+				assertEquals(
+					"A1: explicit member move must not rehome the destination Group",
+					targetSet.setId, runBlocking { dao.findGroup(targetGroupId)?.setId },
+				)
+				assertTrue(runBlocking { dao.findMembers(targetGroupId).any { it.mangaId == manga.id } })
+				assertTrue(
+					"Group member move must preserve original Favourite memberships",
+					runBlocking { repository.getCategoriesIds(manga.id, space).containsAll(listOf(sourceCategory, targetCategory)) },
+				)
+			}
+		} finally {
+			// Preserve the owner-trigger invariant before the next test resets Sets.
+			database.openHelper.writableDatabase.execSQL(
+				"DELETE FROM library_groups WHERE group_id IN (?, ?)",
+				arrayOf(sourceGroupId, targetGroupId),
+			)
 		}
 	}
 
