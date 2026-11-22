@@ -24,6 +24,8 @@ data class MangaBakaLibraryItem(
 data class MangaBakaLibraryPage(
 	val items: List<MangaBakaLibraryItem>,
 	val nextPage: Int? = null,
+	/** Provider indicates further pages even if the Home scan has reached its safety cap. */
+	val hasMore: Boolean = false,
 )
 
 data class MangaBakaPersonalHomeSnapshot(

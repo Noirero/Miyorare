@@ -126,12 +126,11 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		while (page <= MANGABAKA_LIBRARY_MAX_PAGES) {
 			val response = libraryPage(filter, allowAdult, page)
 			response.items.forEach { result[it.tracking.targetId] = it }
-			val next = response.nextPage ?: break
 			if (page == MANGABAKA_LIBRARY_MAX_PAGES) {
-				truncated = true
+				truncated = response.hasMore
 				break
 			}
-			page = next
+			page = response.nextPage ?: break
 		}
 		return LibraryScan(result.values.toList(), truncated)
 	}
@@ -186,6 +185,7 @@ internal fun parseMangaBakaLibraryPage(
 	return MangaBakaLibraryPage(
 		items = items,
 		nextPage = (page + 1).takeIf { hasNext && page < MANGABAKA_LIBRARY_MAX_PAGES },
+		hasMore = hasNext,
 	)
 }
 
