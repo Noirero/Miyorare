@@ -499,6 +499,94 @@ class CategorySetsUiTest {
 			}
 		}
 	}
+
+	/**
+	 * A1 contract: the navigation-selected non-default Set is the persisted Group
+	 * owner and the Group picker must not leak it into another Set. This invokes
+	 * the real FavouritesListViewModel, Repository, and Room through MainActivity.
+	 */
+	@Test fun selectedSetA1GroupCreationAndPickerRespectOwner() {
+		val space = FavouriteSpace.NORMAL
+		val defaultSet = sets.getValue(space)[0]
+		val selectedSet = sets.getValue(space)[1]
+		val selectedCategoryId = categoryIds.getValue(space)[1][0]
+		val memberIds = setOf(manga.id, otherManga.id)
+		runBlocking {
+			repository.updateCategoryMemberships(listOf(manga, otherManga), mapOf(selectedCategoryId to true))
+		}
+		instrumentation.runOnMainSync {
+			selection.select(selectedSet, space, FavouriteContentType.MANGA)
+		}
+		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
+			val container = AtomicReference<FavouritesContainerFragment?>()
+			await {
+				scenario.onActivity { activity ->
+					container.set(descendants(activity.supportFragmentManager.fragments)
+						.filterIsInstance<FavouritesContainerFragment>().firstOrNull())
+				}
+				container.get()?.view != null
+			}
+			await {
+				var selected = false
+				scenario.onActivity { activity ->
+					selected = activity.findViewById<android.widget.TextView>(R.id.button_category_set)
+						?.text?.toString() == selectedSet.title
+				}
+				selected
+			}
+			val allModel = AtomicReference<FavouritesListViewModel?>()
+			await {
+				scenario.onActivity {
+					allModel.set(descendants(container.get()!!.childFragmentManager.fragments)
+						.filterIsInstance<FavouritesListFragment>()
+						.map { fragment -> ViewModelProvider(fragment)[FavouritesListViewModel::class.java] }
+						.firstOrNull { it.categoryId == 0L })
+				}
+				allModel.get() != null
+			}
+			val model = checkNotNull(allModel.get())
+			await { runBlocking { model.getAllSelectableIds().toSet() == memberIds } }
+			val groupId = runBlocking {
+				withTimeout(30_000) {
+					model.createLibraryGroup("Non-default Set Group", memberIds.toList())
+				}
+			}
+			try {
+				val actualOwner = runBlocking { database.getLibraryGroupsDao().findGroup(groupId)?.setId }
+				assertEquals(
+					"A1: creating a Group from selected Set must persist that Set, never the default fallback",
+					selectedSet.setId, actualOwner,
+				)
+				await { model.getLibraryGroupsForAdd().any { it.id == groupId } }
+
+				instrumentation.runOnMainSync {
+					selection.select(defaultSet, space, FavouriteContentType.MANGA)
+				}
+				await {
+					var selected = false
+					scenario.onActivity { activity ->
+						selected = activity.findViewById<android.widget.TextView>(R.id.button_category_set)
+							?.text?.toString() == defaultSet.title
+					}
+					selected
+				}
+				await { runBlocking { model.getAllSelectableIds().isEmpty() } }
+				await { model.getLibraryGroupsForAdd().none { it.id == groupId } }
+				assertFalse(
+					"A1: Group from another Set leaked into Add-to-Group picker",
+					model.getLibraryGroupsForAdd().any { it.id == groupId },
+				)
+			} finally {
+				// The next UI test's clearAllTables() cannot delete an owned Set
+				// before its Group because the existing owner triggers are active.
+				database.openHelper.writableDatabase.execSQL(
+					"DELETE FROM library_groups WHERE group_id = ?",
+					arrayOf(groupId),
+				)
+			}
+		}
+	}
+
 	@Test fun managementContextCountsPrivateIsolationAndCategoryRoute() {
 		val space = FavouriteSpace.PRIVATE
 		val normal = sets.getValue(FavouriteSpace.NORMAL)[0]
