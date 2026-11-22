@@ -436,13 +436,13 @@ class LocalMangaRepository @Inject constructor(
 				return@withContext it.local
 			}
 		}
-		var legacy: LocalManga? = null
+		val metadataCandidates = LinkedHashMap<File, LocalManga>()
 		for (root in roots) {
 			for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote)) {
 				val match = findExhentaiAtPath(remote, path, withDetails, space, request) ?: continue
 				if (!match.allowed()) continue
 				if (match.verified) return@withContext match.local
-				if (legacy == null) legacy = match.local
+				metadataCandidates[match.local.file.canonicalFile] = match.local
 			}
 		}
 		// Publication may survive process death before the Room alias is recorded. Recover
@@ -461,17 +461,21 @@ class LocalMangaRepository @Inject constructor(
 		}
 		recovered.values.singleOrNull()?.let { return@withContext it }
 		if (request != null) return@withContext null
-		if (legacy != null) return@withContext legacy
 		for (root in roots) {
-			val path = org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver.findUniqueDirectory(
-				root, remote.source.name, remote.title, remote.publicUrl, remote.url,
-			) ?: continue
-			if (!path.isInsideAny(listOf(root))) continue
-			findExhentaiAtPath(remote, path, withDetails, space)?.let {
-				if (it.allowed()) return@withContext it.local
+			val candidates = org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver.findCandidateDirectories(
+				root, remote.source.name, remote.title,
+			)
+			for (path in candidates) {
+				if (!path.isInsideAny(listOf(root))) continue
+				val match = findExhentaiAtPath(remote, path, withDetails, space) ?: continue
+				if (!match.allowed()) continue
+				if (match.verified) return@withContext match.local
+				metadataCandidates[match.local.file.canonicalFile] = match.local
 			}
 		}
-		null
+		// XML evidence identifies a gallery for reading, never file ownership or an arbitrary
+		// winner among multiple distinct copies in EN/ALL. No title-only online status.
+		metadataCandidates.values.singleOrNull()
 	}
 
 	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = withContext(Dispatchers.IO) {
