@@ -173,8 +173,8 @@ class DiscoveryHubViewModel @Inject constructor(
 						failed = false,
 						authExpired = false,
 					)
-					// The bulk remote library is authoritative for MangaBaka Home badges. This also
-					// removes stale locally-known entries that were deleted on MangaBaka elsewhere.
+					// Only a complete remote library scan can prune entries deleted on MangaBaka.
+					// A capped scan updates observed badges without discarding unobserved entries.
 					val observed = snapshot.library.associate { it.tracking.targetId to it.tracking }
 					mutableKnownTracking.value = if (snapshot.libraryTruncated) mutableKnownTracking.value + observed else observed
 				}
