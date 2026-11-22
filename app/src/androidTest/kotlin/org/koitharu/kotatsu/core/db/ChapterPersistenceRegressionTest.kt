@@ -436,6 +436,64 @@ class ChapterPersistenceRegressionTest {
 		chapterSortFixture.get().withIsolatedPreferences(block)
 	}
 
+    /**
+     * This test starts from the current Room schema and synthesizes a v48 fixture.
+     * Rebuild the Group parent without v56's set_id instead of using DROP COLUMN,
+     * which Android's older bundled SQLite versions do not support.
+     *
+     * Keep child tables intact: dropping the parent with foreign keys enabled
+     * would cascade-delete library_group_members and other user-owned children.
+     */
+    private fun restoreLegacyGroupSchema(db: android.database.sqlite.SQLiteDatabase) {
+        db.setForeignKeyConstraintsEnabled(false)
+        try {
+            db.beginTransaction()
+            try {
+                db.execSQL("""
+                    CREATE TABLE library_groups_v48 (
+                        group_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        cover_url TEXT,
+                        created_at INTEGER NOT NULL,
+                        space INTEGER NOT NULL,
+                        alternative_title TEXT,
+                        author TEXT,
+                        artist TEXT,
+                        description TEXT,
+                        metadata_source INTEGER,
+                        metadata_target_id INTEGER
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT INTO library_groups_v48 (
+                        group_id, title, cover_url, created_at, space, alternative_title,
+                        author, artist, description, metadata_source, metadata_target_id
+                    )
+                    SELECT group_id, title, cover_url, created_at, space, alternative_title,
+                           author, artist, description, metadata_source, metadata_target_id
+                    FROM library_groups
+                """.trimIndent())
+                db.execSQL("DROP TABLE library_groups")
+                db.execSQL("ALTER TABLE library_groups_v48 RENAME TO library_groups")
+                db.execSQL("CREATE INDEX index_library_groups_space ON library_groups(space)")
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } finally {
+            db.setForeignKeyConstraintsEnabled(true)
+        }
+        db.rawQuery("PRAGMA foreign_key_check", null).use { cursor ->
+            assertTrue("Legacy Group fixture must preserve foreign keys", !cursor.moveToFirst())
+        }
+        db.rawQuery("PRAGMA table_info(library_groups)", null).use { cursor ->
+            val nameColumn = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                assertTrue("Legacy Group fixture still contains set_id", cursor.getString(nameColumn) != "set_id")
+            }
+        }
+    }
+
 	@Test
 	fun schema48AddsEmptyPersonalMetadataAndPreservesExistingData() = runTest {
 		val association = org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity(
@@ -446,15 +504,26 @@ class ChapterPersistenceRegressionTest {
 			row.scrobbler, row.id, row.mangaId, row.targetId, row.status, row.chapter, row.comment, row.rating,
 		)
 		val current = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
-		try {
+		val legacyGroupId = try {
 			current.getMangaDao().upsert(SampleData.mangaDetails.copy(id = 901L).toEntity())
 			current.getHistoryDao().upsert(compatibilityHistory())
 			current.getScrobblingDao().upsert(association)
+            val groupId = current.getLibraryGroupsDao().insertGroup(
+                org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity(
+                    title = "Legacy group", coverUrl = null, createdAt = 1L,
+                    description = "Preserved metadata",
+                ),
+            )
+            current.getLibraryGroupsDao().insertMembers(
+                listOf(org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity(groupId, 901L, 0)),
+            )
+            groupId
 		} finally { current.close() }
 		android.database.sqlite.SQLiteDatabase.openDatabase(
 			context.getDatabasePath(MIGRATION_DB_NAME).absolutePath, null,
 			android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
 		).use { old ->
+            restoreLegacyGroupSchema(old)
 			old.execSQL("DROP TABLE chapter_personal")
             // This fixture starts at the current schema; remove v52-only state before
             // declaring it a v48 database, so real 51->52 migration runs exactly once.
@@ -476,6 +545,11 @@ class ChapterPersistenceRegressionTest {
 		try {
 			assertEquals(compatibilityHistory(), migrated.getHistoryDao().find(901L))
 			assertNotNull(migrated.getMangaDao().find(901L))
+            val migratedGroup = checkNotNull(migrated.getLibraryGroupsDao().findGroup(legacyGroupId))
+            assertEquals("Legacy group", migratedGroup.title)
+            assertEquals("Preserved metadata", migratedGroup.description)
+            assertTrue("Group owner must be backfilled", migratedGroup.setId != 0L)
+            assertEquals(901L, migrated.getLibraryGroupsDao().findMembers(legacyGroupId).single().mangaId)
             assertNull(migrated.getMangaDao().preservedDestination(901L))
 			assertEquals(fields(association), fields(checkNotNull(migrated.getScrobblingDao().find(association.scrobbler, 901L))))
 			assertTrue(migrated.getChapterPersonalDao().findAll(listOf(901L)).isEmpty())
@@ -488,6 +562,8 @@ class ChapterPersistenceRegressionTest {
 		val reopened = Room.databaseBuilder(context, MangaDatabase::class.java, MIGRATION_DB_NAME).build()
 		try {
 			assertEquals(DATABASE_VERSION, reopened.openHelper.writableDatabase.version)
+            assertEquals(901L, reopened.getLibraryGroupsDao().findMembers(legacyGroupId).single().mangaId)
+            assertTrue(checkNotNull(reopened.getLibraryGroupsDao().findGroup(legacyGroupId)).setId != 0L)
             assertNull(reopened.getMangaDao().preservedDestination(901L))
 			assertEquals("Peak chapter", reopened.getChapterPersonalDao().findAll(listOf(901L)).single().note)
 			assertEquals(fields(association), fields(checkNotNull(reopened.getScrobblingDao().find(association.scrobbler, 901L))))

@@ -9,7 +9,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 
 @Entity(
 	tableName = TABLE_LIBRARY_GROUPS,
-	indices = [Index(value = ["space"])],
+	indices = [Index(value = ["space"]), Index(value = ["space", "set_id"])],
 )
 data class LibraryGroupEntity(
 	@PrimaryKey(autoGenerate = true)
@@ -18,6 +18,7 @@ data class LibraryGroupEntity(
 	@ColumnInfo(name = "cover_url") val coverUrl: String?,
 	@ColumnInfo(name = "created_at") val createdAt: Long,
 	@ColumnInfo(name = "space") val space: Int = FavouriteSpace.NORMAL.dbValue,
+	@ColumnInfo(name = "set_id", defaultValue = "0") val setId: Long = 0L,
 	@ColumnInfo(name = "alternative_title") val alternativeTitle: String? = null,
 	@ColumnInfo(name = "author") val author: String? = null,
 	@ColumnInfo(name = "artist") val artist: String? = null,

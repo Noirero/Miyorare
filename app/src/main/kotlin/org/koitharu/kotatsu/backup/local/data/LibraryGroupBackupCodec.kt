@@ -14,8 +14,10 @@ import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
+import org.koitharu.kotatsu.favourites.groups.data.defaultLibraryGroupSetId
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTimelineItemEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTrackingEntity
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
@@ -30,9 +32,16 @@ class LibraryGroupBackupCodec @Inject constructor(
 	fun dump(space: FavouriteSpace = FavouriteSpace.NORMAL): Flow<LibraryGroupBackup> = flow {
 		val dao = database.getLibraryGroupsDao()
 		val trackingDao = database.getLibraryGroupTrackingDao()
+		val setsDao = database.getFavouriteCategorySetsDao()
 		for (group in dao.findAllGroups(space.dbValue)) {
 			val members = dao.findMembers(group.groupId)
 			if (members.size < 2) continue
+			val owner = checkNotNull(setsDao.findSet(group.setId)) {
+				"Library group has no Set owner for backup: group=${group.groupId}"
+			}
+			check(owner.space == space.dbValue && owner.deletedAt == 0L && owner.syncKey.isNotBlank()) {
+				"Library group has an invalid Set owner for backup: group=${group.groupId}"
+			}
 			val encodedCover = coverCodec.read(group.coverUrl)
 			val categoryIds = dao.findCategories(group.groupId).map { it.categoryId }
 			emit(
@@ -43,6 +52,8 @@ class LibraryGroupBackupCodec @Inject constructor(
 					coverFileExtension = encodedCover?.extension,
 					categoryIds = categoryIds,
 					tracking = trackingDao.findAll(group.groupId),
+					setSyncKey = owner.syncKey,
+					timeline = dao.findTimeline(group.groupId),
 				),
 			)
 		}
@@ -73,6 +84,23 @@ class LibraryGroupBackupCodec @Inject constructor(
 		val portableCover = backup.coverUrl?.takeIf(coverCodec::isPortableCoverUrl)
 		val prepared = database.withTransaction {
 			val dao = database.getLibraryGroupsDao()
+			val destinationSetId = backup.setSyncKey?.let { key ->
+				require(key.isNotBlank()) { "Library group Set sync key is blank" }
+				val owner = requireNotNull(
+					database.getFavouriteCategorySetsDao().findSetByKey(key, space.dbValue),
+				) { "Library group Set owner is missing in destination: $key" }
+				require(owner.deletedAt == 0L) { "Library group Set owner is deleted: $key" }
+				owner.setId
+			}
+			val timeline = backup.timeline?.also { entries ->
+				require(entries.all { it.position >= 0 }) {
+					"Library group timeline position cannot be negative"
+				}
+				val unique = HashSet<Pair<Long, Long>>()
+				require(entries.all { it.mangaId in memberIds && unique.add(it.mangaId to it.chapterId) }) {
+					"Library group timeline references an unknown member or duplicate chapter"
+				}
+			}
 			for (mangaId in memberIds) {
 				val categoriesCount = when (space) {
 					FavouriteSpace.NORMAL -> database.getFavouritesDao().findCategoriesCount(mangaId)
@@ -101,6 +129,13 @@ class LibraryGroupBackupCodec @Inject constructor(
 				require(existingIds == memberIds.toSet()) {
 					"Library group overlaps an existing group with different members"
 				}
+				// Legacy backup without Set identity keeps the existing owner.
+				// For Set-aware backups, reject a cross-Set collision before any mutation.
+				if (destinationSetId != null) {
+					require(dao.findGroup(groupId)?.setId == destinationSetId) {
+						"Library group Set owner collision with existing destination Group"
+					}
+				}
 				groupId
 			}
 
@@ -116,6 +151,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 					coverUrl = provisionalCover,
 					createdAt = backup.createdAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
 					space = space.dbValue,
+					setId = destinationSetId ?: database.defaultLibraryGroupSetId(space),
 					alternativeTitle = backup.alternativeTitle.normalizeOptionalText(),
 					author = backup.author.normalizeOptionalText(),
 					artist = backup.artist.normalizeOptionalText(),
@@ -196,6 +232,16 @@ class LibraryGroupBackupCodec @Inject constructor(
 					)
 				}
 			if (restoredTracking.isNotEmpty()) trackingDao.upsertAll(restoredTracking)
+			// Legacy backups omit timeline: do not clear existing timeline state.
+			// Set-aware backups explicitly include timeline, even when empty.
+			if (timeline != null) {
+				dao.deleteTimeline(groupId)
+				if (timeline.isNotEmpty()) {
+					dao.insertTimeline(timeline.map { item ->
+						LibraryGroupTimelineItemEntity(groupId, item.mangaId, item.chapterId, item.position)
+					})
+				}
+			}
 			PreparedGroup(groupId, title, oldCover, provisionalCover)
 		}
 

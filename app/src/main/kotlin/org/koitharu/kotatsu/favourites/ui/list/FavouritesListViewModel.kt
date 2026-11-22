@@ -205,11 +205,25 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
-	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
+	// A1: group ownership follows the navigation-selected Set, not the default Set.
+	// Keep the unfiltered stream only for space-wide membership checks in the repository.
+	private val selectedLibraryGroupSetId: StateFlow<Long?> = setSelection
+		.observe(favouriteSpace, contentTypeStore.selectedType(favouriteSpace))
+		.map { it.setId }
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
+	private val allLibraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
 		emptyList(),
 	)
+
+	private val libraryGroups = combine(
+		allLibraryGroups,
+		selectedLibraryGroupSetId,
+	) { groups, ownerSetId ->
+		if (ownerSetId == null) emptyList() else groups.filter { it.setId == ownerSetId }
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	init {
 		viewModelScope.launch(Dispatchers.Default) {
@@ -599,7 +613,11 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
-		libraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds, space = favouriteSpace)
+		val selectedSetId = setSelection
+			.observe(favouriteSpace, contentTypeStore.selectedType(favouriteSpace)).first().setId
+		libraryGroupsRepository.createGroup(
+			title = title, mangaIds = mangaIds, space = favouriteSpace, setId = selectedSetId,
+		)
 	}
 
 	fun getLibraryGroupsForAdd(): List<LibraryGroup> {
@@ -611,8 +629,10 @@ class FavouritesListViewModel @Inject constructor(
 		)
 	}
 
+	// Conflict confirmation must include hidden Groups in other Sets. The picker
+	// and rendered Groups remain scoped to the selected Set.
 	fun getLibraryGroupConflicts(targetGroupId: Long, mangaIds: Set<Long>): List<LibraryGroup> =
-		libraryGroups.value.filter { group ->
+		allLibraryGroups.value.filter { group ->
 			group.id != targetGroupId && group.memberIds.any { it in mangaIds }
 		}
 

@@ -14,6 +14,7 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.DatabasePrePopulateCallback
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.model.MissingMangaSource
@@ -259,7 +260,8 @@ class LosslessMigrationTransferRegressionTest {
 
     @Test
 	fun sourceReplacementRejectsDestinationAlreadyInDifferentLibraryGroup() = runTest {
-		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+            .addCallback(DatabasePrePopulateCallback(context.resources)).build()
 		val settings = AppSettings(context)
 		val oldId = 982_001L
 		val newId = 982_002L
@@ -280,6 +282,7 @@ class LosslessMigrationTransferRegressionTest {
 					coverUrl = null,
 					createdAt = 1L,
 					space = FavouriteSpace.NORMAL.dbValue,
+                    setId = database.getFavouriteCategorySetsDao().getSets(FavouriteSpace.NORMAL.dbValue).first().setId,
 				),
 			)
 			val destinationGroupId = groupsDao.insertGroup(
@@ -288,6 +291,7 @@ class LosslessMigrationTransferRegressionTest {
 					coverUrl = null,
 					createdAt = 2L,
 					space = FavouriteSpace.NORMAL.dbValue,
+                    setId = database.getFavouriteCategorySetsDao().getSets(FavouriteSpace.NORMAL.dbValue).first().setId,
 				),
 			)
 			groupsDao.insertMembers(

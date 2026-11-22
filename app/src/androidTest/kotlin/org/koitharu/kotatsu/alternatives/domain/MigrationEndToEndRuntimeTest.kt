@@ -490,7 +490,10 @@ class MigrationEndToEndRuntimeTest {
 
     private suspend fun group(id: Long, space: Int, mate: Long? = null): Long {
         val dao = database.getLibraryGroupsDao()
-        val groupId = dao.insertGroup(LibraryGroupEntity(title = "P5 fixture", coverUrl = null, createdAt = 1, space = space))
+        val groupId = dao.insertGroup(LibraryGroupEntity(
+            title = "P5 fixture", coverUrl = null, createdAt = 1, space = space,
+            setId = database.getFavouriteCategorySetsDao().getSets(space).first().setId,
+        ))
         dao.insertMembers(listOfNotNull(LibraryGroupMemberEntity(groupId, id, 0), mate?.let { LibraryGroupMemberEntity(groupId, it, 1) }))
         return groupId
     }

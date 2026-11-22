@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.model.isNovelContentPath
 import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
+import org.koitharu.kotatsu.favourites.groups.data.defaultLibraryGroupSetId
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberDisplay
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
@@ -49,6 +50,7 @@ data class LibraryGroup(
 	val description: String? = null,
 	val metadataSource: Int? = null,
 	val metadataTargetId: Long? = null,
+	val setId: Long = 0L,
 ) {
 	val memberIds: List<Long>
 		get() = members.map { it.mangaId }
@@ -119,11 +121,17 @@ class LibraryGroupsRepository @Inject constructor(
 		coverUrl: String? = null,
 		categoryIds: Collection<Long> = emptyList(),
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
+		setId: Long? = null,
 	): Long = db.withTransaction {
 		val normalizedTitle = title.trim()
 		require(normalizedTitle.isNotEmpty()) { "Group title cannot be empty" }
 		val uniqueIds = LinkedHashSet(mangaIds).toList()
 		require(uniqueIds.size >= 2) { "A library group needs at least two manga" }
+		val ownerSetId = setId ?: db.defaultLibraryGroupSetId(space)
+		val owner = db.getFavouriteCategorySetsDao().findSet(ownerSetId)
+		require(owner != null && owner.space == space.dbValue && owner.deletedAt == 0L) {
+			"Library Group owner must be an active Set in the same library space"
+		}
 		val normalizedCategoryIds = validateCategoryIdsLocked(categoryIds, space)
 		val alreadyGrouped = dao.findMembersByMangaIds(uniqueIds, space.dbValue)
 		require(alreadyGrouped.isEmpty()) { "A manga can belong to only one library group in this library space" }
@@ -134,6 +142,7 @@ class LibraryGroupsRepository @Inject constructor(
 				coverUrl = coverUrl.normalizeOptionalText(),
 				createdAt = System.currentTimeMillis(),
 				space = space.dbValue,
+				setId = ownerSetId,
 			),
 		)
 		dao.insertMembers(uniqueIds.mapIndexed { index, mangaId ->
@@ -356,6 +365,7 @@ class LibraryGroupsRepository @Inject constructor(
 		description = description,
 		metadataSource = metadataSource,
 		metadataTargetId = metadataTargetId,
+		setId = setId,
 	)
 
 	private fun LibraryGroupTimelineItemEntity.toDomain() = LibraryGroupTimelineItem(
