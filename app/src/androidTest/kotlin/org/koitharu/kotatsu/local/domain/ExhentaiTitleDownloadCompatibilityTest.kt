@@ -21,6 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.details.data.MangaDetails
@@ -45,6 +46,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
+	@Inject lateinit var data: MangaDataRepository
 
 	private lateinit var root: File
 	private lateinit var prefs: SharedPreferences
@@ -153,6 +155,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		)
 		val chapter = archive("Legacy Gallery", "Chapter.cbz", comment = comment)
 		val gekko = gallery(990012, GEKKO_SOURCE)
+		data.storeManga(gekko, replaceExisting = true, detailsFetched = true)
 		database.getFavouriteDownloadIndexDao().upsert(
 			FavouriteDownloadIndexEntity(gekko.id, FavouriteSpace.NORMAL.dbValue, chapter.parentFile.canonicalPath),
 		)
@@ -175,6 +178,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val online = gallery(990008, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
 		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
 		val ownerId = 990009L // Gekko's existing task owns the folder, not Main.
+		data.storeManga(gallery(ownerId, GEKKO_SOURCE), replaceExisting = true, detailsFetched = true)
 		database.getFavouriteDownloadIndexDao().upsert(
 			FavouriteDownloadIndexEntity(ownerId, FavouriteSpace.NORMAL.dbValue, chapter.parentFile.canonicalPath),
 		)

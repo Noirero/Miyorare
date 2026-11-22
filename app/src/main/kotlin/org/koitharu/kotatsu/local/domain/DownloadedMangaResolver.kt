@@ -174,7 +174,7 @@ class DownloadedMangaResolver @Inject constructor(
 		// Shared roots cannot distinguish an unindexed legacy Normal file from Private content.
 		// An explicit same-space download row or an archive receipt is required in that case.
 		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
-		val sharedRoot = downloadDestinationStore.readableRoots(otherSpace).any { file.isInside(it) }
+		val sharedRoot = downloadDestinationStore.readableRoots(otherSpace).any { file.isInsideExhentaiLayout(it) }
 		if (sharedRoot && receiptSpace != space && existingOwners.none { it.space == space.dbValue }) return null
 
 		return ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file)
@@ -198,6 +198,26 @@ class DownloadedMangaResolver @Inject constructor(
 				path = path,
 			),
 		)
+	}
+
+	/**
+	 * Root folders can be nested (e.g. Normal=/library, Private=/library/private).
+	 * Only the actual download layout belongs to that space; containment in the
+	 * parent directory alone must never classify Private files as Normal.
+	 */
+	private fun File.isInsideExhentaiLayout(root: File): Boolean {
+		val relative = runCatching {
+			val parent = root.canonicalFile.toPath()
+			val target = canonicalFile.toPath()
+			if (!target.startsWith(parent)) return false
+			parent.relativize(target)
+		}.getOrNull() ?: return false
+		val first = relative.getName(0).toString()
+		val sourceIndex = if (first == "downloads") 1 else 0
+		if (relative.nameCount <= sourceIndex + 1) return false
+		val source = relative.getName(sourceIndex).toString()
+		return source.equals("ExHentai (OTHER)", ignoreCase = true) ||
+			EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(source)
 	}
 
 	private fun File.isInside(root: File): Boolean {

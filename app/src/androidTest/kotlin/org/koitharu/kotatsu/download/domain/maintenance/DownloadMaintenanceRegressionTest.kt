@@ -928,14 +928,17 @@ class DownloadMaintenanceRegressionTest {
 		assertFalse(deleteLocal.deleteExhentaiCopy(gallery, FavouriteSpace.NORMAL))
 	}
 
-	@Test fun compactExhentaiUnderOfficialSourceWithoutIdentityRemainsLocalOnly() = runBlocking {
+	@Test fun compactExhentaiUnderOfficialSourceCanBeReadByTitleButNotDeleted() = runBlocking {
 		val gallery = offlineExhentaiGallery(812305L)
-		// Even the official source directory is not proof that a markerless archive is this gallery.
+		// Owner-approved title fallback enables reading without inventing gallery ownership.
 		val cbz = chapterFile(folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture"), "Chapter.cbz")
 		assertLocalCbzReadable(cbz)
-		assertNull(resolver.findSavedManga(gallery, null))
-		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		assertExhentaiLocalRead(gallery, cbz, null)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		assertTrue(runCatching { deleteLocal.deleteExhentaiCopy(gallery, FavouriteSpace.NORMAL, expectedFile = cbz) }
+			.exceptionOrNull() is java.io.IOException)
+		assertTrue(cbz.exists())
 	}
 
 	@Test fun sameTitleCannotBorrowOrDeleteAnOwnedExhentaiArchive() = runBlocking {
@@ -1045,13 +1048,16 @@ class DownloadMaintenanceRegressionTest {
 		assertNull(resolver.findSavedManga(gallery, normal))
 	}
 
-	@Test fun unownedFullAndCompactLayoutsDoNotImplyOnlineIdentity() = runBlocking {
+	@Test fun unownedFullTitleIsReadOnlyAndCompactOutsideExhentaiNeedsExactOwnership() = runBlocking {
 		val gallery = offlineExhentaiGallery(812312L)
 		val compact = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
 		val full = chapterFile(folder("downloads/ExHentai (OTHER)/${gallery.title}"), "Chapter.cbz")
 		assertLocalCbzReadable(full)
 		assertLocalCbzReadable(compact)
-		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		assertExhentaiLocalRead(gallery, full, FavouriteSpace.NORMAL)
+		assertTrue(runCatching { deleteLocal.deleteExhentaiCopy(gallery, FavouriteSpace.NORMAL, expectedFile = full) }
+			.exceptionOrNull() is java.io.IOException)
+		assertTrue(full.exists())
 		assertTrue(full.delete())
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		// A persisted exact gallery+space ownership row restores read access, not delete authority.
