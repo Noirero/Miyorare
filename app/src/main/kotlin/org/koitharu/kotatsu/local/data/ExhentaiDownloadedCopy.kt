@@ -78,21 +78,30 @@ internal object ExhentaiDownloadedCopy {
 	 * This never establishes ownership, file completeness, or permission to delete/reuse as verified.
 	 * The caller is responsible for source, title, candidate uniqueness and FavouriteSpace isolation.
 	 */
-	internal suspend fun readTitleMatchedChapter(remote: Manga, file: File): LocalManga? =
-		withContext(Dispatchers.IO) {
-			if (remote.chapters?.size != 1 ||
-				ExhentaiChapterOwnership.inspectDestination(file) == ExhentaiChapterOwnership.Evidence.Unusable
-			) return@withContext null
-			runCatchingCancellable {
-				val isFlatChapter = ZipFile(file).use { zip ->
-					zip.getEntry("index.json") == null && zip.entries().asSequence().any { entry ->
+	internal suspend fun readTitleMatchedChapter(
+		remote: Manga,
+		file: File,
+		allowIndexed: Boolean = false,
+	): LocalManga? = withContext(Dispatchers.IO) {
+		if (remote.chapters?.size != 1) return@withContext null
+		// An invalid or mismatched ZIP comment is not a read permission. For Details
+		// only, validate the actual chapter pages instead of requiring usable provenance.
+		if (!allowIndexed &&
+			ExhentaiChapterOwnership.inspectDestination(file) == ExhentaiChapterOwnership.Evidence.Unusable
+		) return@withContext null
+		runCatchingCancellable {
+			val hasFlatPages = ZipFile(file).use { zip ->
+				(allowIndexed || zip.getEntry("index.json") == null) &&
+					zip.entries().asSequence().any { entry ->
 						!entry.isDirectory && '/' !in entry.name &&
 							MimeTypes.getMimeTypeFromExtension(entry.name)?.isImage == true
 					}
-				}
-				if (isFlatChapter) chapterCopy(remote, file, withDetails = true, verified = false)?.local else null
-			}.getOrNull()
-		}
+			}
+			if (hasFlatPages) chapterCopy(
+				remote, file, withDetails = true, verified = false, titleMatchedDetails = allowIndexed,
+			)?.local else null
+		}.getOrNull()
+	}
 
 	private fun ExhentaiChapterOwnership.Evidence.Owned.matches(
 		galleryId: Long?,
@@ -199,9 +208,22 @@ internal object ExhentaiDownloadedCopy {
 		return null
 	}
 
-	private suspend fun chapterCopy(remote: Manga, file: File, withDetails: Boolean, verified: Boolean): Match? {
+	private suspend fun chapterCopy(
+		remote: Manga,
+		file: File,
+		withDetails: Boolean,
+		verified: Boolean,
+		titleMatchedDetails: Boolean = false,
+	): Match? {
 		val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails = false) ?: return null
-		val uri = file.toUri().toString()
+		// A foreign index.json must not replace the remote chapter ID used by Details.
+		// The marker makes Reader enumerate flat archive pages without interpreting
+		// the foreign index, and is never added to an ownership/download record.
+		val uri = if (titleMatchedDetails) {
+			file.toUri().buildUpon()
+				.fragment(LocalMangaParser.EXHENTAI_TITLE_READ_FRAGMENT)
+				.build().toString()
+		} else file.toUri().toString()
 		val chapters = if (withDetails) remote.chapters?.singleOrNull()?.let {
 			listOf(it.copy(source = LocalMangaSource, url = uri))
 		} else null
