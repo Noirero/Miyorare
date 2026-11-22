@@ -2,7 +2,10 @@ package org.koitharu.kotatsu.discovery
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertNull
+import org.koitharu.kotatsu.R
 import org.junit.Test
+import org.koitharu.kotatsu.discovery.domain.CatalogCachePolicy
 import org.koitharu.kotatsu.discovery.domain.CatalogFailure
 import org.koitharu.kotatsu.discovery.domain.CatalogFailureKind
 import org.koitharu.kotatsu.discovery.domain.CatalogFilter
@@ -16,6 +19,8 @@ import org.koitharu.kotatsu.discovery.domain.TrackerCatalogItem
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogKey
 import org.koitharu.kotatsu.discovery.domain.TrackerCatalogSection
 import org.koitharu.kotatsu.discovery.ui.DiscoveryHomeStatus
+import org.koitharu.kotatsu.discovery.ui.catalogEmptyMessageId
+import org.koitharu.kotatsu.discovery.ui.confirmedHomeSnapshotAt
 import org.koitharu.kotatsu.discovery.ui.discoverySectionOrdinal
 import org.koitharu.kotatsu.discovery.ui.homeStatus
 import org.koitharu.kotatsu.discovery.ui.selectDiscoverySpotlight
@@ -81,6 +86,29 @@ class DiscoveryHomePresentationTest {
 		assertEquals(DiscoveryHomeStatus.FULL_ERROR, DiscoveryHubState(request, loading = false, failure = CatalogFailure(CatalogFailureKind.PROVIDER)).homeStatus())
 		assertEquals(DiscoveryHomeStatus.EMPTY, DiscoveryHubState(request, TrackerCatalogHome(emptyList()), loading = false).homeStatus())
 		assertEquals(DiscoveryHomeStatus.FRESH, DiscoveryHubState(request, home, loading = false).homeStatus())
+	}
+
+	@Test
+	fun snapshotTimestampIsOnlyAvailableForSuccessfulReadableHome() {
+		val now = CatalogCachePolicy.MAX_STALE_MS + 1_000_000L
+		val valid = TrackerCatalogHome(listOf(section(CatalogSectionType.TRENDING, 1)), now - 30_000L)
+		assertEquals(now - 30_000L, DiscoveryHubState(request, valid, loading = false).confirmedHomeSnapshotAt(now))
+		assertNull(DiscoveryHubState(request, valid.copy(savedAt = now - CatalogCachePolicy.MAX_STALE_MS - 1L), loading = false).confirmedHomeSnapshotAt(now))
+		val partial = valid.copy(sections = listOf(valid.sections.single().copy(failure = CatalogFailure(CatalogFailureKind.PROVIDER))))
+		assertNull(DiscoveryHubState(request, partial, loading = false, stale = true).confirmedHomeSnapshotAt(now))
+		assertNull(DiscoveryHubState(request, valid, loading = false, stale = true, failure = CatalogFailure(CatalogFailureKind.OFFLINE)).confirmedHomeSnapshotAt(now))
+	}
+
+	@Test
+	fun limitedProviderSampleUsesAnHonestEmptyReason() {
+		val kitsuNovel = CatalogSectionKey(ScrobblerService.KITSU, CatalogMediaKind.NOVEL, CatalogSectionType.TRENDING)
+		val malNovelPopular = CatalogSectionKey(ScrobblerService.MAL, CatalogMediaKind.NOVEL, CatalogSectionType.POPULAR)
+		val malNovelFavorite = malNovelPopular.copy(type = CatalogSectionType.MOST_FAVORITED)
+		assertEquals(R.string.hub_kitsu_trending_novel_empty, catalogEmptyMessageId(kitsuNovel))
+		assertEquals(R.string.hub_mal_novel_ranking_empty, catalogEmptyMessageId(malNovelPopular))
+		assertEquals(R.string.hub_mal_novel_ranking_empty, catalogEmptyMessageId(malNovelFavorite))
+		assertEquals(R.string.hub_empty, catalogEmptyMessageId(kitsuNovel.copy(kind = CatalogMediaKind.MANGA)))
+		assertEquals(R.string.hub_empty, catalogEmptyMessageId(malNovelPopular.copy(type = CatalogSectionType.TOP_RANKED)))
 	}
 
 	private fun section(type: CatalogSectionType, vararg ids: Int): TrackerCatalogSection {

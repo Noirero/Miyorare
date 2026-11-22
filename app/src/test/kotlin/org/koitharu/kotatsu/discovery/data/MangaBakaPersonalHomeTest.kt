@@ -202,6 +202,45 @@ class MangaBakaPersonalHomeTest {
 		assertTrue(MangaBakaExploreType.OTHER in mangaTypes)
 	}
 
+	@Test
+	fun `library scan reports a truncated page forty without claiming complete remote truth`() = runBlocking {
+		val visited = mutableListOf<Int>()
+		val account = client { request ->
+			when (request.url.encodedPath) {
+				"/v2/my/library" -> {
+					val page = checkNotNull(request.url.queryParameter("page")).toInt()
+					visited += page
+					val next = page + 1
+					"""{"data":[{"series":{"id":$page,"type":"manga","content_rating":"safe","title":"Library"},"entry":{"series_id":$page,"state":"reading"}}],"pagination":{"next":$next}}"""
+				}
+				"/v1/my/series/recommendations" -> """{"data":[]}"""
+				else -> error("Unexpected account request: " + request.url)
+			}
+		}
+		val repository = MangaBakaPersonalHomeRepository(account, CatalogHttp(client { """{"data":[]}""" }))
+		val snapshot = repository.load(CatalogFilter.ALL, allowAdult = false)
+		assertEquals((1..40).toList(), visited)
+		assertEquals(40, snapshot.library.size)
+		assertTrue(snapshot.libraryTruncated)
+		assertTrue(snapshot.partial)
+	}
+
+	@Test
+	fun `complete MangaBaka personal library does not report truncation`() = runBlocking {
+		val account = client { request ->
+			when (request.url.encodedPath) {
+				"/v2/my/library" -> """{"data":[{"series":{"id":1,"type":"novel","content_rating":"safe","title":"A novel"},"entry":{"series_id":1,"state":"reading"}}],"pagination":{}}"""
+				"/v1/my/series/recommendations" -> """{"data":[]}"""
+				else -> error("Unexpected account request: " + request.url)
+			}
+		}
+		val snapshot = MangaBakaPersonalHomeRepository(account, CatalogHttp(client { """{"data":[]}""" }))
+			.load(CatalogFilter.NOVEL, allowAdult = false)
+		assertEquals(1, snapshot.library.size)
+		assertFalse(snapshot.libraryTruncated)
+		assertFalse(snapshot.partial)
+	}
+
 	private fun client(answer: (Request) -> String): OkHttpClient = OkHttpClient.Builder().addInterceptor { chain ->
 		Response.Builder()
 			.request(chain.request())
