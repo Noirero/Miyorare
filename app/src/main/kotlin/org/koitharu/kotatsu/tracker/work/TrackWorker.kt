@@ -320,6 +320,7 @@ class TrackWorker @AssistedInject constructor(
 			format = null,
 			allowMeteredNetwork = settings.allowDownloadOnMeteredNetwork != TriStateOption.DISABLED,
 			favouriteSpace = FavouriteSpace.NORMAL,
+			allowDiagnosticExport = !settings.isIncognitoModeEnabled,
 		)
 		downloadSchedulerLazy.get().schedule(setOf(mangaUpdates.manga to task))
 	}

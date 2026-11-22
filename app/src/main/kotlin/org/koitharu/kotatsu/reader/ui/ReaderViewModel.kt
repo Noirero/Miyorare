@@ -357,7 +357,7 @@ class ReaderViewModel @Inject constructor(
             val diagnostics = ReaderDiagnostics {
                 val approved = publicManga.value
                 approved != null && getMangaOrNull()?.id == approved &&
-                    isIncognitoMode.value == false && !isPeekMode.value
+                    ReaderDiagnostics.isPublicMode(isIncognitoMode.value, isPeekMode.value)
             }
             pageLoader.diagnostics = diagnostics
             chaptersLoader.diagnostics = diagnostics
@@ -617,6 +617,10 @@ class ReaderViewModel @Inject constructor(
             onShowToast.call(R.string.peek_mode_hint)
         }
     }
+
+    override fun allowsDownloadDiagnosticExport(): Boolean =
+        super.allowsDownloadDiagnosticExport() &&
+            ReaderDiagnostics.isPublicMode(isIncognitoMode.value, isPeekMode.value)
 
     fun setIncognitoMode(value: Boolean, dontAskAgain: Boolean) {
         isIncognitoMode.value = value

@@ -47,6 +47,17 @@ class DownloadTaskTest {
 		val legacy = DownloadTask(Data.Builder().putLong("manga_id", 42L).build())
 		assertEquals(false, legacy.appendGalleryIdToChapterFile)
 		assertEquals(false, legacy.downloadSeparateCopy)
+		assertEquals(false, legacy.allowDiagnosticExport)
+	}
+
+	@Test
+	fun `diagnostics permission survives WorkManager reconstruction without changing download identity`() {
+		val normal = task(chapters = longArrayOf(7L), allowDiagnosticExport = true)
+		val incognito = task(chapters = longArrayOf(7L), allowDiagnosticExport = false)
+		assertEquals(normal, DownloadTask(normal.toData()))
+		assertEquals(incognito, DownloadTask(incognito.toData()))
+		assertNotEquals(normal, incognito)
+		assertEquals(normal.uniqueWorkName(), incognito.uniqueWorkName())
 	}
 
 	@Test
@@ -73,6 +84,7 @@ class DownloadTaskTest {
 		metered: Boolean = true,
 		appendGalleryId: Boolean = false,
 		separateCopy: Boolean = false,
+		allowDiagnosticExport: Boolean = false,
 	) = DownloadTask(
 		mangaId = 42L,
 		isPaused = paused,
@@ -84,5 +96,6 @@ class DownloadTaskTest {
 		favouriteSpace = space,
 		appendGalleryIdToChapterFile = appendGalleryId,
 		downloadSeparateCopy = separateCopy,
+		allowDiagnosticExport = allowDiagnosticExport,
 	)
 }

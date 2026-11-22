@@ -5,6 +5,8 @@ import android.util.Log
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.diagnostics.DownloadEvent
 import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import java.util.UUID
 
 /** Progress tracing for debug and a bounded, structured subset for approved verbose sessions. */
@@ -13,7 +15,10 @@ internal object DownloadObservation {
 	private const val MAX_TRACKED = 32
 	private val tracked = LinkedHashSet<UUID>()
 
-	fun exportFor(recording: String): Export? {
+	suspend fun exportFor(task: DownloadTask, isPublic: suspend () -> Boolean): Export? {
+		if (!task.allowDiagnosticExport || task.favouriteSpace != FavouriteSpace.NORMAL) return null
+		val recording = PerformanceDiagnostics.recordingId() ?: return null
+		if (!isPublic()) return null
 		val operation = PerformanceDiagnostics.subjectId(recording) ?: return null
 		return Export(recording, operation)
 	}

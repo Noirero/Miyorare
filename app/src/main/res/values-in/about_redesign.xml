@@ -31,6 +31,7 @@
 	<string name="about_verbose_logging_recording_partial">Sedang merekam · sebagian diagnostik tidak tersedia</string>
 	<string name="about_verbose_logging_preparing">Menyiapkan rekaman diagnostik…</string>
 	<string name="about_verbose_logging_failed">Rekaman gagal disimpan di penyimpanan aplikasi</string>
+	<string name="about_verbose_logging_stop_failed">Rekaman berhenti. Pilihan nonaktif gagal disimpan. Nonaktifkan lagi untuk mencoba ulang.</string>
 	<string name="about_verbose_logging_save">Simpan log terakhir</string>
 	<string name="about_verbose_logging_delete">Hapus log terakhir</string>
 	<string name="about_verbose_logging_partial">Rekaman parsial</string>

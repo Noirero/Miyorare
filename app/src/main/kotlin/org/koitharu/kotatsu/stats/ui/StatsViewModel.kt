@@ -79,6 +79,11 @@ class StatsViewModel @Inject constructor(
 	).onStart { emit(Unit) }
 
 	init {
+		launchJob {
+			settings.observe(AppSettings.KEY_STATS_MATURE_MODE).collect {
+				matureMode.value = StatsMatureMode.fromPreference(settings.statsMatureMode)
+			}
+		}
 		launchJob(Dispatchers.Default) {
 			combine(period, selectedCategories, scope, matureMode) { p, categories, contentScope, privacy ->
 				StatsQuery(

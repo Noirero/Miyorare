@@ -11,18 +11,25 @@ internal class VerboseLogStore(private val directory: File) {
 	private val active = File(directory, "active.txt")
 	private val previous = File(directory, "previous.txt")
 	private val saved = File(directory, "last.txt")
+	private val resumePermission = File(directory, "resume.allowed")
 
 	val hasSaved: Boolean get() = saved.isFile
-	val hasInterrupted: Boolean get() = active.isFile || previous.isFile
+	private val hasCheckpoint: Boolean get() = active.isFile || previous.isFile
+	val canResume: Boolean get() = resumePermission.isFile && hasCheckpoint
+	val hasStoppedCheckpoint: Boolean get() = !resumePermission.isFile && hasCheckpoint
 
 	fun prepare(resume: Boolean) {
 		if (resume && active.isFile) {
 			replace(active, previous)
 		} else if (!resume) {
+			revokeResumePermission()
 			delete(active)
 			delete(previous)
+			write(resumePermission, "allowed\n")
 		}
 	}
+
+	fun revokeResumePermission() = delete(resumePermission)
 
 	fun checkpoint(report: String) = write(active, report)
 
@@ -43,12 +50,20 @@ internal class VerboseLogStore(private val directory: File) {
 	}
 
 	fun export(recovered: String? = null, open: () -> OutputStream?): Boolean {
-		if (recovered == null && !saved.isFile) return false
 		return try {
+			val hasSavedReport = hasSaved
+			if (recovered == null && !hasSavedReport && !hasStoppedCheckpoint) return false
 			val destination = open() ?: return false
 			destination.use { output ->
-				if (recovered == null) saved.inputStream().use { it.copyTo(output) }
-				else output.write(("capture_status=partial\n" + recovered).toByteArray())
+				when {
+					recovered != null -> output.write(("capture_status=partial\n" + recovered).toByteArray())
+					hasSavedReport -> saved.inputStream().use { it.copyTo(output) }
+					else -> {
+						output.write("capture_status=partial\n".toByteArray())
+						if (previous.isFile) previous.inputStream().use { it.copyTo(output) }
+						if (active.isFile) active.inputStream().use { it.copyTo(output) }
+					}
+				}
 			}
 			true
 		} catch (_: IOException) {
@@ -58,7 +73,12 @@ internal class VerboseLogStore(private val directory: File) {
 		}
 	}
 
-	fun deleteSaved() = delete(saved)
+	fun deleteSaved() {
+		revokeResumePermission()
+		delete(active)
+		delete(previous)
+		delete(saved)
+	}
 
 	fun savedIsPartial(): Boolean = saved.bufferedReader().use { it.readLine() == "capture_status=partial" }
 

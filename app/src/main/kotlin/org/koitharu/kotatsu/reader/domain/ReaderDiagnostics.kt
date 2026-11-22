@@ -40,4 +40,8 @@ internal class ReaderDiagnostics(private val isPublic: () -> Boolean) {
 				SystemClock.elapsedRealtime() - started)
 		}
 	}
+
+	companion object {
+		fun isPublicMode(incognito: Boolean?, peek: Boolean): Boolean = incognito == false && !peek
+	}
 }

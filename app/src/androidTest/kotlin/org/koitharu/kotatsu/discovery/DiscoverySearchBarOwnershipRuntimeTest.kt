@@ -4,10 +4,13 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
 import android.os.Looper
+import android.widget.LinearLayout
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.lifecycle.Lifecycle
 import androidx.preference.PreferenceManager
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -38,6 +41,7 @@ import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.CatalogArguments
 import org.koitharu.kotatsu.discovery.ui.CatalogScreenMode
 import org.koitharu.kotatsu.discovery.ui.TrackerCatalogActivity
+import org.koitharu.kotatsu.explore.ui.ExploreFragment
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
@@ -190,6 +194,53 @@ class DiscoverySearchBarOwnershipRuntimeTest {
 
 	@Test fun firstVisitExploreSearchStillUsesGlobalSearch() {
 		assertFirstSearchTap(NavItem.EXPLORE, expectInline = false)
+	}
+
+	@Test fun exploreSourceSearchSurvivesPauseButEndsWhenItsViewIsDestroyed() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		ActivityScenario.launch<MainActivity>(Intent(app, MainActivity::class.java)).use { scenario ->
+			scenario.onActivity { activity -> activity.bottomNav!!.selectedItemId = R.id.nav_explore }
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				val explore = activity.supportFragmentManager.findFragmentByTag(ExploreFragment::class.java.name) as ExploreFragment
+				explore.toggleSourceSearch()
+				sourceSearchInput(activity).setText("fixture source")
+			}
+
+			// Opening a source in another activity pauses Explore without destroying its view.
+			scenario.moveToState(Lifecycle.State.STARTED)
+			scenario.moveToState(Lifecycle.State.RESUMED)
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertEquals("fixture source", sourceSearchInput(activity).text.toString())
+				val manager = activity.supportFragmentManager
+				val explore = manager.findFragmentByTag(ExploreFragment::class.java.name) as ExploreFragment
+				explore.toggleSourceSearch()
+				assertTrue(activity.viewBinding.searchBar.isShown)
+				explore.toggleSourceSearch()
+				assertEquals("", sourceSearchInput(activity).text.toString())
+				sourceSearchInput(activity).setText("discard this query")
+
+				// Keep the Fragment instance while destroying and recreating its view.
+				manager.beginTransaction().detach(explore).commitNow()
+				manager.beginTransaction().attach(explore).commitNow()
+			}
+			instrumentation.waitForIdleSync()
+			scenario.onActivity { activity ->
+				assertTrue(activity.viewBinding.searchBar.isShown)
+				val explore = activity.supportFragmentManager.findFragmentByTag(ExploreFragment::class.java.name) as ExploreFragment
+				explore.toggleSourceSearch()
+				assertEquals("", sourceSearchInput(activity).text.toString())
+			}
+		}
+	}
+
+	private fun sourceSearchInput(activity: MainActivity): AppCompatEditText {
+		val bar = activity.viewBinding.searchBar
+		assertFalse(bar.isShown)
+		val parent = bar.parent as LinearLayout
+		val row = parent.getChildAt(parent.indexOfChild(bar) + 1) as LinearLayout
+		return row.getChildAt(0) as AppCompatEditText
 	}
 
 	private fun assertFirstSearchTap(targetTab: NavItem, expectInline: Boolean) {

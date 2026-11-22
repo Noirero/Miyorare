@@ -781,8 +781,11 @@ abstract class ChaptersPagesViewModel(
 		}
 	}
 
+	protected open fun allowsDownloadDiagnosticExport(): Boolean = !settings.isIncognitoModeEnabled
+
 	fun download(chaptersIds: Set<Long>?, allowMeteredNetwork: Boolean) {
 		if (getMangaOrNull()?.source == LocalMangaSource) return
+		val allowDiagnosticExport = allowsDownloadDiagnosticExport()
 		launchJob(Dispatchers.Default) {
 			val manga = requireManga()
 			val active = activeChapterDownloads.value
@@ -801,6 +804,7 @@ abstract class ChaptersPagesViewModel(
 				format = null,
 				allowMeteredNetwork = allowMeteredNetwork,
 				favouriteSpace = favouriteSpace,
+				allowDiagnosticExport = allowDiagnosticExport,
 			)
 			downloadScheduler.schedule(setOf(manga to task))
 			onDownloadStarted.call(Unit)

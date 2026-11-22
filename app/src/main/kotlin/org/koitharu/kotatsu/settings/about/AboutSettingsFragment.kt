@@ -291,6 +291,8 @@ private fun AboutScreen(
 									R.string.about_verbose_logging_recording_partial
 								loggingState.phase == AppLogger.Phase.RECORDING ->
 									R.string.about_verbose_logging_enabled_summary
+								loggingState.phase == AppLogger.Phase.STOP_FAILED ->
+									R.string.about_verbose_logging_stop_failed
 								loggingState.phase != AppLogger.Phase.IDLE ->
 									R.string.about_verbose_logging_preparing
 								loggingState.failed -> R.string.about_verbose_logging_failed
@@ -300,8 +302,10 @@ private fun AboutScreen(
 						icon = R.drawable.ic_script,
 						iconColors = loggingColors,
 						shape = pos.shape,
-						checked = loggingState.phase == AppLogger.Phase.STARTING || loggingState.phase == AppLogger.Phase.RECORDING,
-						enabled = loggingState.phase == AppLogger.Phase.IDLE || loggingState.phase == AppLogger.Phase.RECORDING,
+						checked = loggingState.phase == AppLogger.Phase.STARTING ||
+							loggingState.phase == AppLogger.Phase.RECORDING || loggingState.phase == AppLogger.Phase.STOP_FAILED,
+						enabled = loggingState.phase == AppLogger.Phase.IDLE ||
+							loggingState.phase == AppLogger.Phase.RECORDING || loggingState.phase == AppLogger.Phase.STOP_FAILED,
 						onCheckedChange = onVerboseLoggingToggle,
 					)
 				}

@@ -117,7 +117,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import org.koitharu.kotatsu.core.diagnostics.DownloadEvent
-import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.local.data.output.LocalMangaZipOutput
 
 @HiltWorker
@@ -281,10 +280,7 @@ class DownloadWorker @AssistedInject constructor(
 
 	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask) {
 		var manga = subject
-		val recording = PerformanceDiagnostics.recordingId()
-		val diagnostic = if (recording != null && task.favouriteSpace == FavouriteSpace.NORMAL &&
-			isPublicForDiagnostics(subject.id)
-		) DownloadObservation.exportFor(recording) else null
+		val diagnostic = DownloadObservation.exportFor(task) { isPublicForDiagnostics(subject.id) }
 		var expectedArchivePages = 0
 		observeDownload { "manga_lock_wait" }
 		mangaLock.withLock(manga) {
@@ -980,7 +976,8 @@ class DownloadWorker @AssistedInject constructor(
 	}
 
 	private suspend fun isPublicForDiagnostics(mangaId: Long): Boolean =
-		runCatchingCancellable { !database.getPrivateFavouritesDao().isPrivateOnly(mangaId) }.getOrDefault(false)
+		!settings.isIncognitoModeEnabled &&
+			runCatchingCancellable { !database.getPrivateFavouritesDao().isPrivateOnly(mangaId) }.getOrDefault(false)
 
 	private inline fun observeDownload(message: () -> String) {
 		if (DownloadObservation.tracks(id)) DownloadObservation.record(id, message())

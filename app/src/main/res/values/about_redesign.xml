@@ -57,6 +57,7 @@
 	<string name="about_verbose_logging_recording_partial">Recording · some diagnostics are unavailable</string>
 	<string name="about_verbose_logging_preparing">Preparing diagnostic recording…</string>
 	<string name="about_verbose_logging_failed">Could not save the recording to the app storage</string>
+	<string name="about_verbose_logging_stop_failed">Recording stopped. Could not save the off setting. Toggle off again to retry.</string>
 	<string name="about_verbose_logging_save">Save last log</string>
 	<string name="about_verbose_logging_delete">Delete last log</string>
 	<string name="about_verbose_logging_partial">Partial recording</string>

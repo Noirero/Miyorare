@@ -31,7 +31,7 @@ import javax.inject.Singleton
 class AppLogger @Inject constructor(
 	@ApplicationContext private val context: Context,
 ) {
-	enum class Phase { INITIALIZING, IDLE, STARTING, RECORDING, STOPPING }
+	enum class Phase { INITIALIZING, IDLE, STARTING, RECORDING, STOPPING, STOP_FAILED }
 
 	data class State(
 		val phase: Phase = Phase.INITIALIZING,
@@ -56,23 +56,27 @@ class AppLogger @Inject constructor(
 			files.withLock {
 				val legacy = File(context.filesDir, "logs")
 				listOf("session.log", "session.log.old", "previous_session.log").forEach { File(legacy, it).delete() }
+				val resume = store.canResume
+				val hasSaved = store.hasSaved
 				mutableState.value = State(
-					phase = if (store.hasInterrupted) Phase.STARTING else Phase.IDLE,
-					hasSavedLog = store.hasSaved,
-					savedPartial = store.hasSaved && runCatching { store.savedIsPartial() }.getOrDefault(true),
+					phase = if (resume) Phase.STARTING else Phase.IDLE,
+					hasSavedLog = hasSaved || store.hasStoppedCheckpoint,
+					savedPartial = if (hasSaved) runCatching { store.savedIsPartial() }.getOrDefault(true)
+						else store.hasStoppedCheckpoint,
 				)
-				if (store.hasInterrupted) start(resume = true)
+				if (resume) start(resume = true)
 			}
 		}
 	}
 
 	fun setEnabled(enabled: Boolean) {
-		val required = if (enabled) Phase.IDLE else Phase.RECORDING
+		fun accepts(phase: Phase): Boolean =
+			if (enabled) phase == Phase.IDLE else phase == Phase.RECORDING || phase == Phase.STOP_FAILED
 		val next = if (enabled) Phase.STARTING else Phase.STOPPING
 		val previous = mutableState.getAndUpdate { state ->
-			if (state.phase == required) state.copy(phase = next, failed = false) else state
+			if (accepts(state.phase)) state.copy(phase = next, failed = if (enabled) false else state.failed) else state
 		}
-		if (previous.phase != required) return
+		if (!accepts(previous.phase)) return
 		scope.launch {
 			files.withLock {
 				if (enabled) {
@@ -94,6 +98,7 @@ class AppLogger @Inject constructor(
 
 	suspend fun deleteSaved(): Boolean = withContext(Dispatchers.IO) {
 		files.withLock {
+			if (mutableState.value.phase != Phase.IDLE) return@withLock false
 			runCatching { store.deleteSaved() }.onSuccess {
 				unsavedReport = null
 				mutableState.update { it.copy(hasSavedLog = false, savedPartial = false, failed = false) }
@@ -106,7 +111,10 @@ class AppLogger @Inject constructor(
 		if (runCatching { store.prepare(resume) }.isFailure) partial = true
 		if (runCatching { PerformanceDiagnostics.start(context) }.isFailure) {
 			runCatching { PerformanceDiagnostics.stop() }
-			mutableState.update { it.copy(phase = Phase.IDLE, failed = true) }
+			val resumeRevoked = revokeResume()
+			mutableState.update {
+				it.copy(phase = if (resumeRevoked) Phase.IDLE else Phase.STOP_FAILED, failed = true)
+			}
 			return
 		}
 		if (!saveCheckpoint()) partial = true
@@ -128,6 +136,8 @@ class AppLogger @Inject constructor(
 	}
 
 	private suspend fun stop() {
+		// Commit the user's choice before waiting for the checkpoint or writing the report.
+		val resumeRevoked = revokeResume()
 		checkpoint?.cancelAndJoin()
 		checkpoint = null
 		if (PerformanceDiagnostics.captureFailed()) mutableState.update { it.copy(capturePartial = true) }
@@ -136,14 +146,16 @@ class AppLogger @Inject constructor(
 		val saved = persistUnsaved()
 		mutableState.update {
 			it.copy(
-				phase = Phase.IDLE,
-				hasSavedLog = store.hasSaved || unsavedReport != null,
+				phase = if (resumeRevoked) Phase.IDLE else Phase.STOP_FAILED,
+				hasSavedLog = store.hasSaved || unsavedReport != null || store.hasStoppedCheckpoint,
 				savedPartial = !saved || it.savedPartial,
 				capturePartial = false,
-				failed = !saved,
+				failed = !saved || !resumeRevoked,
 			)
 		}
 	}
+
+	private fun revokeResume(): Boolean = runCatching { store.revokeResumePermission() }.isSuccess
 
 	private fun persistUnsaved(): Boolean {
 		val report = unsavedReport ?: return true
