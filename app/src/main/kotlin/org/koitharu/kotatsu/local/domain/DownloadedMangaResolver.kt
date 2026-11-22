@@ -95,7 +95,10 @@ class DownloadedMangaResolver @Inject constructor(
 			val ownedFile = File(ownership.path)
 			val inKnownRoot = roots.any { ownedFile.isInside(it) }
 			if (officialExhentai) {
-				val match = localMangaRepository.findExhentaiAtPath(manga, ownedFile, withDetails = true, space = space)
+				val match = localMangaRepository.findExhentaiAtPath(
+					manga, ownedFile, withDetails = true, space = space,
+					trustedOwnedPath = inKnownRoot,
+				)
 				if (match != null && (inKnownRoot || (
 						match.verified && match.receipt?.space == space &&
 							match.local.file.canonicalFile == ownedFile.canonicalFile
