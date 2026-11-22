@@ -474,7 +474,10 @@ class LocalMangaParser(
 		val file = runCatching { chapterUri.toFile() }.getOrNull() ?: return null
 		if (!file.isFile || !file.isZipArchive) return null
 		return ZipFile(file).use { zip ->
-			if (zip.getEntry(ENTRY_NAME_INDEX) != null) return@use null
+			// Only a Details ExHentai title match may ignore a foreign archive index.
+			if (zip.getEntry(ENTRY_NAME_INDEX) != null &&
+				chapterUri.fragment != EXHENTAI_TITLE_READ_FRAGMENT
+			) return@use null
 			val entries = zip.entries().asSequence()
 				.filter { entry ->
 					!entry.isDirectory &&
@@ -655,6 +658,7 @@ class LocalMangaParser(
 
 	companion object {
 
+		internal const val EXHENTAI_TITLE_READ_FRAGMENT = "miyorare-exhentai-title-read"
 		private const val MAX_NESTED_COVER_ARCHIVE_DEPTH = 8
 		private val REGEX_PARENT_PATH_PREFIX = Regex("^(/\\.\\.)+")
 
