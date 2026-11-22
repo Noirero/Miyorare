@@ -1,7 +1,5 @@
 package org.koitharu.kotatsu.local.data
 
-import android.net.Uri
-import androidx.core.net.toFile
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,10 +10,8 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.sources.compat.EhentaiComicInfo
-import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
@@ -34,7 +30,7 @@ internal object ExhentaiDownloadedCopy {
 
 	fun isOfficial(manga: Manga): Boolean = EhentaiSourceFamily.isOfficialSource(manga.source.name)
 
-	/** Flat chapter CBZs use their current root pages; indexed and split copies keep their own resolver. */
+	/** Flat chapter CBZs use their current root pages; indexed copies keep their own resolver. */
 	suspend fun fromDestination(remote: Manga, file: File): LocalManga? = runCatchingCancellable {
 		if (remote.chapters?.size != 1) return@runCatchingCancellable null
 		val origin = LocalMangaParser.getOrNull(file)?.getMangaInfo()
@@ -173,12 +169,4 @@ internal object ExhentaiDownloadedCopy {
 		return Match(local.copy(manga = local.manga.copy(title = remote.title, chapters = chapters)), verified)
 	}
 
-	private fun LocalManga.withRequestedDetails(withDetails: Boolean): LocalManga =
-		if (withDetails) this else copy(manga = manga.copy(chapters = null))
-
-	private fun chapterArtifact(chapter: MangaChapter): File? = runCatching {
-		val uri = Uri.parse(chapter.url)
-		val file = uri.buildUpon().fragment(null).build().toFile()
-		if (file.isDirectory) uri.fragment?.let { File(file, it) } else file
-	}.getOrNull()
 }
