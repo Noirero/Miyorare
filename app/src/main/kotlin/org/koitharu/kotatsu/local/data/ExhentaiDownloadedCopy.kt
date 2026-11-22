@@ -73,6 +73,27 @@ internal object ExhentaiDownloadedCopy {
 		}.getOrNull()
 	}
 
+	/**
+	 * A unique title candidate may be read even if its gallery ID differs or its receipt is absent.
+	 * This never establishes ownership, file completeness, or permission to delete/reuse as verified.
+	 * The caller is responsible for source, title, candidate uniqueness and FavouriteSpace isolation.
+	 */
+	internal suspend fun readTitleMatchedChapter(remote: Manga, file: File): LocalManga? =
+		withContext(Dispatchers.IO) {
+			if (remote.chapters?.size != 1 ||
+				ExhentaiChapterOwnership.inspectDestination(file) == ExhentaiChapterOwnership.Evidence.Unusable
+			) return@withContext null
+			runCatchingCancellable {
+				val isFlatChapter = ZipFile(file).use { zip ->
+					zip.getEntry("index.json") == null && zip.entries().asSequence().any { entry ->
+						!entry.isDirectory && '/' !in entry.name &&
+							MimeTypes.getMimeTypeFromExtension(entry.name)?.isImage == true
+					}
+				}
+				if (isFlatChapter) chapterCopy(remote, file, withDetails = true, verified = false)?.local else null
+			}.getOrNull()
+		}
+
 	private fun ExhentaiChapterOwnership.Evidence.Owned.matches(
 		galleryId: Long?,
 		space: FavouriteSpace?,

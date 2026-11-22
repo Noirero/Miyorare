@@ -16,6 +16,9 @@ import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
@@ -80,9 +83,9 @@ class DownloadedMangaResolver @Inject constructor(
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
 		val officialExhentai = ExhentaiDownloadedCopy.isOfficial(manga)
-		// Browse has no explicit space. For official ExHentai it uses Normal throughout;
-		// a failed destination lookup must not fall through to an unscoped storage lookup.
-		val space = favouriteSpace ?: if (officialExhentai) FavouriteSpace.NORMAL else null
+		val titleFallback = EhentaiSourceFamily.supportsTitleMatchedDownloads(manga.source.name)
+		// ExHentai browse always resolves Normal; never scan an unscoped pool of Private files.
+		val space = favouriteSpace ?: if (titleFallback) FavouriteSpace.NORMAL else null
 		if (space == null) {
 			return localMangaRepository.findSavedManga(manga, withDetails = true)
 		}
@@ -116,8 +119,11 @@ class DownloadedMangaResolver @Inject constructor(
 		if (officialExhentai) {
 			return localMangaRepository.findExhentaiDestinationCopy(manga, space)
 				?: localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
+				?: findTitleMatchedChapter(manga, space, roots)
 		}
-		if (!canInferSpaceFromPath()) return null
+		if (!canInferSpaceFromPath()) {
+			return if (titleFallback) findTitleMatchedChapter(manga, space, roots) else null
+		}
 
 		// With distinct roots the global Local index is safe as a compatibility hint, but it still has
 		// to live inside the requested space before it can be accepted and persisted as ownership.
@@ -127,10 +133,49 @@ class DownloadedMangaResolver @Inject constructor(
 				remoteManga = manga,
 				roots = roots,
 			)
-			?: return null
+		if (indexed != null) {
+			rememberFavouriteDownloadOwnership(space, manga.id, indexed.file)
+			return indexed
+		}
+		return if (titleFallback) findTitleMatchedChapter(manga, space, roots) else null
+	}
 
-		rememberFavouriteDownloadOwnership(space, manga.id, indexed.file)
-		return indexed
+	/**
+	 * Only Details/Reader may use this weak association. It is not registered in Local indexes or
+	 * favourite_download_index, so worker completion and destructive operations keep their guards.
+	 */
+	private suspend fun findTitleMatchedChapter(
+		manga: Manga,
+		space: FavouriteSpace,
+		roots: Collection<File>,
+	): LocalManga? {
+		if (manga.chapters?.size != 1) return null
+		val candidates = LinkedHashSet<File>()
+		for (root in roots) {
+			for (file in EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, manga.title)) {
+				if (!file.isInside(root)) continue
+				candidates += file.canonicalFile
+				// More than one physical copy is ambiguous, even if names differ only by _1.
+				if (candidates.size > 1) return null
+			}
+		}
+		val file = candidates.singleOrNull() ?: return null
+		val evidence = ExhentaiChapterOwnership.inspectDestination(file)
+		if (evidence == ExhentaiChapterOwnership.Evidence.Unusable) return null
+		val receiptSpace = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt?.space
+		if (receiptSpace != null && receiptSpace != space) return null
+
+		val indexedPaths = listOf(file.canonicalPath, file.parentFile.canonicalPath)
+		val existingOwners = database.getFavouriteDownloadIndexDao().findEntriesByPaths(indexedPaths)
+		if (existingOwners.any { it.space != space.dbValue }) return null
+
+		// Shared roots cannot distinguish an unindexed legacy Normal file from Private content.
+		// An explicit same-space download row or an archive receipt is required in that case.
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val sharedRoot = downloadDestinationStore.readableRoots(otherSpace).any { file.isInside(it) }
+		if (sharedRoot && receiptSpace != space && existingOwners.none { it.space == space.dbValue }) return null
+
+		return ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file)
 	}
 
 	private fun canInferSpaceFromPath(): Boolean =
