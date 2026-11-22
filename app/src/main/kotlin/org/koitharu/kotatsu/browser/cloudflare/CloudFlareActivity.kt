@@ -240,7 +240,7 @@ class CloudFlareActivity : BaseBrowserActivity() {
 		val sourceResponse = sourceRepository?.getCoverStream(url)
 		if (sourceResponse != null) {
 			sourceResponse.use { response ->
-				android.util.Log.i(TAG, "verify clearance via source client: url=$url status=${response.code}")
+				android.util.Log.i(TAG, "verify clearance via source client: status=${response.code}")
 				response.isSuccessful
 			}
 		} else {
@@ -259,13 +259,13 @@ class CloudFlareActivity : BaseBrowserActivity() {
 					.build()
 				// MangaHttpClient's CloudFlareInterceptor throws if the challenge is still active
 				okHttpClient.newCall(request).execute().use { response ->
-					android.util.Log.i(TAG, "verify clearance via shared client: url=$url status=${response.code}")
+					android.util.Log.i(TAG, "verify clearance via shared client: status=${response.code}")
 					response.isSuccessful
 				}
 			}
 		}
 	}.onFailure { error ->
-		android.util.Log.w(TAG, "verify clearance failed: url=$url", error)
+		android.util.Log.w(TAG, "verify clearance failed: ${error.javaClass.simpleName}")
 	}.getOrDefault(false)
 
 	override fun onTitleChanged(title: CharSequence, subtitle: CharSequence?) {

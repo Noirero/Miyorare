@@ -53,9 +53,9 @@ internal class FavouritesContainerAdapter(
 	internal val diagnosticCreationCount: Int get() = diagnosticFragmentsCreated
 
 	private fun logPagerDiagnostic(event: String, details: String) {
-		if (!PerformanceDiagnostics.enabled) return
+		if (!PerformanceDiagnostics.enabled || favouriteSpace != FavouriteSpace.NORMAL) return
 		Log.i("FavouritesPager", "trace=${PerformanceDiagnostics.ownerTrace(fragment)?.id ?: "none"} event=$event $details")
-		PerformanceDiagnostics.captureDiagnostic("FavouritesPager", event, fragment, details)
+		PerformanceDiagnostics.captureDiagnostic("FavouritesPager", event, details)
 	}
 
 	private val preferences = PreferenceManager.getDefaultSharedPreferences(fragment.requireContext())

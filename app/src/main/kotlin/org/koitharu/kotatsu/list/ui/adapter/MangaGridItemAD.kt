@@ -2,9 +2,11 @@ package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Rect
 import androidx.core.content.ContextCompat
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +26,8 @@ import coil3.request.SuccessResult
 import coil3.size.Size
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.BuildConfig
+import org.koitharu.kotatsu.core.diagnostics.CoverEvent
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -204,28 +208,74 @@ fun mangaGridItemAD(
 		}
 	}
 
+	var diagnosticRecording: String? = null
+	var diagnosticHolder = 0L
+	var diagnosticPendingSince: Long? = null
+	var diagnosticProbe: Runnable? = null
+	fun recordBorder(event: CoverEvent, accepted: Boolean) {
+		val state = coverBorderState ?: return
+		val recording = PerformanceDiagnostics.recordingId() ?: return
+		if (diagnosticRecording != recording) {
+			diagnosticHolder = PerformanceDiagnostics.subjectId(recording) ?: return
+			diagnosticRecording = recording
+			diagnosticPendingSince = null
+		}
+		val now = SystemClock.elapsedRealtime()
+		val newBinding = event == CoverEvent.BIND && accepted
+		if (state.isPending && (newBinding || diagnosticPendingSince == null)) {
+			diagnosticPendingSince = now
+			diagnosticProbe?.let(itemView::removeCallbacks)
+			val bindingIdentity = state.requestBindingIdentity
+			val probe = Runnable {
+				if (diagnosticRecording == recording && state.isPending &&
+					state.requestBindingIdentity === bindingIdentity && itemView.isShown &&
+					itemView.getGlobalVisibleRect(Rect())
+				) {
+					PerformanceDiagnostics.cover(recording, diagnosticHolder, CoverEvent.PENDING_VISIBLE, true,
+						true, SystemClock.elapsedRealtime() - now, false, false)
+				}
+			}
+			diagnosticProbe = probe
+			itemView.postDelayed(probe, 1_000L)
+		}
+		val pendingMs = diagnosticPendingSince?.let { now - it } ?: 0L
+		PerformanceDiagnostics.cover(
+			recording, diagnosticHolder, event, accepted, state.isPending, pendingMs,
+			binding.imageViewCover.strokeWidth > 0f, normalBorderStyle.hasGlow && !state.isPending,
+		)
+		if (!state.isPending) {
+			diagnosticProbe?.let(itemView::removeCallbacks)
+			diagnosticProbe = null
+			diagnosticPendingSince = null
+		}
+	}
+
 	if (coverBorderState != null) {
 		// One listener per holder. A payload rebind can reuse the current Coil request.
 		binding.imageViewCover.addImageRequestListener(object : ImageRequest.Listener {
 			override fun onStart(request: ImageRequest) {
 				val token = request.extras[coverBorderRequestTokenKey]
-				coverBorderState.start(request.data, token?.bindingIdentity, token)
+				val accepted = coverBorderState.start(request.data, token?.bindingIdentity, token)
 				syncLoadingBorder()
+				recordBorder(CoverEvent.START, accepted)
 			}
 
 			override fun onSuccess(request: ImageRequest, result: SuccessResult) {
-				coverBorderState.finish(request.extras[coverBorderRequestTokenKey])
+				val accepted = coverBorderState.finish(request.extras[coverBorderRequestTokenKey])
 				syncLoadingBorder()
+				recordBorder(CoverEvent.SUCCESS, accepted)
 			}
 
 			override fun onError(request: ImageRequest, result: ErrorResult) {
-				coverBorderState.finish(request.extras[coverBorderRequestTokenKey])
+				val accepted = coverBorderState.finish(request.extras[coverBorderRequestTokenKey])
 				syncLoadingBorder()
+				recordBorder(CoverEvent.ERROR, accepted)
 			}
 
 			override fun onCancel(request: ImageRequest) {
-				coverBorderState.cancel(request.extras[coverBorderRequestTokenKey])
+				val accepted = coverBorderState.cancel(request.extras[coverBorderRequestTokenKey])
 				syncLoadingBorder()
+				recordBorder(CoverEvent.CANCEL, accepted)
 			}
 		})
 	}
@@ -354,13 +404,14 @@ fun mangaGridItemAD(
 	}
 
 	bind { payloads ->
-		coverBorderState?.bind(item.coverUrl)
+		val borderBindingChanged = coverBorderState?.bind(item.coverUrl) == true
 		binding.imageViewCover.coverBorderBindingIdentity = coverBorderState?.requestBindingIdentity
 		itemView.setTooltipCompat(item.getSummary(context))
 		val visualScaleProvider = gridVisualScaleProvider
 		val visualScale = visualScaleProvider?.invoke()?.coerceIn(MIN_FIXED_GRID_SCALE, MAX_FIXED_GRID_SCALE)
 			?: DEFAULT_FIXED_GRID_SCALE
 		applyGridAppearance(usesModernCover, visualScale)
+		recordBorder(CoverEvent.BIND, borderBindingChanged)
 		if (localCinematic) {
 			val gold = ContextCompat.getColor(context, R.color.smart_local_gold)
 			val cream = ContextCompat.getColor(context, R.color.smart_local_cream)

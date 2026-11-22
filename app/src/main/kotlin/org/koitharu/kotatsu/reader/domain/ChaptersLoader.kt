@@ -7,10 +7,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.model.LocalMangaSource
-import org.koitharu.kotatsu.local.domain.LegacyCbzTrace
-import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.core.parser.FreshChapterPagesRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
@@ -21,6 +18,7 @@ import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import javax.inject.Inject
+import org.koitharu.kotatsu.core.diagnostics.ReaderEvent
 
 private const val PAGES_TRIM_THRESHOLD = 120
 
@@ -29,6 +27,8 @@ class ChaptersLoader @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val localContentReader: LocalContentReader,
 ) {
+
+	@Volatile internal var diagnostics: ReaderDiagnostics? = null
 
 	private val chapters = LongSparseArray<MangaChapter>()
 	private val sourceChapters = LongSparseArray<MangaChapter>()
@@ -196,12 +196,8 @@ class ChaptersLoader @Inject constructor(
         }
 
     private suspend fun loadPagesLocalFirst(chapter: MangaChapter): List<MangaPage> {
-        val trace = BuildConfig.DEBUG && EhentaiSourceFamily.isOfficialSource(
-            (if (chapter.source == LocalMangaSource) sourceChapters[chapter.id]?.source else chapter.source)?.name.orEmpty(),
-        )
-        if (trace) {
-            LegacyCbzTrace.log(if (chapter.source == LocalMangaSource) "READER_SELECTED_LOCAL" else "READER_SELECTED_REMOTE")
-        }
+        val diagnostic = diagnostics?.begin()
+        diagnostic?.event(if (chapter.source == LocalMangaSource) ReaderEvent.LOCAL_SELECTED else ReaderEvent.REMOTE_SELECTED)
         val primary = runCatchingCancellable {
             mangaRepositoryFactory.create(chapter.source).getPages(chapter)
         }
@@ -210,7 +206,7 @@ class ChaptersLoader @Inject constructor(
         val sourceChapter = sourceChapters[chapter.id]
         if (chapter.source == LocalMangaSource && sourceChapter != null &&
             sourceChapter.source != LocalMangaSource) {
-            if (trace) LegacyCbzTrace.log("READER_LOCAL_EMPTY_OR_FAILED_FALLBACK_REMOTE")
+            diagnostic?.event(if (primary.isFailure) ReaderEvent.FAILED_LOCAL_FALLBACK else ReaderEvent.EMPTY_LOCAL_FALLBACK)
             return mangaRepositoryFactory.create(sourceChapter.source).getPages(sourceChapter)
         }
         return primary.getOrThrow()

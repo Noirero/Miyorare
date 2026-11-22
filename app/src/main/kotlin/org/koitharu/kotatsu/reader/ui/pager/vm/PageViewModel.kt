@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -30,6 +31,7 @@ import org.koitharu.kotatsu.core.util.ext.throttle
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.reader.domain.PageLoadFailureEvents
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.domain.ReaderDiagnostics
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 
 class PageViewModel(
@@ -45,6 +47,8 @@ class PageViewModel(
 	private var cachedBounds: Rect? = null
 
 	val state = MutableStateFlow<PageState>(PageState.Empty)
+
+	@Volatile private var diagnosticLoad: ReaderDiagnostics.Operation? = null
 
 	fun isLoading() = job?.isActive == true
 
@@ -78,19 +82,22 @@ class PageViewModel(
 	}
 
 	fun onRecycle() {
+		diagnosticLoad = null
 		state.value = PageState.Empty
 		cachedBounds = null
 		job?.cancel()
 	}
 
 	override fun onImageLoaded() {
-		state.update { currentState ->
+		val diagnostic = diagnosticLoad
+		val before = state.getAndUpdate { currentState ->
 			if (currentState is PageState.Loaded) {
 				PageState.Shown(currentState.source, currentState.isConverted, currentState.isAnimatedImage)
 			} else {
 				currentState
 			}
 		}
+		if (before is PageState.Loaded) diagnostic?.pageReady()
 	}
 
 	override fun onImageLoadError(e: Throwable) {
@@ -136,6 +143,7 @@ class PageViewModel(
 
 	@WorkerThread
 	private suspend fun doLoad(data: MangaPage, force: Boolean) = coroutineScope {
+		diagnosticLoad = loader.diagnostics?.begin()
 		state.value = PageState.Loading(null, -1)
 		val previewJob = launch {
 			val preview = loader.loadPreview(data) ?: return@launch

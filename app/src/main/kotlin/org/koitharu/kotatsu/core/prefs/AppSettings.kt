@@ -1209,10 +1209,6 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_DISCORD_TOKEN, null)?.trim()?.nullIfEmpty()
 		set(value) = prefs.edit { putString(KEY_DISCORD_TOKEN, value?.nullIfEmpty()) }
 
-	var isVerboseLoggingEnabled: Boolean
-		get() = prefs.getBoolean(KEY_VERBOSE_LOGGING, false)
-		set(value) = prefs.edit { putBoolean(KEY_VERBOSE_LOGGING, value) }
-
 	val isReadingTimeEstimationEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READING_TIME, true)
 

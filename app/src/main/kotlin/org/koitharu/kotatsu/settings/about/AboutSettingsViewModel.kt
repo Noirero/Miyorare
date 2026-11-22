@@ -1,18 +1,14 @@
 package org.koitharu.kotatsu.settings.about
 
+import android.net.Uri
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import org.koitharu.kotatsu.core.github.AppUpdateRepository
 import org.koitharu.kotatsu.core.github.AppVersion
 import org.koitharu.kotatsu.core.logs.AppLogger
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
@@ -21,7 +17,6 @@ import javax.inject.Inject
 @HiltViewModel
 class AboutSettingsViewModel @Inject constructor(
 	private val appUpdateRepository: AppUpdateRepository,
-	private val settings: AppSettings,
 	private val appLogger: AppLogger,
 ) : BaseViewModel() {
 
@@ -31,69 +26,29 @@ class AboutSettingsViewModel @Inject constructor(
 
 	val onUpdateAvailable = MutableEventFlow<AppVersion?>()
 
-	private val _pendingLogExport = MutableStateFlow<String?>(null)
-	val pendingLogExport: StateFlow<String?> = _pendingLogExport
-	private var isLogExportPickerOpen = false
-	private var loggingTransitionJob: Job? = null
+	val loggingState = appLogger.state
+	val onLogActionResult = MutableEventFlow<LogActionResult>()
 
-	private val _isVerboseLogging = MutableStateFlow(settings.isVerboseLoggingEnabled)
-	val isVerboseLogging: StateFlow<Boolean> = _isVerboseLogging
-
-	init {
-		if (settings.isVerboseLoggingEnabled) {
-			appLogger.setEnabled(true)
-		}
-	}
+	enum class LogActionResult { SAVED, DELETED, FAILED }
 
 	fun checkForUpdates() {
 		launchLoadingJob {
-			// Let network/API errors reach BaseViewModel.onError. Null now only means no newer release.
 			val update = appUpdateRepository.fetchUpdateOrThrow()
 			onUpdateAvailable.call(update)
 		}
 	}
 
-	fun setVerboseLogging(enabled: Boolean) {
-		if (_isVerboseLogging.value == enabled) return
-		settings.isVerboseLoggingEnabled = enabled
-		_isVerboseLogging.value = enabled
+	fun setVerboseLogging(enabled: Boolean) = appLogger.setEnabled(enabled)
 
-		// Export must finish reading the previous session before a new session clears its files.
-		// This also serializes rapid OFF -> ON -> OFF toggles.
-		val previousTransition = loggingTransitionJob
-		loggingTransitionJob = launchJob(Dispatchers.Default) {
-			previousTransition?.join()
-			if (enabled) {
-				try {
-					appLogger.setEnabled(true, resetExistingLogs = true)
-				} catch (e: Exception) {
-					// Do not overwrite a more recent OFF choice after an ON failure.
-					if (_isVerboseLogging.value) {
-						settings.isVerboseLoggingEnabled = false
-						_isVerboseLogging.value = false
-					}
-					throw e
-				}
-			} else {
-				val content = appLogger.stopAndDrainToString()
-				if (content.isNotBlank()) {
-					// StateFlow retains the drained log while the About view is stopped/recreated.
-					_pendingLogExport.value = content
-				}
-			}
+	fun saveLog(uri: Uri) {
+		launchLoadingJob {
+			onLogActionResult.call(if (appLogger.export(uri)) LogActionResult.SAVED else LogActionResult.FAILED)
 		}
 	}
 
-	fun requestLogExport(content: String): Boolean {
-		if (_pendingLogExport.value != content || isLogExportPickerOpen) return false
-		isLogExportPickerOpen = true
-		return true
-	}
-
-	fun consumePendingLogExport(content: String) {
-		if (_pendingLogExport.value == content) {
-			_pendingLogExport.value = null
+	fun deleteLog() {
+		launchLoadingJob {
+			onLogActionResult.call(if (appLogger.deleteSaved()) LogActionResult.DELETED else LogActionResult.FAILED)
 		}
-		isLogExportPickerOpen = false
 	}
 }

@@ -24,6 +24,8 @@ class DownloadTask(
 	val appendGalleryIdToChapterFile: Boolean = false,
 	/** Explicit ExHentai request to write a separate copy instead of reusing a matching download. */
 	val downloadSeparateCopy: Boolean = false,
+	/** Captured when the user queues the request. Missing consent on older work is denied. */
+	val allowDiagnosticExport: Boolean = false,
 ) : Parcelable {
 
 	constructor(data: Data) : this(
@@ -37,6 +39,7 @@ class DownloadTask(
 		favouriteSpace = FavouriteSpace.fromArgument(data.getInt(FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)),
 		appendGalleryIdToChapterFile = data.getBoolean(APPEND_GALLERY_ID, false),
 		downloadSeparateCopy = data.getBoolean(SEPARATE_COPY, false),
+		allowDiagnosticExport = data.getBoolean(ALLOW_DIAGNOSTIC_EXPORT, false),
 	)
 
 	fun toData(): Data = Data.Builder()
@@ -50,6 +53,7 @@ class DownloadTask(
 		.putInt(FAVOURITE_SPACE, favouriteSpace.dbValue)
 		.putBoolean(APPEND_GALLERY_ID, appendGalleryIdToChapterFile)
 		.putBoolean(SEPARATE_COPY, downloadSeparateCopy)
+		.putBoolean(ALLOW_DIAGNOSTIC_EXPORT, allowDiagnosticExport)
 		.build()
 
 	/**
@@ -103,6 +107,7 @@ class DownloadTask(
 		if (favouriteSpace != other.favouriteSpace) return false
 		if (appendGalleryIdToChapterFile != other.appendGalleryIdToChapterFile) return false
 		if (downloadSeparateCopy != other.downloadSeparateCopy) return false
+		if (allowDiagnosticExport != other.allowDiagnosticExport) return false
 
 		return true
 	}
@@ -118,6 +123,7 @@ class DownloadTask(
 		result = 31 * result + favouriteSpace.hashCode()
 		result = 31 * result + appendGalleryIdToChapterFile.hashCode()
 		result = 31 * result + downloadSeparateCopy.hashCode()
+		result = 31 * result + allowDiagnosticExport.hashCode()
 		return result
 	}
 
@@ -135,5 +141,6 @@ class DownloadTask(
 		const val FAVOURITE_SPACE = "favourite_space"
 		const val APPEND_GALLERY_ID = "exhentai_gallery_id_filename"
 		const val SEPARATE_COPY = "exhentai_separate_copy"
+		const val ALLOW_DIAGNOSTIC_EXPORT = "allow_diagnostic_export"
 	}
 }

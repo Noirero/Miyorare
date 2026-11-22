@@ -116,6 +116,8 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
+import org.koitharu.kotatsu.core.diagnostics.DownloadEvent
+import org.koitharu.kotatsu.local.data.output.LocalMangaZipOutput
 
 @HiltWorker
 class DownloadWorker @AssistedInject constructor(
@@ -278,6 +280,8 @@ class DownloadWorker @AssistedInject constructor(
 
 	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask) {
 		var manga = subject
+		val diagnostic = DownloadObservation.exportFor(task) { isPublicForDiagnostics(subject.id) }
+		var expectedArchivePages = 0
 		observeDownload { "manga_lock_wait" }
 		mangaLock.withLock(manga) {
 			observeDownload { "root_begin" }
@@ -457,6 +461,11 @@ class DownloadWorker @AssistedInject constructor(
 						overallTotalPages += pages.size
 					}
 					pages ?: continue
+					if (diagnostic?.active == true &&
+						isPublicForDiagnostics(mangaDetails.id)
+					) {
+						diagnostic.record(DownloadEvent.PAGES_RESOLVED, pages.size, pages.size)
+					}
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -547,6 +556,11 @@ class DownloadWorker @AssistedInject constructor(
 					}
 
 					observeDownload { "transfer_end chapter=${chapterIndex + 1} written=${pageCounter.get()}" }
+					if (diagnostic?.active == true &&
+						isPublicForDiagnostics(mangaDetails.id)
+					) {
+						diagnostic.record(DownloadEvent.TRANSFER_FINISHED, pages.size, pageCounter.get())
+					}
 					if (downloadedPages.any { it == null }) {
 						// Successful pages may already be inside a temporary archive. Explicitly discard
 						// the chapter so finish() can never publish a partial CBZ as complete.
@@ -573,6 +587,7 @@ class DownloadWorker @AssistedInject constructor(
 					// return false until finish(), so flushChapter() is not a success/failure signal.
 					if (accounting.requestedChapterCompleted) {
 						completedRequestedChapters++
+						if (diagnostic != null) expectedArchivePages += pages.size
 					}
 					if (accounting.durableArtifactAvailable && !isExhentai) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
@@ -608,6 +623,16 @@ class DownloadWorker @AssistedInject constructor(
 					localManga
 				}
 				observeDownload { "artifact_indexed chapters=$completedRequestedChapters" }
+				if (diagnostic?.active == true &&
+					isPublicForDiagnostics(mangaDetails.id)
+				) {
+					diagnostic.record(DownloadEvent.ARCHIVE_INDEXED, expectedArchivePages, -1)
+					val archive = output as? LocalMangaZipOutput
+					if (isExhentai && archive != null) {
+						val actual = runCatchingCancellable { archive.readCommittedPageCount() }.getOrNull()
+						diagnostic.archiveCount(expectedArchivePages, actual)
+					}
+				}
 				publishState(
 					currentState.copy(
 						localManga = localManga,
@@ -949,6 +974,10 @@ class DownloadWorker @AssistedInject constructor(
 		setProgress(state.toWorkData())
 		observeDownload { "progress_end phase=${state.phase} chapter=${state.phaseChapter} progress=${state.progress}/${state.max}" }
 	}
+
+	private suspend fun isPublicForDiagnostics(mangaId: Long): Boolean =
+		!settings.isIncognitoModeEnabled &&
+			runCatchingCancellable { !database.getPrivateFavouritesDao().isPrivateOnly(mangaId) }.getOrDefault(false)
 
 	private inline fun observeDownload(message: () -> String) {
 		if (DownloadObservation.tracks(id)) DownloadObservation.record(id, message())

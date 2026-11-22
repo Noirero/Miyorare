@@ -113,6 +113,7 @@ class DownloadDialogViewModel @Inject constructor(
 		appendGalleryId: Boolean = false,
 		separateCopy: Boolean = false,
 	) {
+		val allowDiagnosticExport = !settings.isIncognitoModeEnabled
 		launchLoadingJob(Dispatchers.Default) {
 			val space = resolveFavouriteSpace()
 			val configuredRoot = destinationStore.effectiveRoot(space)
@@ -137,6 +138,7 @@ class DownloadDialogViewModel @Inject constructor(
 					appendGalleryIdToChapterFile = isOfficialExhentai && appendGalleryId &&
 						supportsExhentaiFilenameId && selectedFormat != DownloadFormat.SINGLE_CBZ,
 					downloadSeparateCopy = separate,
+					allowDiagnosticExport = allowDiagnosticExport,
 				)
 			}
 			scheduler.schedule(tasks)

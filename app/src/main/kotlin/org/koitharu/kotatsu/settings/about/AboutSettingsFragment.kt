@@ -60,18 +60,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.github.AppVersion
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.logs.AppLogger
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observeEvent
@@ -98,17 +94,7 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 	private val saveLogLauncher = registerForActivityResult(
 		ActivityResultContracts.CreateDocument("text/plain"),
 	) { uri: Uri? ->
-		val content = viewModel.pendingLogExport.value ?: return@registerForActivityResult
-		if (uri != null) {
-			try {
-				requireContext().contentResolver.openOutputStream(uri)?.use { output ->
-					output.write(content.toByteArray(Charsets.UTF_8))
-				}
-			} catch (_: Exception) {
-				view?.let { Snackbar.make(it, R.string.error_occurred, Snackbar.LENGTH_SHORT).show() }
-			}
-		}
-		viewModel.consumePendingLogExport(content)
+		if (uri != null) viewModel.saveLog(uri)
 	}
 
 	override fun onCreateView(
@@ -121,17 +107,20 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 			MiyorareSettingsTheme("about") {
 				val isUpdateSupported by viewModel.isUpdateSupported.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
-				val isVerboseLogging by viewModel.isVerboseLogging.collectAsState()
+				val loggingState by viewModel.loggingState.collectAsState()
 				AboutScreen(
 					appVersion = BuildConfig.VERSION_NAME,
 					checkUpdatesEnabled = isUpdateSupported && !isLoading,
-					isVerboseLogging = isVerboseLogging,
+					loggingState = loggingState,
+					isSavingLog = isLoading,
 					onCheckUpdates = viewModel::checkForUpdates,
 					onWhatsNew = ::openWhatsNew,
 					onChangelog = ::openChangelog,
 					onOpenLink = ::openLink,
 					onOpenProjectCredits = ::openProjectCredits,
 					onVerboseLoggingToggle = viewModel::setVerboseLogging,
+					onSaveLog = { saveLogLauncher.launch("miyorare_log_${System.currentTimeMillis()}.txt") },
+					onDeleteLog = viewModel::deleteLog,
 					onOpenDeveloperTools = ::openDeveloperTools,
 				)
 			}
@@ -148,14 +137,13 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 		viewModel.onError.observeEvent(viewLifecycleOwner) { error ->
 			Snackbar.make(view, error.getDisplayMessage(resources), Snackbar.LENGTH_SHORT).show()
 		}
-		viewLifecycleOwner.lifecycleScope.launch {
-			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-				viewModel.pendingLogExport.filterNotNull().collect { content ->
-					if (viewModel.requestLogExport(content)) {
-						saveLogLauncher.launch("miyorare_log_${System.currentTimeMillis()}.txt")
-					}
-				}
+		viewModel.onLogActionResult.observeEvent(viewLifecycleOwner) { result ->
+			val message = when (result) {
+				AboutSettingsViewModel.LogActionResult.SAVED -> R.string.about_verbose_logging_saved
+				AboutSettingsViewModel.LogActionResult.DELETED -> R.string.about_verbose_logging_deleted
+				AboutSettingsViewModel.LogActionResult.FAILED -> R.string.error_occurred
 			}
+			Snackbar.make(view, message, Snackbar.LENGTH_SHORT).show()
 		}
 	}
 
@@ -233,13 +221,16 @@ private fun Fragment.openLink(@StringRes urlRes: Int, titleRes: Int) {
 private fun AboutScreen(
 	appVersion: String,
 	checkUpdatesEnabled: Boolean,
-	isVerboseLogging: Boolean,
+	loggingState: AppLogger.State,
+	isSavingLog: Boolean,
 	onCheckUpdates: () -> Unit,
 	onWhatsNew: () -> Unit,
 	onChangelog: () -> Unit,
 	onOpenLink: (urlRes: Int, titleRes: Int) -> Unit,
 	onOpenProjectCredits: () -> Unit,
 	onVerboseLoggingToggle: (Boolean) -> Unit,
+	onSaveLog: () -> Unit,
+	onDeleteLog: () -> Unit,
 	onOpenDeveloperTools: () -> Unit,
 ) {
 	val updateColors = CategoryPalette.forKey("downloads")
@@ -294,17 +285,48 @@ private fun AboutScreen(
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.about_verbose_logging_title),
-						subtitle = if (isVerboseLogging) {
-							stringResource(R.string.about_verbose_logging_enabled_summary)
-						} else {
-							stringResource(R.string.about_verbose_logging_disabled_summary)
-						},
+						subtitle = stringResource(
+							when {
+								loggingState.phase == AppLogger.Phase.RECORDING && loggingState.capturePartial ->
+									R.string.about_verbose_logging_recording_partial
+								loggingState.phase == AppLogger.Phase.RECORDING ->
+									R.string.about_verbose_logging_enabled_summary
+								loggingState.phase == AppLogger.Phase.STOP_FAILED ->
+									R.string.about_verbose_logging_stop_failed
+								loggingState.phase != AppLogger.Phase.IDLE ->
+									R.string.about_verbose_logging_preparing
+								loggingState.failed -> R.string.about_verbose_logging_failed
+								else -> R.string.about_verbose_logging_disabled_summary
+							},
+						),
 						icon = R.drawable.ic_script,
 						iconColors = loggingColors,
 						shape = pos.shape,
-						checked = isVerboseLogging,
+						checked = loggingState.phase == AppLogger.Phase.STARTING ||
+							loggingState.phase == AppLogger.Phase.RECORDING || loggingState.phase == AppLogger.Phase.STOP_FAILED,
+						enabled = loggingState.phase == AppLogger.Phase.IDLE ||
+							loggingState.phase == AppLogger.Phase.RECORDING || loggingState.phase == AppLogger.Phase.STOP_FAILED,
 						onCheckedChange = onVerboseLoggingToggle,
 					)
+				}
+				if (loggingState.hasSavedLog) {
+					item { pos ->
+						ActionSettingsItem(
+							title = stringResource(R.string.about_verbose_logging_save),
+							subtitle = if (loggingState.savedPartial) stringResource(R.string.about_verbose_logging_partial) else null,
+							shape = pos.shape,
+							enabled = !isSavingLog && loggingState.phase == AppLogger.Phase.IDLE,
+							onClick = onSaveLog,
+						)
+					}
+					item { pos ->
+						ActionSettingsItem(
+							title = stringResource(R.string.about_verbose_logging_delete),
+							shape = pos.shape,
+							enabled = !isSavingLog && loggingState.phase == AppLogger.Phase.IDLE,
+							onClick = onDeleteLog,
+						)
+					}
 				}
 				item { pos ->
 					ActionSettingsItem(

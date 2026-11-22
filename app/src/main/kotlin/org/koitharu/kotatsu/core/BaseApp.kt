@@ -113,9 +113,9 @@ open class BaseApp : Application(), Configuration.Provider {
 		}
 		AppCompatDelegate.setDefaultNightMode(settings.theme)
 		settings.subscribe(widgetThemeWatcher)
-		appLogger.setEnabled(settings.isVerboseLoggingEnabled)
 		// Keep default platform security provider.
 		setupActivityLifecycleCallbacks()
+		appLogger.initialize()
 		cleanupDownloadedExtensionApks()
 		processLifecycleScope.launch(Dispatchers.IO) {
 			// Credentials are restored silently from app-private encrypted storage; never log values.

@@ -44,6 +44,8 @@ internal class DiagnosticsSession(
 	// Export a small Favourites-specific timeline even if logcat cannot be read on a device.
 	// Retain the beginning and the recent tail; the full stream is deliberately not buffered.
 	private var diagnosticSequence = 0L
+	private var subjectSequence = 0L
+	@Volatile var captureFailed = false
 	private val diagnosticFirst = ArrayList<String>(32)
 	private val diagnosticRecent = ArrayDeque<Pair<Long, String>>()
 	private val diagnosticCounts = LinkedHashMap<String, Long>()
@@ -104,14 +106,25 @@ internal class DiagnosticsSession(
 	/** Bounded, opt-in diagnostic event timeline; never depends on the external logcat reader. */
 	@Synchronized fun captureDiagnostic(tag: String, event: String, trace: Trace?, detail: String) {
 		if (!active) return
-		val sequence = ++diagnosticSequence
-		val key = "$tag.$event"
+		val key = "$tag." + if (event.startsWith("content_emit_")) "content_emit" else event
+		if (key !in diagnosticCounts && diagnosticCounts.size >= 64) return
 		diagnosticCounts[key] = (diagnosticCounts[key] ?: 0L) + 1
+		val sequence = ++diagnosticSequence
 		val line = "snapshot seq=$sequence t_ms=${elapsed(started)} " +
 			"trace=${trace?.takeIf(::owns)?.id ?: "none"} tag=$tag event=$event ${detail.take(240)}"
 		if (diagnosticFirst.size < 32) diagnosticFirst.add(line)
 		if (diagnosticRecent.size >= 256) diagnosticRecent.removeFirst()
 		diagnosticRecent.addLast(sequence to line)
+	}
+
+	@Synchronized fun nextSubjectId(): Long = ++subjectSequence
+
+	/** Only the approved event timeline and content-independent frame totals leave the app. */
+	@Synchronized fun exportSnapshot(): String = buildString {
+		appendLine("PERF SUMMARY session=$id duration_ms=${elapsed(started)}")
+		appendLine("frames=$frameCount janky=$jankyCount worst_frame_ms=${worstFrameNs / 1_000_000}")
+		appendLine("frame_capture_failed=$captureFailed")
+		appendDiagnosticTimeline()
 	}
 
 	@Synchronized fun frame(trace: Trace?, durationNs: Long, budgetNs: Long, dropped: Int) {
@@ -193,13 +206,18 @@ internal class DiagnosticsSession(
 			worst.forEach { v ->
 				appendLine("worst kind=${v.kind} name=${v.name} trace=${v.trace ?: "none"} duration_ms=${v.ms} outcome=${v.outcome}")
 			}
-			appendLine("diagnostic_snapshot_total=$diagnosticSequence retained_first=${diagnosticFirst.size} retained_recent=${diagnosticRecent.size}")
-			diagnosticCounts.forEach { (key, count) -> appendLine("diagnostic_count=$key count=$count") }
-			diagnosticFirst.forEach(::appendLine)
-			diagnosticRecent.forEach { (sequence, line) ->
-				if (sequence > diagnosticFirst.size) appendLine(line)
-			}
+			appendDiagnosticTimeline()
 		}.also { stoppedSummary = it }
+	}
+
+	private fun StringBuilder.appendDiagnosticTimeline() {
+		val retained = diagnosticFirst.size + diagnosticRecent.count { (sequence, _) -> sequence > diagnosticFirst.size }
+		appendLine("diagnostic_snapshot_total=$diagnosticSequence retained=$retained dropped=${diagnosticSequence - retained}")
+		diagnosticCounts.forEach { (key, count) -> appendLine("diagnostic_count=$key count=$count") }
+		diagnosticFirst.forEach(::appendLine)
+		diagnosticRecent.forEach { (sequence, line) ->
+			if (sequence > diagnosticFirst.size) appendLine(line)
+		}
 	}
 
 	private fun owns(trace: Trace) = trace.id.startsWith("$id-t")
