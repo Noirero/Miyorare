@@ -110,7 +110,11 @@ internal object EhentaiComicInfo {
             val scheme = uri.scheme
             if (scheme == null) {
                 if (!web.startsWith("/g/")) return Evidence.Invalid
-            } else if (!scheme.equals("http", true) && !scheme.equals("https", true)) {
+            } else if ((!scheme.equals("http", true) && !scheme.equals("https", true)) ||
+                uri.host.isNullOrBlank() || uri.userInfo != null
+            ) {
+                // An absolute URL needs a real official host. URI("http:/g/123") has no
+                // host, and must never be accepted as a relative gallery path.
                 return Evidence.Invalid
             }
             val id = EhentaiSourceFamily.galleryId(web)?.takeIf { it > 0 }
