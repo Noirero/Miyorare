@@ -32,6 +32,8 @@ class EhentaiComicInfoTest {
         assertEquals(EhentaiComicInfo.Evidence.Invalid, EhentaiComicInfo.inspect(external))
         val file = cbz(root, "Chapter2.cbz", xml("file:///g/123/token"))
         assertEquals(EhentaiComicInfo.Evidence.Invalid, EhentaiComicInfo.inspect(file))
+        val hostless = cbz(root, "Chapter3.cbz", xml("http:/g/123/token"))
+        assertEquals(EhentaiComicInfo.Evidence.Invalid, EhentaiComicInfo.inspect(hostless))
     }
 
     @Test fun duplicateAndMaliciousXmlAreRejected() = withRoot { root ->
