@@ -27,7 +27,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
-import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -47,6 +47,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var destinationStore: DownloadDestinationStore
+	@Inject lateinit var localRepository: LocalMangaRepository
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
 	@Inject lateinit var data: MangaDataRepository
@@ -191,7 +192,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertNotNull(found)
 			assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
 			assertTrue(downloaded(online, found))
-			val pages = LocalMangaParser(chapter).getPages(found.manga.chapters!!.single())
+			val pages = localRepository.getPages(found.manga.chapters!!.single())
 			assertEquals(1, pages.size)
 			assertEquals(URI_SCHEME_ZIP, android.net.Uri.parse(pages.single().url).scheme)
 			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
@@ -225,7 +226,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertNotNull(found)
 			assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
 			assertTrue(downloaded(online, found))
-			assertEquals(1, LocalMangaParser(chapter).getPages(found.manga.chapters!!.single()).size)
+			assertEquals(1, localRepository.getPages(found.manga.chapters!!.single()).size)
 			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 		}
 		assertArrayEquals(before, chapter.readBytes())
