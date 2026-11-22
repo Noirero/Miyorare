@@ -1619,4 +1619,5 @@
     <string name="exhentai_title_match_info_protection">The original file is not automatically changed or deleted.</string>
     <string name="exhentai_title_match_delete_protected_title">Local file protected</string>
     <string name="exhentai_title_match_delete_protected_message">This file can be read because its title matches, but Miyorare cannot verify that this source owns it. Deletion from this screen was blocked. The original file was kept.</string>
+    <string name="exhentai_unverified_delete_protected_message">Miyorare cannot verify that this source owns the selected file. Deletion from this screen was blocked to protect the original file.</string>
 </resources>

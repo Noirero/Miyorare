@@ -33,7 +33,11 @@ class DetailsErrorObserver(
 		if (value is UnverifiedDownloadRemovalException) {
 			buildAlertDialog(activity) {
 				setTitle(R.string.exhentai_title_match_delete_protected_title)
-				setMessage(R.string.exhentai_title_match_delete_protected_message)
+				setMessage(
+					if (viewModel.mangaDetails.value?.local?.matchedByTitle == true)
+						R.string.exhentai_title_match_delete_protected_message
+					else R.string.exhentai_unverified_delete_protected_message
+				)
 				setPositiveButton(R.string.close, null)
 			}.show()
 			return

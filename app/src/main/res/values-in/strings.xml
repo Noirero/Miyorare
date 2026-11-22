@@ -814,4 +814,5 @@
     <string name="exhentai_title_match_info_protection">File asli tidak diubah atau dihapus secara otomatis.</string>
     <string name="exhentai_title_match_delete_protected_title">File lokal dilindungi</string>
     <string name="exhentai_title_match_delete_protected_message">File ini dapat dibaca karena judulnya cocok, tetapi Miyorare tidak dapat memverifikasi bahwa source ini memiliki unduhannya. Penghapusan dari halaman ini ditolak. File asli tetap disimpan.</string>
+    <string name="exhentai_unverified_delete_protected_message">Miyorare tidak dapat memverifikasi bahwa source ini memiliki file yang dipilih. Penghapusan dari halaman ini ditolak untuk melindungi file aslinya.</string>
 </resources>
