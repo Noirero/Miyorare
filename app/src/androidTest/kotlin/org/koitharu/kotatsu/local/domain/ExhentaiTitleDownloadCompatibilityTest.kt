@@ -231,6 +231,18 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertArrayEquals(before, chapter.readBytes())
 	}
 
+	@Test fun detailsIgnoresEmptyDuplicateFolderAndReadsOnlyLegacyCbz() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val emptyDuplicate = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery_1")
+		check(emptyDuplicate.mkdirs())
+		val online = gallery(990023, GEKKO_SOURCE)
+		assertEquals(chapter.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		assertTrue(emptyDuplicate.isDirectory)
+		assertTrue(emptyDuplicate.listFiles().isNullOrEmpty())
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
 	@Test fun detailsRejectsUnreadableCbzDespiteMatchingTitle() = runBlocking {
 		val dir = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery")
 		check(dir.mkdirs())
