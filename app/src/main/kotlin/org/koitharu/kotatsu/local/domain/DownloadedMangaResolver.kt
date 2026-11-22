@@ -180,7 +180,7 @@ class DownloadedMangaResolver @Inject constructor(
 					val receipt = ExhentaiChapterOwnership.inspectDestination(candidate)
 					receipt is ExhentaiChapterOwnership.Evidence.Owned &&
 						receipt.galleryId == galleryId &&
-						(receipt.receipt?.space == null || receipt.receipt.space == space)
+						(receipt.receipt?.space == null || receipt.receipt?.space == space)
 				}.singleOrNull() ?: return null
 			}
 		}
