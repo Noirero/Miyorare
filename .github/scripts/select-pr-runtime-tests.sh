@@ -95,6 +95,9 @@ add_local_download_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/data/ExhentaiImportedComicInfoTest.kt ]]; then
     add_class org.koitharu.kotatsu.local.data.ExhentaiImportedComicInfoTest
   fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/domain/ExhentaiTitleDownloadCompatibilityTest.kt ]]; then
+    add_class org.koitharu.kotatsu.local.domain.ExhentaiTitleDownloadCompatibilityTest
+  fi
   add_class org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
     add_class org.koitharu.kotatsu.settings.DownloadDestinationSettingsTest
@@ -200,6 +203,9 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/data/ExhentaiImportedComicInfoTest.kt ]]; then
     add_class org.koitharu.kotatsu.local.data.ExhentaiImportedComicInfoTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/domain/ExhentaiTitleDownloadCompatibilityTest.kt ]]; then
+    add_class org.koitharu.kotatsu.local.domain.ExhentaiTitleDownloadCompatibilityTest
   fi
   add_class org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
