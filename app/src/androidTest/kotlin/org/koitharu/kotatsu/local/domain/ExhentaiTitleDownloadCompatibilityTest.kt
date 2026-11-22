@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -170,6 +171,48 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun detailsReadsIndexedCbzWithForeignGalleryAndComicInfoWithoutChangingOwnership() = runBlocking {
+		val foreignIndex = """{"id":888100,"title":"Other gallery","url":"https://exhentai.org/g/888100/token/",
+			"source":"TSUKI:MIYORARE:miyorare-global:EXHENTAI","tags":[],
+			"chapters":{"888101":{"url":"chapter","entries":"[0-9]+","number":1}}}"""
+		val chapter = archive(
+			"Legacy Gallery", "Chapter.cbz",
+			comment = ExhentaiChapterOwnership.comment(888100),
+			index = foreignIndex,
+			comicInfo = "<ComicInfo><Web>https://exhentai.org/g/888100/token/</Web></ComicInfo>",
+		)
+		val original = chapter.readBytes()
+		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
+			val online = gallery(990016, source)
+			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+			assertNotNull(found)
+			assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
+			assertTrue(downloaded(online, found))
+			val pages = LocalMangaParser(chapter).getPages(found.manga.chapters!!.single())
+			assertEquals(1, pages.size)
+			assertTrue(pages.single().url.startsWith("zip:"))
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+		}
+		assertArrayEquals(original, chapter.readBytes())
+	}
+
+	@Test fun detailsChoosesUniqueExactReceiptButNeverArbitrarySameTitleCopy() = runBlocking {
+		val legacy = archive("Legacy Gallery", "Chapter.cbz")
+		val receipt = ExhentaiChapterOwnership.scopedComment(
+			990017, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
+		)
+		val exact = archive("Legacy Gallery_2", "Chapter.cbz", comment = receipt)
+		val online = gallery(990017, GEKKO_SOURCE)
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+		assertEquals(exact.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		assertNull(resolver.findSavedManga(gallery(990018, GEKKO_SOURCE),
+			FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertTrue(legacy.isFile)
+		assertTrue(exact.isFile)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
 	@Test fun sharedRootRequiresExistingSpaceProofAndNeverWritesOwnership() = runBlocking {
 		prefs.edit(commit = true) {
 			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
@@ -177,6 +220,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		val online = gallery(990008, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
 		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
 		val ownerId = 990009L // Gekko's existing task owns the folder, not Main.
 		data.storeManga(gallery(ownerId, GEKKO_SOURCE), replaceExisting = true, detailsFetched = true)
 		database.getFavouriteDownloadIndexDao().upsert(
@@ -208,7 +252,10 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		MangaDetails(remote).copy(localManga = local)
 			.mapChapters(0L, 0, null, emptyList(), false, false).single().isDownloaded
 
-	private fun archive(folder: String, name: String, comment: String? = null, private: Boolean = false): File {
+	private fun archive(
+		folder: String, name: String, comment: String? = null, private: Boolean = false,
+		index: String? = null, comicInfo: String? = null,
+	): File {
 		val base = if (private) File(root, "private") else root
 		val dir = File(base, "downloads/ExHentai (OTHER)/$folder")
 		check(dir.mkdirs())
@@ -218,6 +265,16 @@ class ExhentaiTitleDownloadCompatibilityTest {
 				zip.putNextEntry(ZipEntry("1.webp"))
 				zip.write(byteArrayOf(1, 2, 3))
 				zip.closeEntry()
+				if (index != null) {
+					zip.putNextEntry(ZipEntry("index.json"))
+					zip.write(index.toByteArray())
+					zip.closeEntry()
+				}
+				if (comicInfo != null) {
+					zip.putNextEntry(ZipEntry("ComicInfo.xml"))
+					zip.write(comicInfo.toByteArray())
+					zip.closeEntry()
+				}
 			}
 		}
 	}
