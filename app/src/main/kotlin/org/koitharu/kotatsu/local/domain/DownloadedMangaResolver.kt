@@ -164,6 +164,9 @@ class DownloadedMangaResolver @Inject constructor(
 			for (file in EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, manga.title)) {
 				if (!file.isInside(root)) continue
 				candidates += file.canonicalFile
+				// Bound total candidates across all historical roots, not only per source directory.
+				// The Details path must not inspect an unbounded number of duplicate archives.
+				if (candidates.size > MAX_DETAILS_TITLE_CANDIDATES) return null
 				// Existing non-Details call sites fail closed on multiple physical copies.
 				if (!detailsTitleRead && candidates.size > 1) return null
 			}
@@ -200,6 +203,10 @@ class DownloadedMangaResolver @Inject constructor(
 		if (sharedRoot && receiptSpace != space && existingOwners.none { it.space == space.dbValue }) return null
 
 		return ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file, allowIndexed = detailsTitleRead)
+	}
+
+	private companion object {
+		const val MAX_DETAILS_TITLE_CANDIDATES = 32
 	}
 
 	private fun canInferSpaceFromPath(): Boolean =
