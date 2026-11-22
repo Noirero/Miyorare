@@ -210,8 +210,14 @@ class FavouritesListViewModel @Inject constructor(
 		.map { it.setId }
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
+	private val allLibraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
+		viewModelScope + Dispatchers.Default,
+		SharingStarted.Eagerly,
+		emptyList(),
+	)
+
 	private val libraryGroups = combine(
-		libraryGroupsRepository.observeGroups(favouriteSpace),
+		allLibraryGroups,
 		selectedLibraryGroupSetId,
 	) { groups, ownerSetId ->
 		if (ownerSetId == null) emptyList() else groups.filter { it.setId == ownerSetId }
@@ -616,8 +622,10 @@ class FavouritesListViewModel @Inject constructor(
 		)
 	}
 
+	// Conflict confirmation must include hidden Groups in other Sets. The picker
+	// and rendered Groups remain scoped to the selected Set.
 	fun getLibraryGroupConflicts(targetGroupId: Long, mangaIds: Set<Long>): List<LibraryGroup> =
-		libraryGroups.value.filter { group ->
+		allLibraryGroups.value.filter { group ->
 			group.id != targetGroupId && group.memberIds.any { it in mangaIds }
 		}
 
