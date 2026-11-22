@@ -121,9 +121,11 @@ class DownloadedMangaResolver @Inject constructor(
 				?: localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
 				?: findTitleMatchedChapter(manga, space, roots)
 		}
-		if (!canInferSpaceFromPath()) {
-			return if (titleFallback) findTitleMatchedChapter(manga, space, roots) else null
-		}
+		// The generic title/index bridge persists aliases and can silently promote another
+		// ExHentai source's file into ownership. For title-compatible sources, only the
+		// explicit source-owned row above or the read-only fallback may supply local state.
+		if (titleFallback) return findTitleMatchedChapter(manga, space, roots)
+		if (!canInferSpaceFromPath()) return null
 
 		// With distinct roots the global Local index is safe as a compatibility hint, but it still has
 		// to live inside the requested space before it can be accepted and persisted as ownership.
@@ -137,7 +139,7 @@ class DownloadedMangaResolver @Inject constructor(
 			rememberFavouriteDownloadOwnership(space, manga.id, indexed.file)
 			return indexed
 		}
-		return if (titleFallback) findTitleMatchedChapter(manga, space, roots) else null
+		return null
 	}
 
 	/**
