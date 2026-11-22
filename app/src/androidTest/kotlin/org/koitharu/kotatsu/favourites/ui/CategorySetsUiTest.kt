@@ -576,6 +576,15 @@ class CategorySetsUiTest {
 					"A1: Group from another Set leaked into Add-to-Group picker",
 					model.getLibraryGroupsForAdd().any { it.id == groupId },
 				)
+				assertEquals(
+					"A1: changing selected Set must never silently rehome a Group",
+					selectedSet.setId,
+					runBlocking { database.getLibraryGroupsDao().findGroup(groupId)?.setId },
+				)
+				instrumentation.runOnMainSync {
+					selection.select(selectedSet, space, FavouriteContentType.MANGA)
+				}
+				await { model.getLibraryGroupsForAdd().any { it.id == groupId } }
 			} finally {
 				// The next UI test's clearAllTables() cannot delete an owned Set
 				// before its Group because the existing owner triggers are active.

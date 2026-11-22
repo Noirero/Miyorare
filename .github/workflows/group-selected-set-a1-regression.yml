@@ -14,14 +14,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  group-a1-regression:
-    name: Selected Set A1 Android 15 reproduction
+  selected-set-a1:
+    name: Selected Set A1 Android API${{ matrix.api-level }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [35, 26]
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: Checkout exact pushed SHA
+      - name: Checkout exact SHA
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
@@ -49,7 +53,63 @@ jobs:
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
 
-      - name: Run selected Set A1 instrumented regression
+      - name: Run selected Set A1 instrumentation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >
+            ./gradlew :app:connectedDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest#selectedSetA1GroupCreationAndPickerRespectOwner
+
+      - name: Upload selected Set A1 result XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selected-set-a1-api${{ matrix.api-level }}-evidence
+          path: app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7
+
+  native-backup-safety:
+    name: Targeted native Group Backup Restore and owner safety Android 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact SHA and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF" = 'refs/heads/agent/set-scoped-groups-migration-55-56-20261120'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Run targeted native Backup Restore safety instrumentation
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -59,4 +119,13 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >
             ./gradlew :app:connectedDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.favourites.ui.CategorySetsUiTest#selectedSetA1GroupCreationAndPickerRespectOwner
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#localGroupCrudReorderAndDeleteCascadesWithoutLosingFavourites,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#localGroupMemberMoveRejectsThenDissolvesSourceWithoutOwnerDrift,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#normalGroupBackupPreservesSetOwnershipAcrossRemappedIds,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#privateGroupBackupPreservesSetOwnershipWithOptIn,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#existingGroupOwnerCollisionFailsClosedWithoutMutation,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#overlappingGroupsAcrossSetsRejectAmbiguousRestoreWithoutMutation,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#lateCategoryMappingFailureRollsBackEveryGroupChild,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#normalNativeGroupRestoreTwiceSurvivesDatabaseReopen,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#privateNativeGroupRestoreTwiceSurvivesDatabaseReopen,org.koitharu.kotatsu.backup.local.LibraryGroupSetBackupRegressionTest#remoteSetTombstoneWithOwnedGroupFailsClosedAcrossRetries
+
+      - name: Upload native Group Backup Restore safety result XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group-native-backup-restore-a1-safety-android15-evidence
+          path: app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7

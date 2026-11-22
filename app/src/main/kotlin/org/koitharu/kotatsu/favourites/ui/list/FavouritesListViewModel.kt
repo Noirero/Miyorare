@@ -203,11 +203,19 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
-	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
-		viewModelScope + Dispatchers.Default,
-		SharingStarted.Eagerly,
-		emptyList(),
-	)
+	// A1: group ownership follows the navigation-selected Set, not the default Set.
+	// Keep the unfiltered stream only for space-wide membership checks in the repository.
+	private val selectedLibraryGroupSetId: StateFlow<Long?> = setSelection
+		.observe(favouriteSpace, contentTypeStore.selectedType(favouriteSpace))
+		.map { it.setId }
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
+	private val libraryGroups = combine(
+		libraryGroupsRepository.observeGroups(favouriteSpace),
+		selectedLibraryGroupSetId,
+	) { groups, ownerSetId ->
+		if (ownerSetId == null) emptyList() else groups.filter { it.setId == ownerSetId }
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	init {
 		viewModelScope.launch(Dispatchers.Default) {
@@ -592,7 +600,11 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
-		libraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds, space = favouriteSpace)
+		val selectedSetId = setSelection
+			.observe(favouriteSpace, contentTypeStore.selectedType(favouriteSpace)).first().setId
+		libraryGroupsRepository.createGroup(
+			title = title, mangaIds = mangaIds, space = favouriteSpace, setId = selectedSetId,
+		)
 	}
 
 	fun getLibraryGroupsForAdd(): List<LibraryGroup> {
