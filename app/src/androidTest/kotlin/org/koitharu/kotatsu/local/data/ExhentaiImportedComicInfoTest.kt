@@ -67,6 +67,18 @@ class ExhentaiImportedComicInfoTest {
         assertNull(local.findExhentaiInRoots(gallery(3863867L), listOf(root), true))
     }
 
+    @Test fun xmlFreeCbzOnlyMatchesWithExplicitExactOwnerHint() = runBlocking {
+        val folder = File(root, "downloads/E-Hentai (EN)/Same Gallery").apply { mkdirs() }
+        val cbz = archive(folder)
+        assertNull(ExhentaiDownloadedCopy.find(gallery(10001L), cbz, true))
+        val owned = ExhentaiDownloadedCopy.find(
+            gallery(10001L), cbz, true, trustedOwnedPath = true,
+        )
+        assertNotNull(owned)
+        assertFalse(owned!!.verified)
+        assertFalse(detailsDownloaded(gallery(10002L), null))
+    }
+
     @Test fun independentXmlEvidenceDisambiguatesENAndALL() = runBlocking {
         val en = File(root, "downloads/E-Hentai (EN)/Same Gallery").apply { mkdirs() }
         val all = File(root, "downloads/E-Hentai (ALL)/Same Gallery").apply { mkdirs() }
