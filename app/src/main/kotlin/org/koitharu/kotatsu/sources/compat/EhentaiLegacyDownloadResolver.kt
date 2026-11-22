@@ -61,28 +61,73 @@ internal object EhentaiLegacyDownloadResolver {
 		val cacheKey = galleryId?.let { "${root.stablePath()}#$it" }
 		cacheKey?.let(resolvedPathCache::get)?.let(::File)?.takeIf(::isValidCachedDirectory)?.let { return it }
 
+		val match = findCandidateDirectories(root, remoteSourceName, remoteTitle)
+			.filter(::hasLegacyChapter).singleOrNull()
+		return match?.also { found ->
+			if (cacheKey != null) resolvedPathCache[cacheKey] = found.stablePath()
+		}
+
+	}
+
+	/**
+	 * Return bounded, distinct legacy title candidates. Callers must inspect independent gallery
+	 * evidence before choosing among EN/ALL duplicates; this is discovery, not identity.
+	 * An overlarge ambiguous set fails closed instead of silently picking the first candidate.
+	 */
+	fun findCandidateDirectories(root: File, remoteSourceName: String, remoteTitle: String): List<File> {
+		if (!isFamilySource(remoteSourceName)) return emptyList()
 		val matches = LinkedHashMap<String, File>()
-		val contentRoots = linkedSetOf(
-			File(root, "downloads"),
-			root,
-		)
-		for (contentRoot in contentRoots) {
-			val sourceDirectories = contentRoot.listFiles()
+		for (contentRoot in linkedSetOf(File(root, "downloads"), root)) {
+			val sources = contentRoot.listFiles()
 				?.filter { it.isDirectory && isLegacySourceDirectoryName(it.name) }
 				.orEmpty()
-			for (sourceDirectory in sourceDirectories) {
-				for (candidate in indexedTitleCandidates(sourceDirectory, remoteTitle)) {
-					if (!hasLegacyChapter(candidate)) continue
+			for (source in sources) {
+				for (candidate in indexedTitleCandidates(source, remoteTitle)) {
+					if (!candidate.isDirectory) continue
+					// A nonstandard chapter filename is only a discovery candidate; the caller
+					// must still verify its embedded or adjacent ComicInfo gallery ID.
+					val containsCbz = candidate.listFiles()?.any {
+						it.isFile && it.extension.equals("cbz", ignoreCase = true)
+					} == true
+					if (!containsCbz) continue
 					matches.putIfAbsent(candidate.stablePath(), candidate)
-					// Once two distinct valid copies exist the result is necessarily ambiguous. Stop here
-					// instead of walking the rest of the user's E-Hentai library for no possible benefit.
-					if (matches.size > 1) return null
+					if (matches.size > MAX_LEGACY_CANDIDATES) return emptyList()
 				}
 			}
 		}
-		return matches.values.singleOrNull()?.also { match ->
-			if (cacheKey != null) resolvedPathCache[cacheKey] = match.stablePath()
+		return matches.values.toList()
+	}
+
+	/**
+	 * Read-only chapter candidates for the opt-in ExHentai title fallback. Supports the current
+	 * ExHentai (OTHER) layout and historical E-Hentai language buckets, including _1/_2 duplicates.
+	 * The caller must reject ambiguous candidates and enforce FavouriteSpace boundaries.
+	 */
+	fun findTitleMatchedChapters(root: File, remoteTitle: String): List<File> {
+		val matches = LinkedHashMap<String, File>()
+		for (contentRoot in linkedSetOf(File(root, "downloads"), root)) {
+			val sources = contentRoot.listFiles()?.filter { it.isDirectory &&
+				(it.name.equals("ExHentai (OTHER)", ignoreCase = true) ||
+					isLegacySourceDirectoryName(it.name))
+			}.orEmpty()
+			for (source in sources) {
+				val sourcePath = source.canonicalFile.toPath()
+				for (candidate in indexedTitleCandidates(source, remoteTitle)) {
+					val artifact = when {
+						candidate.isDirectory -> candidate.listFiles { file ->
+							file.isFile && isLegacyChapterArtifactName(file.name)
+						}?.singleOrNull()
+						candidate.isFile && candidate.extension.equals("cbz", ignoreCase = true) -> candidate
+						else -> null
+					} ?: continue
+					val canonical = artifact.canonicalFile
+					if (!canonical.toPath().startsWith(sourcePath)) continue
+					matches.putIfAbsent(canonical.path, canonical)
+					if (matches.size > MAX_LEGACY_CANDIDATES) return emptyList()
+				}
+			}
 		}
+		return matches.values.toList()
 	}
 
 	/**
@@ -173,9 +218,10 @@ internal object EhentaiLegacyDownloadResolver {
 	): SourceDirectoryIndex {
 		val byTitle = LinkedHashMap<String, MutableList<File>>()
 		for (candidate in sourceDirectory.listFiles().orEmpty()) {
-			if (!candidate.isDirectory) continue
-			val keys = linkedSetOf(normalizedTitle(candidate.name))
-			val withoutDuplicateSuffix = candidate.name.replace(duplicateDirectorySuffix, "")
+			if (!candidate.isDirectory && !(candidate.isFile && candidate.extension.equals("cbz", ignoreCase = true))) continue
+			val name = if (candidate.isFile) candidate.nameWithoutExtension else candidate.name
+			val keys = linkedSetOf(normalizedTitle(name))
+			val withoutDuplicateSuffix = name.replace(duplicateDirectorySuffix, "")
 			keys += normalizedTitle(withoutDuplicateSuffix)
 			for (title in keys) {
 				if (title.isNotEmpty()) {
@@ -219,5 +265,6 @@ internal object EhentaiLegacyDownloadResolver {
 	)
 
 	private const val LEGACY_CHAPTER_FILE = "Chapter.cbz"
+	private const val MAX_LEGACY_CANDIDATES = 32
 	private const val SOURCE_INDEX_TTL_MS = 10_000L
 }

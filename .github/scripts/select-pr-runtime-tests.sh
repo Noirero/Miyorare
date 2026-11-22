@@ -92,6 +92,12 @@ add_local_download_suite() {
   add_class org.koitharu.kotatsu.local.data.FastDownloadedNovelResolutionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/data/ExhentaiImportedComicInfoTest.kt ]]; then
+    add_class org.koitharu.kotatsu.local.data.ExhentaiImportedComicInfoTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/domain/ExhentaiTitleDownloadCompatibilityTest.kt ]]; then
+    add_class org.koitharu.kotatsu.local.domain.ExhentaiTitleDownloadCompatibilityTest
+  fi
   add_class org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
     add_class org.koitharu.kotatsu.settings.DownloadDestinationSettingsTest
@@ -195,6 +201,12 @@ add_full_suite() {
   add_class org.koitharu.kotatsu.details.ui.prediction.ChapterReleasePredictionSheetTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadMaintenanceRegressionTest
   add_class org.koitharu.kotatsu.download.domain.maintenance.DownloadIndexCoverSafetyTest
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/data/ExhentaiImportedComicInfoTest.kt ]]; then
+    add_class org.koitharu.kotatsu.local.data.ExhentaiImportedComicInfoTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/domain/ExhentaiTitleDownloadCompatibilityTest.kt ]]; then
+    add_class org.koitharu.kotatsu.local.domain.ExhentaiTitleDownloadCompatibilityTest
+  fi
   add_class org.koitharu.kotatsu.settings.DownloadMaintenanceSettingsTest
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/DownloadDestinationSettingsTest.kt ]]; then
     add_class org.koitharu.kotatsu.settings.DownloadDestinationSettingsTest
@@ -582,6 +594,18 @@ self_test() {
     out="$(plan_from_paths false "$path")"
     [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
   done
+  # A class omitted from the filter never executes, even in --full mode.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/local/data/ExhentaiImportedComicInfoTest.kt ]]; then
+    for path in 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/ExhentaiDownloadedCopy.kt' \
+                'app/src/androidTest/kotlin/org/koitharu/kotatsu/local/data/ExhentaiImportedComicInfoTest.kt'; do
+      out="$(plan_from_paths false "$path")"
+      grep -q '^mode=targeted$' <<<"$out"
+      [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.local.data.ExhentaiImportedComicInfoTest')" == 1 ]]
+    done
+    out="$(plan_from_paths true 'README.md')"
+    grep -q '^mode=full$' <<<"$out"
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.local.data.ExhentaiImportedComicInfoTest')" == 1 ]]
+  fi
   for out in "$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/core/logs/VerboseLogStore.kt')" \
              "$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt')" \
              "$(plan_from_paths true 'README.md')"; do
