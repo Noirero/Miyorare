@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.sources.compat.EhentaiComicInfo
 import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
@@ -38,6 +39,10 @@ internal object ExhentaiDownloadedCopy {
 		if (remote.chapters?.size != 1) return@runCatchingCancellable null
 		val origin = LocalMangaParser.getOrNull(file)?.getMangaInfo()
 		if (origin != null && !originMatches(remote, origin)) return@runCatchingCancellable null
+		if (origin == null) {
+			val claimedId = (EhentaiComicInfo.inspect(file) as? EhentaiComicInfo.Evidence.Gallery)?.id
+			if (claimedId == null || claimedId != remote.galleryId()) return@runCatchingCancellable null
+		}
 		val hasPages = ZipFile(file).use { zip ->
 			zip.getEntry("index.json") == null && zip.entries().asSequence().any { entry ->
 				!entry.isDirectory && '/' !in entry.name &&
@@ -102,9 +107,12 @@ internal object ExhentaiDownloadedCopy {
 					val local = parser.getManga(withDetails)
 					if (withDetails && local.manga.chapters.isNullOrEmpty()) return null
 					Match(LegacyChapterDownloadCompat.linkToRemote(remote, local), true, physicalMangaId = local.manga.id)
-				} else if (EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(file.name)) {
-					chapterCopy(remote, file, withDetails, false)
-				} else null
+				} else {
+					// The legacy filename is not gallery identity evidence for online Details.
+					val xmlId = (EhentaiComicInfo.inspect(file) as? EhentaiComicInfo.Evidence.Gallery)?.id
+					if (xmlId != null && xmlId == remote.galleryId()) chapterCopy(remote, file, withDetails, false)
+					else null
+				}
 			}
 		}
 	}
@@ -135,50 +143,25 @@ internal object ExhentaiDownloadedCopy {
 			if (exact.isNotEmpty()) return null
 		}
 		if (request != null) return null
-		val unknownFiles = LinkedHashSet<File>()
 		val embeddedMatches = ArrayList<File>()
+		val metadataMatches = ArrayList<File>()
 		for ((file, evidence) in candidates) {
 			if (evidence != ExhentaiChapterOwnership.Evidence.Unmarked) continue
 			val embedded = LocalMangaParser.getOrNull(file)?.getMangaInfo()
 			when {
-				embedded == null -> unknownFiles += file
-				originMatches(remote, embedded) -> embeddedMatches += file
-				// A readable name is not allowed to override another archive's own metadata.
+				embedded != null && originMatches(remote, embedded) -> embeddedMatches += file
+				embedded != null -> Unit // A foreign index cannot be overridden by an XML claim.
+				else -> {
+					val xmlId = (EhentaiComicInfo.inspect(file) as? EhentaiComicInfo.Evidence.Gallery)?.id
+					if (galleryId != null && xmlId == galleryId) metadataMatches += file
+				}
 			}
 		}
 		embeddedMatches.singleOrNull()?.let { return findArchive(remote, it, withDetails) }
 		if (embeddedMatches.isNotEmpty()) return null
-		if (unknownFiles.isEmpty()) return null
-		val parser = LocalMangaParser.getOrNull(dir) ?: return null
-		val origin = parser.getMangaInfo()
-		if (origin != null && !originMatches(remote, origin)) return null
-
-		// Preserve the existing legacy split and hash rules, but never hand them a marked foreign
-		// file or a corrupt CBZ. A title-based fallback must not become a deletion authorization.
-		val physical = LocalMangaParser(dir, ignoreDirectoryIndex = true).getManga(withDetails = true)
-		val chapters = physical.manga.chapters.orEmpty().filter { chapter ->
-			chapterArtifact(chapter)?.canonicalFile in unknownFiles
-		}
-		if (chapters.isEmpty()) return null
-		val snapshot = physical.copy(manga = physical.manga.copy(chapters = chapters))
-		val remoteChapter = remote.chapters.orEmpty().singleOrNull()
-		if (remoteChapter != null) {
-			LegacySplitChapterCompat.linkToRemote(remote, snapshot)?.let { split ->
-				return Match(split.withRequestedDetails(withDetails), false)
-			}
-			val linked = LegacyChapterDownloadCompat.linkToRemote(remote, snapshot)
-			val chapter = linked.manga.chapters.orEmpty().firstOrNull { it.id == remoteChapter.id }
-				?: chapters.singleOrNull()?.takeIf {
-					chapterArtifact(it)?.name?.let(EhentaiLegacyDownloadResolver::isLegacyChapterArtifactName) == true
-				}
-				?: return null
-			val cbz = chapterArtifact(chapter) ?: return null
-			return chapterCopy(remote, cbz, withDetails, false)
-		}
-		val onlyFile = unknownFiles.singleOrNull()?.takeIf {
-			EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(it.name)
-		} ?: return null
-		return chapterCopy(remote, onlyFile, withDetails, false)
+		metadataMatches.singleOrNull()?.let { return findArchive(remote, it, withDetails) }
+		// Files with only title/filename evidence remain readable locally, never online-owned.
+		return null
 	}
 
 	private suspend fun chapterCopy(remote: Manga, file: File, withDetails: Boolean, verified: Boolean): Match? {
