@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -190,7 +191,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertTrue(downloaded(online, found))
 			val pages = LocalMangaParser(chapter).getPages(found.manga.chapters!!.single())
 			assertEquals(1, pages.size)
-			assertTrue(pages.single().url.startsWith("zip:"))
+			assertEquals(URI_SCHEME_ZIP, android.net.Uri.parse(pages.single().url).scheme)
 			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 		}
 		assertArrayEquals(original, chapter.readBytes())
