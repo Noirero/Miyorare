@@ -94,6 +94,8 @@ class DiscoveryHubViewModel @Inject constructor(
 		}
 	}
 
+	fun revalidateHome() = loader.reloadIfStale()
+
 	fun refreshAccount() = refreshAccount(state.value.request.service)
 
 	private fun refreshAccount(service: ScrobblerService) {

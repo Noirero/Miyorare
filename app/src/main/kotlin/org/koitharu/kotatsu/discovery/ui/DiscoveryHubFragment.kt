@@ -104,7 +104,10 @@ class DiscoveryHubFragment : Fragment() {
 	override fun onResume() {
 		super.onResume()
 		viewModel.refreshAccount()
-		if (!isHidden) installDiscoverySearchHandler()
+		if (!isHidden) {
+			viewModel.revalidateHome()
+			installDiscoverySearchHandler()
+		}
 	}
 
 	override fun onHiddenChanged(hidden: Boolean) {
@@ -113,6 +116,7 @@ class DiscoveryHubFragment : Fragment() {
 			releaseDiscoverySearchHandler()
 		} else if (view != null) {
 			viewModel.refreshAccount()
+			viewModel.revalidateHome()
 			installDiscoverySearchHandler()
 		}
 	}
