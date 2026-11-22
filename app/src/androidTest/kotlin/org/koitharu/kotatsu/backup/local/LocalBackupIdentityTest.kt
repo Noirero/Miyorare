@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.backup.local
 
+import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -19,13 +20,16 @@ import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
 import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.history.data.HistoryEntity
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -51,6 +55,64 @@ class LocalBackupIdentityTest {
 		hiltRule.inject()
 		database.clearAllTables()
 		privateSecurity.includePrivateInBackup = false
+	}
+
+	@Test
+	fun discordTokenMigratesLocallyAndCannotBeExportedOrRestored() = runTest {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val key = AppSettings.KEY_DISCORD_TOKEN
+		val localToken = "fixture-device-only-token"
+		val staleToken = "fixture-legacy-backup-token"
+		val previous = AppSettings(context).discordToken
+		val previousSkipNsfw = prefs.all[AppSettings.KEY_DISCORD_RPC_SKIP_NSFW] as? Boolean
+		val settings = AppSettings(context)
+		try {
+			settings.discordToken = null
+			prefs.edit().putString(key, localToken).commit()
+			val upgraded = AppSettings(context)
+			assertTrue(upgraded.discordToken == localToken)
+			assertFalse(prefs.contains(key))
+
+			// Even an old copy still in general settings must be filtered by the exporter.
+			prefs.edit().putString(key, staleToken).commit()
+			val backup = ByteArrayOutputStream()
+			ZipOutputStream(backup).use { repository.createBackup(it, null) }
+			ZipInputStream(backup.toByteArray().inputStream()).use { input ->
+				var entry = input.nextEntry
+				while (entry != null && entry.name != BackupSection.SETTINGS.entryName) {
+					entry = input.nextEntry
+				}
+				assertTrue(entry != null)
+				val exportedSettings = input.readBytes().toString(Charsets.UTF_8)
+				assertFalse(exportedSettings.contains(key))
+				assertFalse(exportedSettings.contains(localToken))
+				assertFalse(exportedSettings.contains(staleToken))
+			}
+
+			prefs.edit().remove(key).putBoolean(AppSettings.KEY_DISCORD_RPC_SKIP_NSFW, false).commit()
+			val oldBackup = ByteArrayOutputStream()
+			ZipOutputStream(oldBackup).use { output ->
+				output.putNextEntry(ZipEntry(BackupSection.SETTINGS.entryName))
+				output.write(
+					"""{"$key":{"_t":"string","v":"$staleToken"},"${AppSettings.KEY_DISCORD_RPC_SKIP_NSFW}":{"_t":"bool","v":true}}"""
+						.toByteArray(),
+				)
+				output.closeEntry()
+			}
+			ZipInputStream(oldBackup.toByteArray().inputStream()).use { input ->
+				assertTrue(repository.restoreBackup(input, setOf(BackupSection.SETTINGS), null).isAllSuccess)
+			}
+			assertTrue(upgraded.isDiscordRpcSkipNsfw)
+			assertTrue(upgraded.discordToken == localToken)
+			assertFalse(prefs.contains(key))
+		} finally {
+			settings.discordToken = previous
+			val editor = prefs.edit()
+			if (previousSkipNsfw == null) editor.remove(AppSettings.KEY_DISCORD_RPC_SKIP_NSFW)
+			else editor.putBoolean(AppSettings.KEY_DISCORD_RPC_SKIP_NSFW, previousSkipNsfw)
+			editor.apply()
+		}
 	}
 
 	@Test
