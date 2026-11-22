@@ -336,7 +336,7 @@ class DetailsLoadUseCase @Inject constructor(
 		emit(visibleDetails)
 
 		val discoveredLocal = localLookup.await()
-			?: PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace) }
+			?: PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, forExhentaiDetails = true) }
 		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(
 				manga = remoteDetails,
