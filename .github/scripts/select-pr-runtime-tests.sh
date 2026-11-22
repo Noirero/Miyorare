@@ -67,6 +67,12 @@ add_reader_custom_tint_suite() {
   MAPPED=true
 }
 
+add_verbose_diagnostics_suite() {
+  add_class org.koitharu.kotatsu.core.logs.AppLoggerStopRecoveryRuntimeTest
+  add_class org.koitharu.kotatsu.download.domain.DownloadDiagnosticPrivacyRuntimeTest
+  MAPPED=true
+}
+
 add_migration_suite() {
   add_class org.koitharu.kotatsu.alternatives.domain.LosslessMigrationTransferRegressionTest
   add_class org.koitharu.kotatsu.alternatives.domain.SimpleMigrationTransferRegressionTest
@@ -246,6 +252,7 @@ add_full_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
     add_class org.koitharu.kotatsu.download.DownloadFixRegressionTest
   fi
+  add_verbose_diagnostics_suite
 
   RUN_RUNTIME_ISOLATION=true
   RUN_MIGRATION_PERSISTENCE=true
@@ -271,6 +278,13 @@ plan_path() {
 
     app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderColorFilter.kt|app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTint.kt|app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/colorfilter/*|app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/pager/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTintRuntimeTest.kt)
       add_reader_custom_tint_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/core/logs/AppLogger.kt|app/src/main/kotlin/org/koitharu/kotatsu/core/logs/VerboseLogStore.kt|app/src/main/kotlin/org/koitharu/kotatsu/core/diagnostics/*|app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/ReaderDiagnostics.kt|app/src/androidTest/kotlin/org/koitharu/kotatsu/core/logs/AppLoggerStopRecoveryRuntimeTest.kt)
+      add_verbose_diagnostics_suite ;;
+
+    app/src/main/kotlin/org/koitharu/kotatsu/download/domain/DownloadObservation.kt|app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadTask.kt|app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt|app/src/androidTest/kotlin/org/koitharu/kotatsu/download/domain/DownloadDiagnosticPrivacyRuntimeTest.kt)
+      add_local_download_suite
+      add_verbose_diagnostics_suite ;;
 
     app/src/main/kotlin/org/koitharu/kotatsu/history/*|app/src/androidTest/kotlin/org/koitharu/kotatsu/history/*)
       add_history_suite ;;
@@ -567,6 +581,12 @@ self_test() {
               app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt; do
     out="$(plan_from_paths false "$path")"
     [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
+  done
+  for out in "$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/core/logs/VerboseLogStore.kt')" \
+             "$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt')" \
+             "$(plan_from_paths true 'README.md')"; do
+    grep -q 'org.koitharu.kotatsu.core.logs.AppLoggerStopRecoveryRuntimeTest' <<<"$out"
+    grep -q 'org.koitharu.kotatsu.download.domain.DownloadDiagnosticPrivacyRuntimeTest' <<<"$out"
   done
   out="$(plan_from_paths false 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt')"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
