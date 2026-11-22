@@ -231,6 +231,16 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertArrayEquals(before, chapter.readBytes())
 	}
 
+	@Test fun detailsRejectsUnreadableCbzDespiteMatchingTitle() = runBlocking {
+		val dir = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery")
+		check(dir.mkdirs())
+		val badArchive = File(dir, "Chapter.cbz").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+		val online = gallery(990022, GEKKO_SOURCE)
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertEquals(3L, badArchive.length())
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
 	@Test fun detailsCannotCrossPrivateReceiptEvenWhenTitleAndChapterMatch() = runBlocking {
 		val privateReceipt = ExhentaiChapterOwnership.scopedComment(
 			990020, ExhentaiChapterOwnership.Receipt(FavouriteSpace.PRIVATE, UUID.randomUUID()), false,
