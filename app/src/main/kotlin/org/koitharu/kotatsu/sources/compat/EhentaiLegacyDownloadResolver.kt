@@ -61,7 +61,8 @@ internal object EhentaiLegacyDownloadResolver {
 		val cacheKey = galleryId?.let { "${root.stablePath()}#$it" }
 		cacheKey?.let(resolvedPathCache::get)?.let(::File)?.takeIf(::isValidCachedDirectory)?.let { return it }
 
-		val match = findCandidateDirectories(root, remoteSourceName, remoteTitle).singleOrNull()
+		val match = findCandidateDirectories(root, remoteSourceName, remoteTitle)
+			.filter(::hasLegacyChapter).singleOrNull()
 		return match?.also { found ->
 			if (cacheKey != null) resolvedPathCache[cacheKey] = found.stablePath()
 		}
@@ -82,7 +83,12 @@ internal object EhentaiLegacyDownloadResolver {
 				.orEmpty()
 			for (source in sources) {
 				for (candidate in indexedTitleCandidates(source, remoteTitle)) {
-					if (!hasLegacyChapter(candidate)) continue
+					// A nonstandard chapter filename is only a discovery candidate; the caller
+					// must still verify its embedded or adjacent ComicInfo gallery ID.
+					val containsCbz = candidate.listFiles()?.any {
+						it.isFile && it.extension.equals("cbz", ignoreCase = true)
+					} == true
+					if (!containsCbz) continue
 					matches.putIfAbsent(candidate.stablePath(), candidate)
 					if (matches.size > MAX_LEGACY_CANDIDATES) return emptyList()
 				}
