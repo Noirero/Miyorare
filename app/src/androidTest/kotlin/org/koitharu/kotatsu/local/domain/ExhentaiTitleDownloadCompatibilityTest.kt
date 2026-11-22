@@ -92,6 +92,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL)
 		assertNotNull(found)
 		assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
+		assertTrue("Read-only title lookup must report its provenance", found.matchedByTitle)
 		assertTrue(downloaded(online, found))
 		assertArrayEquals(before, chapter.readBytes())
 		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
@@ -107,9 +108,41 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL)
 		assertNotNull(found)
 		assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
+		assertTrue("Read-only title lookup must report its provenance", found.matchedByTitle)
 		assertTrue(downloaded(online, found))
 		assertArrayEquals(before, chapter.readBytes())
 		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
+
+	@Test fun verifiedGalleryReceiptDoesNotShowTitleOnlyStatus() = runBlocking {
+		val online = gallery(990013, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val receipt = ExhentaiChapterOwnership.scopedComment(
+			990013, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
+		)
+		val chapter = archive("Legacy Gallery", "Chapter.cbz", comment = receipt)
+		val found = requireNotNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+		assertEquals(chapter.canonicalFile, found.file.canonicalFile)
+		assertFalse("An exact receipt must not be shown as title-only", found.matchedByTitle)
+	}
+
+	@Test fun refreshWithExactIdentityClearsPreviousTitleOnlyStatus() = runBlocking {
+		val online = gallery(990014, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		assertTrue(requireNotNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL)).matchedByTitle)
+		val receipt = ExhentaiChapterOwnership.scopedComment(
+			990014, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
+		)
+		ZipOutputStream(chapter.outputStream()).use { zip ->
+			zip.setComment(receipt)
+			zip.putNextEntry(ZipEntry("1.webp"))
+			zip.write(byteArrayOf(1, 2, 3))
+			zip.closeEntry()
+		}
+		assertFalse(
+			"A fresh exact identity result must not inherit the earlier title-only status",
+			requireNotNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL)).matchedByTitle,
+		)
 	}
 
 	@Test fun legacyUnderscoreSuffixIsReadableWithoutRenaming() = runBlocking {
