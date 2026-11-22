@@ -29,7 +29,7 @@ class DiscoveryHubController(
 	fun load(key: CatalogHomeRequest = state.value.request, force: Boolean = false) {
 		val ticket = ++generation
 		job?.cancel()
-		val retained = state.value.home?.takeIf { state.value.request == key }
+		val retained = state.value.home?.takeIf { state.value.request == key && CatalogCachePolicy.isReadable(it.savedAt, now()) }
 		mutableState.value = DiscoveryHubState(key, retained, loading = retained == null, refreshing = retained != null)
 		job = scope.launch {
 			fun current() = generation == ticket && mutableState.value.request == key
