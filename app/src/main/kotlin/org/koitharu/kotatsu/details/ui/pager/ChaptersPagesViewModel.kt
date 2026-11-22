@@ -75,6 +75,7 @@ import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.UnverifiedDownloadRemovalException
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaState
@@ -829,6 +830,8 @@ abstract class ChaptersPagesViewModel(
 			return
 		}
 		launchLoadingJob(Dispatchers.Default) {
+			// Reading a title-matched CBZ never grants this source deletion authority.
+			if (local.matchedByTitle) throw UnverifiedDownloadRemovalException()
 			val remote = details?.sourceManga
 			if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
 				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {

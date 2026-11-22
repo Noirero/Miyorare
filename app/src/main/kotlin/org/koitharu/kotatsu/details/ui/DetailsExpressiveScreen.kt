@@ -367,6 +367,13 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
+					// Show only when the resolver explicitly chose a read-only title match.
+					if (details.local?.matchedByTitle == true) {
+						item(key = "title-match:${manga.id}", contentType = "title-match") {
+							ExhentaiTitleMatchNotice()
+						}
+					}
+
 					if (managed) item(contentType = "on-device-capability") {
 						androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
 							indexedLocalBook?.let { book ->

@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.details.ui
 import com.google.android.material.snackbar.Snackbar
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
+import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
+import org.koitharu.kotatsu.local.domain.UnverifiedDownloadRemovalException
 import org.koitharu.kotatsu.core.exceptions.resolve.ErrorObserver
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.exceptions.resolve.addCopyErrorAction
@@ -28,6 +30,14 @@ class DetailsErrorObserver(
 ) {
 
 	override suspend fun emit(value: Throwable) {
+		if (value is UnverifiedDownloadRemovalException) {
+			buildAlertDialog(activity) {
+				setTitle(R.string.exhentai_title_match_delete_protected_title)
+				setMessage(R.string.exhentai_title_match_delete_protected_message)
+				setPositiveButton(R.string.close, null)
+			}.show()
+			return
+		}
 		var displayMessage = value.getDisplayMessage(host.context.resources)
 		var isRecommended = false
 		if (value is UnsupportedSourceException) {

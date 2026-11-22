@@ -90,7 +90,8 @@ internal object ExhentaiDownloadedCopy {
 							MimeTypes.getMimeTypeFromExtension(entry.name)?.isImage == true
 					}
 				}
-				if (isFlatChapter) chapterCopy(remote, file, withDetails = true, verified = false)?.local else null
+				if (isFlatChapter) chapterCopy(remote, file, withDetails = true, verified = false)
+					?.local?.copy(matchedByTitle = true) else null
 			}.getOrNull()
 		}
 

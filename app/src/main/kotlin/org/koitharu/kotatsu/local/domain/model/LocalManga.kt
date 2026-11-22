@@ -12,6 +12,8 @@ import java.io.File
 data class LocalManga(
 	val manga: Manga,
 	val file: File = manga.url.toUri().toFile(),
+	/** Transient read-only association, never proof of ownership or download completion. */
+	val matchedByTitle: Boolean = false,
 ) {
 
 	var createdAt: Long = -1L

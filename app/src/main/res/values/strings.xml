@@ -1610,4 +1610,13 @@
     <string name="icon_model_other">Other packs</string>
     <string name="reader_tools">Tools</string>
     <string name="reader_advanced_options">Advanced reader options</string>
+
+    <!-- ExHentai title-based read-only local association -->
+    <string name="exhentai_title_match_status">Found in storage</string>
+    <string name="exhentai_title_match_subtitle">Matched by title</string>
+    <string name="exhentai_title_match_info_title">About this local file</string>
+    <string name="exhentai_title_match_info_body">Miyorare found this file by matching its title. The gallery ID may differ or download metadata may be missing. You can read it, but this match does not verify the contents, page completeness, or which source owns the download.</string>
+    <string name="exhentai_title_match_info_protection">The original file is not automatically changed or deleted.</string>
+    <string name="exhentai_title_match_delete_protected_title">Local file protected</string>
+    <string name="exhentai_title_match_delete_protected_message">This file can be read because its title matches, but Miyorare cannot verify that this source owns it. Deletion from this screen was blocked. The original file was kept.</string>
 </resources>
