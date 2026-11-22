@@ -9,6 +9,8 @@ import java.net.URI
 import java.util.zip.ZipFile
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.parsers.ParserConfigurationException
+import org.xml.sax.SAXException
 
 /**
  * Read-only, bounded gallery identity evidence for imported E-Hentai chapter CBZs.
@@ -71,6 +73,14 @@ internal object EhentaiComicInfo {
         }
     }
 
+    private fun hasDtdMarkup(bytes: ByteArray): Boolean {
+        // XML markup is ASCII in UTF-8 and null-interleaved in UTF-16/32; reject both
+        // without trusting the document's encoding declaration.
+        val scan = bytes.toString(Charsets.ISO_8859_1).replace("\u0000", "")
+        return scan.contains("<!DOCTYPE", ignoreCase = true) ||
+            scan.contains("<!ENTITY", ignoreCase = true)
+    }
+
     private fun parse(input: InputStream): Evidence {
         val bytes = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
@@ -82,17 +92,32 @@ internal object EhentaiComicInfo {
             if (total > MAX_XML_BYTES) return Evidence.Invalid
             bytes.write(buffer, 0, read)
         }
+        val xmlBytes = bytes.toByteArray()
+        // Android does not support every JAXP security feature. Reject DTD/entity declarations
+        // before creating a parser, including null-interleaved UTF-16/32 markup.
+        if (hasDtdMarkup(xmlBytes)) return Evidence.Invalid
         return try {
             val factory = DocumentBuilderFactory.newInstance().apply {
                 isNamespaceAware = true
                 isExpandEntityReferences = false
-                isXIncludeAware = false
-                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-                setFeature("http://xml.org/sax/features/external-general-entities", false)
-                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                for ((feature, enabled) in listOf(
+                    XMLConstants.FEATURE_SECURE_PROCESSING to true,
+                    "http://apache.org/xml/features/disallow-doctype-decl" to true,
+                    "http://xml.org/sax/features/external-general-entities" to false,
+                    "http://xml.org/sax/features/external-parameter-entities" to false,
+                )) {
+                    try {
+                        setFeature(feature, enabled)
+                    } catch (_: ParserConfigurationException) {
+                        // Pre-parse DTD rejection and a denying EntityResolver are mandatory even
+                        // when this optional hardening feature is unsupported by Android.
+                    }
+                }
             }
-            val document = factory.newDocumentBuilder().parse(ByteArrayInputStream(bytes.toByteArray()))
+            val builder = factory.newDocumentBuilder().apply {
+                setEntityResolver { _, _ -> throw SAXException("External XML entities are forbidden") }
+            }
+            val document = builder.parse(ByteArrayInputStream(xmlBytes))
             val root = document.documentElement ?: return Evidence.Invalid
             if (!root.nodeName.substringAfter(':').equals("ComicInfo", ignoreCase = true)) {
                 return Evidence.Invalid

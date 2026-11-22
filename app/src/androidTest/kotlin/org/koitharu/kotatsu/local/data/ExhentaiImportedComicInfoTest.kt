@@ -49,7 +49,8 @@ class ExhentaiImportedComicInfoTest {
 
     @Test fun matchingInternalXmlLightsOnlyTheCorrectOnlineChapter() = runBlocking {
         val folder = File(root, "downloads/E-Hentai (EN)/Same Gallery").apply { mkdirs() }
-        archive(folder, xml = xml(3863867L))
+        val imported = archive(folder, xml = xml(3863867L))
+        assertEquals(EhentaiComicInfo.Evidence.Gallery(3863867L), EhentaiComicInfo.inspect(imported))
         val matched = local.findExhentaiInRoots(gallery(3863867L), listOf(root), true)
         assertNotNull(matched)
         assertTrue(detailsDownloaded(gallery(3863867L), matched))
@@ -82,8 +83,10 @@ class ExhentaiImportedComicInfoTest {
     @Test fun independentXmlEvidenceDisambiguatesENAndALL() = runBlocking {
         val en = File(root, "downloads/E-Hentai (EN)/Same Gallery").apply { mkdirs() }
         val all = File(root, "downloads/E-Hentai (ALL)/Same Gallery").apply { mkdirs() }
-        archive(en, xml = xml(10001))
-        archive(all, name = "Imported gallery.cbz", xml = xml(10002))
+        val enArchive = archive(en, xml = xml(10001))
+        val allArchive = archive(all, name = "Imported gallery.cbz", xml = xml(10002))
+        assertEquals(EhentaiComicInfo.Evidence.Gallery(10001L), EhentaiComicInfo.inspect(enArchive))
+        assertEquals(EhentaiComicInfo.Evidence.Gallery(10002L), EhentaiComicInfo.inspect(allArchive))
         assertEquals(File(en, "Chapter.cbz").canonicalFile,
             local.findExhentaiInRoots(gallery(10001), listOf(root), true)?.file?.canonicalFile)
         assertEquals(File(all, "Imported gallery.cbz").canonicalFile,
@@ -101,12 +104,20 @@ class ExhentaiImportedComicInfoTest {
 
     @Test fun adjacentSidecarOnlyWorksForOneCbzAndRejectsWrongGallery() = runBlocking {
         val folder = File(root, "downloads/E-Hentai (EN)/Same Gallery").apply { mkdirs() }
-        archive(folder)
+        val imported = archive(folder)
         File(folder, "ComicInfo.xml").writeText(xml(10001))
+        assertEquals(EhentaiComicInfo.Evidence.Gallery(10001L), EhentaiComicInfo.inspect(imported))
         assertNotNull(local.findExhentaiInRoots(gallery(10001), listOf(root), true))
         assertNull(local.findExhentaiInRoots(gallery(10002), listOf(root), true))
         archive(folder, name = "Chapter_abcdef.cbz")
         assertNull(local.findExhentaiInRoots(gallery(10001), listOf(root), true))
+    }
+
+    @Test fun androidXmlParserRejectsDoctypeAndExternalEntity() {
+        val folder = File(root, "downloads/E-Hentai (EN)/Unsafe").apply { mkdirs() }
+        val attack = """<!DOCTYPE ComicInfo [<!ENTITY leak SYSTEM "file:///etc/passwd">]><ComicInfo><Web>&leak;</Web></ComicInfo>"""
+        val archive = archive(folder, xml = attack)
+        assertEquals(EhentaiComicInfo.Evidence.Invalid, EhentaiComicInfo.inspect(archive))
     }
 
     private fun detailsDownloaded(gallery: Manga, saved: org.koitharu.kotatsu.local.domain.model.LocalManga?): Boolean =
