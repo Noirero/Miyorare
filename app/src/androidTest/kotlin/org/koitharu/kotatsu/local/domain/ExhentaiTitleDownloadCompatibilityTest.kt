@@ -46,6 +46,7 @@ import javax.inject.Inject
 class ExhentaiTitleDownloadCompatibilityTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
+	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
 	@Inject lateinit var data: MangaDataRepository
@@ -135,6 +136,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val privateChapter = archive("Legacy Gallery", "Chapter.cbz", private = true)
 		val online = gallery(990007, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
 		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
 		assertEquals(privateChapter.canonicalFile,
 			resolver.findSavedManga(online, FavouriteSpace.PRIVATE)?.file?.canonicalFile)
 	}
@@ -211,6 +213,48 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			FavouriteSpace.NORMAL, forExhentaiDetails = true))
 		assertTrue(legacy.isFile)
 		assertTrue(exact.isFile)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
+	@Test fun detailsReadsUnmarkedLegacyCbzWithInvalidOptionalXmlInBothSources() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz", comicInfo = "<bad-xml")
+		val before = chapter.readBytes()
+		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
+			val online = gallery(990019, source)
+			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+			assertNotNull(found)
+			assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
+			assertTrue(downloaded(online, found))
+			assertEquals(1, LocalMangaParser(chapter).getPages(found.manga.chapters!!.single()).size)
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+		}
+		assertArrayEquals(before, chapter.readBytes())
+	}
+
+	@Test fun detailsCannotCrossPrivateReceiptEvenWhenTitleAndChapterMatch() = runBlocking {
+		val privateReceipt = ExhentaiChapterOwnership.scopedComment(
+			990020, ExhentaiChapterOwnership.Receipt(FavouriteSpace.PRIVATE, UUID.randomUUID()), false,
+		)
+		val chapter = archive("Legacy Gallery", "Chapter.cbz", comment = privateReceipt)
+		val online = gallery(990020, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertTrue(chapter.isFile)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
+	@Test fun detailsDoesNotGuessLegacySpaceAfterPrivateRootMigration() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val before = chapter.readBytes()
+		val online = gallery(990021, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
+		assertEquals(root.canonicalFile, destinationStore.effectiveRoot(FavouriteSpace.PRIVATE)?.canonicalFile)
+		destinationStore.setRoot(FavouriteSpace.PRIVATE, File(root, "private"))
+		assertFalse(destinationStore.rootsOverlap())
+		assertTrue(destinationStore.readableRoots(FavouriteSpace.PRIVATE).any {
+			it.canonicalFile == root.canonicalFile
+		})
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertArrayEquals(before, chapter.readBytes())
 		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 	}
 
