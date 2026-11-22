@@ -71,10 +71,10 @@ class ExhentaiImportedComicInfoTest {
         val en = File(root, "downloads/E-Hentai (EN)/Same Gallery").apply { mkdirs() }
         val all = File(root, "downloads/E-Hentai (ALL)/Same Gallery").apply { mkdirs() }
         archive(en, xml = xml(10001))
-        archive(all, xml = xml(10002))
+        archive(all, name = "Imported gallery.cbz", xml = xml(10002))
         assertEquals(File(en, "Chapter.cbz").canonicalFile,
             local.findExhentaiInRoots(gallery(10001), listOf(root), true)?.file?.canonicalFile)
-        assertEquals(File(all, "Chapter.cbz").canonicalFile,
+        assertEquals(File(all, "Imported gallery.cbz").canonicalFile,
             local.findExhentaiInRoots(gallery(10002), listOf(root), true)?.file?.canonicalFile)
         assertNull(local.findExhentaiInRoots(gallery(10003), listOf(root), true))
     }
