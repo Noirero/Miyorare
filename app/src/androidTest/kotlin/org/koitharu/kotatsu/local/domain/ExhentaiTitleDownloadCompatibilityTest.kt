@@ -44,6 +44,7 @@ import javax.inject.Inject
 class ExhentaiTitleDownloadCompatibilityTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
+	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
 	@Inject lateinit var data: MangaDataRepository
@@ -168,6 +169,51 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		} finally {
 			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, gekko.id)
 		}
+	}
+
+	/**
+	 * Characterization of Private destination migration: active roots can differ while the old
+	 * Normal root remains readable as historical Private. The same unmarked CBZ must remain
+	 * inaccessible through an ambiguous automatic title match until that overlap is removed.
+	 */
+	@Test fun migratedPrivateHistoryAloneBlocksAnOtherwiseReadableLegacyChapter() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val original = chapter.readBytes()
+		val emptyDuplicate = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery_1")
+		check(emptyDuplicate.mkdirs())
+		val online = gallery(990013, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+
+		// Recreate the actual preference transition instead of clearing history in setUp().
+		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
+		assertEquals(root.canonicalFile, destinationStore.effectiveRoot(FavouriteSpace.PRIVATE)?.canonicalFile)
+		destinationStore.setRoot(FavouriteSpace.PRIVATE, File(root, "private"))
+		assertTrue(destinationStore.privateUsesOwnRoot())
+		assertFalse(destinationStore.rootsOverlap())
+		assertTrue(destinationStore.readableRoots(FavouriteSpace.PRIVATE).any {
+			it.canonicalFile == root.canonicalFile
+		})
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+
+		// Control: change only the other space's historical root history, not the CBZ.
+		destinationStore.forgetRoot(root)
+		assertFalse(destinationStore.readableRoots(FavouriteSpace.PRIVATE).any {
+			it.canonicalFile == root.canonicalFile
+		})
+		assertEquals(chapter.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL)?.file?.canonicalFile)
+		assertTrue(emptyDuplicate.isDirectory)
+		assertArrayEquals(original, chapter.readBytes())
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+
+		// A second physical CBZ must remain ambiguous even after historical overlap is cleared.
+		val otherReceipt = ExhentaiChapterOwnership.scopedComment(
+			990014, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
+		)
+		val duplicate = archive("Legacy Gallery_2", "Chapter.cbz", comment = otherReceipt)
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+		assertTrue(duplicate.isFile)
+		assertArrayEquals(original, chapter.readBytes())
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 	}
 
 	@Test fun sharedRootRequiresExistingSpaceProofAndNeverWritesOwnership() = runBlocking {
