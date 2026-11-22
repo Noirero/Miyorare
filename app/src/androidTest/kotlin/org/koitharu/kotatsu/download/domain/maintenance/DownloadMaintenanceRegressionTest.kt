@@ -918,20 +918,23 @@ class DownloadMaintenanceRegressionTest {
 		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
 	}
 
-	@Test fun compactOnlyExhentaiDownloadMapsToLocalPages() = runBlocking {
+	@Test fun compactOnlyExhentaiDownloadWithoutIdentityRemainsLocalOnly() = runBlocking {
 		val gallery = offlineExhentaiGallery(812302L)
-		// MissingMangaSource has no Tsuki directory metadata; use the historical direct layout.
+		// A legacy compact title and Chapter.cbz alone never prove an online gallery identity.
 		val cbz = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
-		assertExhentaiLocalRead(gallery, cbz, null)
-		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+		assertLocalCbzReadable(cbz)
+		assertNull(resolver.findSavedManga(gallery, null))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		assertFalse(deleteLocal.deleteExhentaiCopy(gallery, FavouriteSpace.NORMAL))
 	}
 
-	@Test fun compactExhentaiDownloadUnderOfficialSourceDirectoryNeedsNoSourceMetadataOrReceipt() = runBlocking {
+	@Test fun compactExhentaiUnderOfficialSourceWithoutIdentityRemainsLocalOnly() = runBlocking {
 		val gallery = offlineExhentaiGallery(812305L)
-		// The on-disk folder comes from the installed source; the lookup seed has only its stored key.
+		// Even the official source directory is not proof that a markerless archive is this gallery.
 		val cbz = chapterFile(folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture"), "Chapter.cbz")
-		assertExhentaiLocalRead(gallery, cbz, null)
-		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.NORMAL)
+		assertLocalCbzReadable(cbz)
+		assertNull(resolver.findSavedManga(gallery, null))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 	}
 
@@ -1042,13 +1045,24 @@ class DownloadMaintenanceRegressionTest {
 		assertNull(resolver.findSavedManga(gallery, normal))
 	}
 
-	@Test fun exhentaiFullTitleWinsAcrossLayoutsWithinTheSameRoot() = runBlocking {
+	@Test fun unownedFullAndCompactLayoutsDoNotImplyOnlineIdentity() = runBlocking {
 		val gallery = offlineExhentaiGallery(812312L)
 		val compact = chapterFile(folder("downloads/Offline gallery × Fixture"), "Chapter.cbz")
 		val full = chapterFile(folder("downloads/ExHentai (OTHER)/${gallery.title}"), "Chapter.cbz")
-		assertExhentaiLocalRead(gallery, full, FavouriteSpace.NORMAL)
+		assertLocalCbzReadable(full)
+		assertLocalCbzReadable(compact)
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		assertTrue(full.delete())
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		// A persisted exact gallery+space ownership row restores read access, not delete authority.
+		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, compact.canonicalPath),
+		)
 		assertExhentaiLocalRead(gallery, compact, FavouriteSpace.NORMAL)
+		assertTrue(runCatching { deleteLocal.deleteExhentaiCopy(gallery, FavouriteSpace.NORMAL, expectedFile = compact) }
+			.exceptionOrNull() is java.io.IOException)
+		assertTrue(compact.exists())
 	}
 
 	@Test fun replacingExhentaiArchiveAtSamePathRechecksCurrentArtifact() = runBlocking {
@@ -1112,10 +1126,9 @@ class DownloadMaintenanceRegressionTest {
 		val cbz = chapterFile(directory, "Chapter.cbz")
 		register(gallery, directory)
 		val dao = db.getFavouriteDownloadIndexDao()
-		val parsed = checkNotNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
-		assertFalse(parsed.verified)
-		assertEquals(cbz.canonicalFile, parsed.local.file.canonicalFile)
-		assertEquals(gallery.chapters!!.single().id, parsed.local.manga.chapters?.single()?.id)
+		// Path/title and a persisted Local alias are only discovery hints, never gallery proof.
+		assertNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
+		assertLocalCbzReadable(cbz)
 
 		// Browse must not recover the same unowned file via the global Local index.
 		assertNull(resolver.findSavedManga(gallery, null))
@@ -1162,11 +1175,10 @@ class DownloadMaintenanceRegressionTest {
 		assertEquals(LocalMangaSource, offline.source)
 		assertTrue(local.getPages(offline).isNotEmpty())
 
-		// The current parser can map this exact archive. The lookup rejects the alias
-		// because a hint outside the deterministic layouts must have verified provenance.
-		val candidate = checkNotNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
-		assertFalse(candidate.verified)
-		assertEquals(chapter.id, candidate.local.manga.chapters?.single()?.id)
+		// The old local parser can read the archive, but the online resolver must not
+		// turn an unverified indexed alias into evidence of gallery ownership.
+		assertLocalCbzReadable(cbz)
+		assertNull(local.findExhentaiAtPath(gallery, directory, withDetails = true))
 		assertNull(resolver.findSavedManga(gallery, null))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 		assertArrayEquals(bytes, cbz.readBytes())
@@ -1177,6 +1189,15 @@ class DownloadMaintenanceRegressionTest {
 			title = "[Circle (Artist)] Offline gallery × Fixture [Chinese] [Translation Group] [Digital]",
 			chapters = listOf(requireNotNull(gallery.chapters).single().copy(branch = "Chinese", scanlator = null)),
 		)
+	}
+
+	private suspend fun assertLocalCbzReadable(cbz: File) {
+		val before = cbz.readBytes()
+		val parsed = LocalMangaParser(cbz).getManga(withDetails = true)
+		val chapter = checkNotNull(parsed.manga.chapters).single()
+		assertEquals(LocalMangaSource, chapter.source)
+		assertTrue("An XML-free imported CBZ must remain readable in Local", local.getPages(chapter).isNotEmpty())
+		assertArrayEquals("Read-only discovery must not rewrite a CBZ", before, cbz.readBytes())
 	}
 
 	private suspend fun assertExhentaiLocalRead(gallery: Manga, cbz: File, space: FavouriteSpace?) {
@@ -1217,9 +1238,9 @@ class DownloadMaintenanceRegressionTest {
 		val legacyFolder = folder("downloads/Aaaa")
 		val cbz = chapterFile(legacyFolder, "Chapter.cbz")
 		val original = cbz.readBytes()
-		val found = checkNotNull(local.findSavedMangaInRoot(remote, root))
-		assertEquals(cbz.canonicalFile, found.file.canonicalFile)
-		assertTrue(found.manga.chapters.orEmpty().any { it.id == chapter.id && it.source == LocalMangaSource })
+		// Legacy title cleanup provides candidate discovery, not gallery verification.
+		assertLocalCbzReadable(cbz)
+		assertNull(local.findSavedMangaInRoot(remote, root))
 		assertNull(local.findSavedMangaInRoot(remote, File(root, "private")))
 		assertArrayEquals(original, cbz.readBytes())
 		assertEquals(setOf("Chapter.cbz"), legacyFolder.list().orEmpty().toSet())
@@ -1259,14 +1280,20 @@ class DownloadMaintenanceRegressionTest {
 		val directory = folder("downloads/Same title")
 		val cbz = chapterFile(directory, "Chapter.cbz")
 		val before = cbz.readBytes()
-		// No owner is known yet: both galleries may use the legacy read fallback.
-		assertEquals(cbz.canonicalFile, local.findSavedMangaInRoot(b, root)?.file?.canonicalFile)
+		// Neither gallery can borrow a title-only archive before ownership is recorded.
+		assertLocalCbzReadable(cbz)
+		assertNull(local.findSavedMangaInRoot(b, root))
+		assertNull(local.findSavedMangaInRoot(a, root))
 		data.storeManga(a, replaceExisting = true, detailsFetched = true)
 		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(
 			mangaId = a.id, space = FavouriteSpace.NORMAL.dbValue, path = directory.canonicalPath,
 		))
-		assertEquals(cbz.canonicalFile, local.findSavedMangaInRoot(a, root)?.file?.canonicalFile)
+		// An exact gallery+space directory row allows read-only recovery of the unique CBZ.
+		assertEquals(cbz.canonicalFile, resolver.findSavedManga(a, FavouriteSpace.NORMAL)?.file?.canonicalFile)
 		assertNull(local.findSavedMangaInRoot(b, root))
+		assertNull(resolver.findSavedManga(b, FavouriteSpace.NORMAL))
+		assertTrue(runCatching { deleteLocal.deleteExhentaiCopy(a, FavouriteSpace.NORMAL, expectedFile = cbz) }
+			.exceptionOrNull() is java.io.IOException)
 		assertArrayEquals(before, cbz.readBytes())
 	}
 
