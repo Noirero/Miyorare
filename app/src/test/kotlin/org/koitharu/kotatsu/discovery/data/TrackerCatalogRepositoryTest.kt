@@ -67,6 +67,42 @@ class TrackerCatalogRepositoryTest {
 		gate.complete(Unit); awaitCondition { !controller.state.value.refreshing }
 		assertEquals("Replacement", controller.state.value.home!!.sections.single().items.single().title)
 	}
+	@Test fun `returning to Home revalidates only after the freshness window`() = runTest {
+		var clock = now
+		val store = FileCatalogSnapshotStore(folder.root)
+		store.write(key, home(time = clock))
+		val provider = Provider { home("Updated") }
+		val repository = TrackerCatalogRepository(setOf(provider), store, backgroundScope, { clock })
+		val controller = DiscoveryHubController(repository, backgroundScope, key, { clock })
+		controller.load()
+		awaitCondition { controller.state.value.home != null && !controller.state.value.refreshing }
+		controller.reloadIfStale()
+		assertEquals(0, provider.calls)
+		clock += CatalogCachePolicy.FRESH_MS + 1L
+		controller.reloadIfStale()
+		awaitCondition { provider.calls == 1 && controller.state.value.home?.sections?.singleOrNull()?.items?.singleOrNull()?.title == "Updated" && !controller.state.value.refreshing }
+		assertEquals(1, provider.calls)
+	}
+
+	@Test fun `expired retained Home is discarded before an offline forced refresh`() = runTest {
+		var clock = now
+		val store = FileCatalogSnapshotStore(folder.root)
+		store.write(key, home(time = clock))
+		val provider = Provider { throw IOException("offline after expiry") }
+		val repository = TrackerCatalogRepository(setOf(provider), store, backgroundScope, { clock })
+		val controller = DiscoveryHubController(repository, backgroundScope, key, { clock })
+		controller.load()
+		awaitCondition { controller.state.value.home != null && !controller.state.value.refreshing }
+		assertEquals(0, provider.calls)
+		clock += CatalogCachePolicy.MAX_STALE_MS + 1L
+		controller.load(force = true)
+		assertNull(controller.state.value.home)
+		assertTrue(controller.state.value.loading)
+		awaitCondition { controller.state.value.failure != null }
+		assertNull(controller.state.value.home)
+		assertEquals(CatalogFailureKind.OFFLINE, controller.state.value.failure!!.kind)
+	}
+
 	@Test fun `offline first load has no cached rows and no implicit alternative provider`() = runTest {
 		val p = Provider { throw IOException("fixture offline") }
 		val controller = DiscoveryHubController(TrackerCatalogRepository(setOf(p), FileCatalogSnapshotStore(folder.root), backgroundScope), backgroundScope, key)

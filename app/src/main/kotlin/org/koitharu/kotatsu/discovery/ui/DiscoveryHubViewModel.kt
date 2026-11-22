@@ -53,12 +53,16 @@ class DiscoveryHubViewModel @Inject constructor(
 				val next = request()
 				if (next != state.value.request) {
 					val providerChanged = next.service != state.value.request.service
+					if (!providerChanged && next.service == ScrobblerService.MANGABAKA) {
+						// Clear old-filter/old-adult content before the new public request is visible.
+						clearMangaBakaExplore()
+						clearMangaBakaPersonalData()
+					}
 					loader.load(next)
 					if (providerChanged) {
 						refreshAccount(next.service)
-					} else if (next.service == ScrobblerService.MANGABAKA) {
-						clearMangaBakaExplore()
-						if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
+					} else if (next.service == ScrobblerService.MANGABAKA && mutableAccount.value.authorized) {
+						refreshMangaBakaPersonal(next)
 					}
 				}
 			}
@@ -76,10 +80,13 @@ class DiscoveryHubViewModel @Inject constructor(
 		if (filter == state.value.request.filter) return
 		settings.discoveryFilter = filter.name
 		val next = request()
-		loader.load(next)
 		if (next.service == ScrobblerService.MANGABAKA) {
 			clearMangaBakaExplore()
-			if (mutableAccount.value.authorized) refreshMangaBakaPersonal(next)
+			clearMangaBakaPersonalData()
+		}
+		loader.load(next)
+		if (next.service == ScrobblerService.MANGABAKA && mutableAccount.value.authorized) {
+			refreshMangaBakaPersonal(next)
 		}
 	}
 
@@ -91,6 +98,8 @@ class DiscoveryHubViewModel @Inject constructor(
 			mutableMangaBakaPersonal.value.selectedType?.let(::selectMangaBakaExploreType)
 		}
 	}
+
+	fun revalidateHome() = loader.reloadIfStale()
 
 	fun refreshAccount() = refreshAccount(state.value.request.service)
 
@@ -160,12 +169,14 @@ class DiscoveryHubViewModel @Inject constructor(
 						library = snapshot.library,
 						recommendations = snapshot.recommendations,
 						partial = snapshot.partial,
+						libraryTruncated = snapshot.libraryTruncated,
 						failed = false,
 						authExpired = false,
 					)
-					// The bulk remote library is authoritative for MangaBaka Home badges. This also
-					// removes stale locally-known entries that were deleted on MangaBaka elsewhere.
-					mutableKnownTracking.value = snapshot.library.associate { it.tracking.targetId to it.tracking }
+					// Only a complete remote library scan can prune entries deleted on MangaBaka.
+					// A capped scan updates observed badges without discarding unobserved entries.
+					val observed = snapshot.library.associate { it.tracking.targetId to it.tracking }
+					mutableKnownTracking.value = if (snapshot.libraryTruncated) mutableKnownTracking.value + observed else observed
 				}
 			} catch (e: CancellationException) {
 				throw e
@@ -179,6 +190,7 @@ class DiscoveryHubViewModel @Inject constructor(
 						library = emptyList(),
 						recommendations = emptyList(),
 						partial = false,
+						libraryTruncated = false,
 						failed = true,
 						authExpired = true,
 					)
@@ -230,6 +242,7 @@ class DiscoveryHubViewModel @Inject constructor(
 			library = emptyList(),
 			recommendations = emptyList(),
 			partial = false,
+			libraryTruncated = false,
 			failed = false,
 			authExpired = false,
 		)

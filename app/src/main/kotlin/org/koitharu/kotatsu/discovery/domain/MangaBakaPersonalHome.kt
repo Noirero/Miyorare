@@ -24,12 +24,15 @@ data class MangaBakaLibraryItem(
 data class MangaBakaLibraryPage(
 	val items: List<MangaBakaLibraryItem>,
 	val nextPage: Int? = null,
+	/** Provider indicates further pages even if the Home scan has reached its safety cap. */
+	val hasMore: Boolean = false,
 )
 
 data class MangaBakaPersonalHomeSnapshot(
 	val library: List<MangaBakaLibraryItem> = emptyList(),
 	val recommendations: List<TrackerCatalogItem> = emptyList(),
 	val partial: Boolean = false,
+	val libraryTruncated: Boolean = false,
 )
 
 data class MangaBakaPersonalHomeState(
@@ -43,4 +46,5 @@ data class MangaBakaPersonalHomeState(
 	val exploreItems: List<TrackerCatalogItem> = emptyList(),
 	val exploreLoading: Boolean = false,
 	val exploreFailed: Boolean = false,
+	val libraryTruncated: Boolean = false,
 )

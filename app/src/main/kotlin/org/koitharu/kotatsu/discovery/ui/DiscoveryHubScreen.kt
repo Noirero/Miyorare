@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,6 +122,23 @@ fun DiscoveryHubScreen(
 						onLogout = onAccountLogout,
 					)
 					CatalogFilterRow(state.request.filter, onFilter)
+                    state.confirmedHomeSnapshotAt(System.currentTimeMillis())?.let { timestamp ->
+                        Text(
+                            stringResource(
+                                R.string.hub_catalog_snapshot_as_of,
+                                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(timestamp)),
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (account.authorized && knownTracking.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.hub_tracking_last_known_notice),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
 				}
 			}
 
@@ -181,7 +200,7 @@ fun DiscoveryHubScreen(
 							}
 						}
 					} else if (section.failure == null) {
-						Text(stringResource(R.string.hub_empty), style = MaterialTheme.typography.bodySmall)
+						Text(stringResource(catalogEmptyMessageId(section.key)), style = MaterialTheme.typography.bodySmall)
 					}
 				}
 			}
