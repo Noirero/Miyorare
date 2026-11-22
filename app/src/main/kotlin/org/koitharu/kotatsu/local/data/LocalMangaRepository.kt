@@ -392,8 +392,9 @@ class LocalMangaRepository @Inject constructor(
 		withDetails: Boolean,
 		space: FavouriteSpace? = null,
 		request: java.util.UUID? = null,
+		trustedOwnedPath: Boolean = false,
 	): ExhentaiDownloadedCopy.Match? {
-		val match = ExhentaiDownloadedCopy.find(remote, path, withDetails, space, request)
+		val match = ExhentaiDownloadedCopy.find(remote, path, withDetails, space, request, trustedOwnedPath)
 		if (org.koitharu.kotatsu.BuildConfig.DEBUG && (match != null || path.exists())) {
 			LegacyCbzTrace.record(LegacyCbzTrace.Stage.CANDIDATE)
 			if (match == null) LegacyCbzTrace.record(LegacyCbzTrace.Stage.ARCHIVE_REJECTED)
