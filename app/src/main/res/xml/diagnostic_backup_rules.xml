@@ -2,8 +2,12 @@
 <data-extraction-rules>
 	<cloud-backup>
 		<exclude domain="file" path="logs" />
+		<!-- Private gallery-to-file selections must not be backed up or transferred. -->
+		<exclude domain="sharedpref" path="exhentai_private_read_choices.xml" />
 	</cloud-backup>
 	<device-transfer>
 		<exclude domain="file" path="logs" />
+		<!-- Private gallery-to-file selections must not be backed up or transferred. -->
+		<exclude domain="sharedpref" path="exhentai_private_read_choices.xml" />
 	</device-transfer>
 </data-extraction-rules>
