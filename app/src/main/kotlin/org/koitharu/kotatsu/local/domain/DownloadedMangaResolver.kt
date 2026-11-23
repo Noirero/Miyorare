@@ -65,7 +65,8 @@ class DownloadedMangaResolver @Inject constructor(
 		// Details alone may interpret an unrelated/old CBZ as a read-only title match.
 		// All existing callers retain strict ownership and download-completion semantics.
 		val detailsTitleRead = forExhentaiDetails &&
-			EhentaiSourceFamily.supportsTitleMatchedDownloads(manga.source.name)
+			(manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+				manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME)
 		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
 			return resolveSavedManga(manga, favouriteSpace, detailsTitleRead)
 		}
@@ -171,22 +172,29 @@ class DownloadedMangaResolver @Inject constructor(
 				if (!detailsTitleRead && candidates.size > 1) return null
 			}
 		}
-		val file = when {
-			candidates.size == 1 -> candidates.single()
-			!detailsTitleRead -> return null
-			else -> {
-				// Details may prefer exactly one independently identified gallery, but never
-				// choose an arbitrary same-title file or grant ownership from this choice.
-				val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
-					?: return null
-				candidates.filter { candidate ->
+		if (detailsTitleRead) {
+			// Read-only Details discovery is intentionally permissive for legacy chapters:
+			// no receipt, gallery-id or FavouriteSpace ownership proof is required.
+			// Prefer an exact gallery receipt when available, then a stable path order;
+			// a corrupt candidate must not mask a valid older Chapter.cbz.
+			val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
+			val ordered = candidates.sortedWith(compareBy<File>(
+				{ candidate ->
 					val receipt = ExhentaiChapterOwnership.inspectDestination(candidate)
-					receipt is ExhentaiChapterOwnership.Evidence.Owned &&
-						receipt.galleryId == galleryId &&
-						(receipt.receipt?.space == null || receipt.receipt?.space == space)
-				}.singleOrNull() ?: return null
+					if (galleryId != null &&
+						receipt is ExhentaiChapterOwnership.Evidence.Owned &&
+						receipt.galleryId == galleryId
+					) 0 else 1
+				},
+				{ it.canonicalPath },
+			))
+			for (candidate in ordered) {
+				ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, candidate, allowIndexed = true)
+					?.let { return it }
 			}
+			return null
 		}
+		val file = candidates.singleOrNull() ?: return null
 		val evidence = ExhentaiChapterOwnership.inspectDestination(file)
 		if (!detailsTitleRead && evidence == ExhentaiChapterOwnership.Evidence.Unusable) return null
 		val receiptSpace = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt?.space
@@ -206,6 +214,7 @@ class DownloadedMangaResolver @Inject constructor(
 	}
 
 	private companion object {
+		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 		const val MAX_DETAILS_TITLE_CANDIDATES = 32
 	}
 
