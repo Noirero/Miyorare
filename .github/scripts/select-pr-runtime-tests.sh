@@ -34,7 +34,6 @@ add_class() {
 }
 
 add_exhentai_presence_migration_test() {
-  # The Android selector is an explicit class filter, not test APK auto-discovery.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ExhentaiPresenceMigrationTest.kt ]]; then
     add_class org.koitharu.kotatsu.core.db.ExhentaiPresenceMigrationTest
   fi
@@ -672,44 +671,7 @@ self_test() {
   done
 
   out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full
-  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
-  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
-  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
-    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
-  fi
-  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
-    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
-  fi
-  grep -q '^run_runtime_isolation=true$' <<<"$out"
-  grep -q '^run_migration_persistence=true$' <<<"$out"
-  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
-
-  classify_self_test
-  policy_self_test
-  echo 'Runtime selector self-test: PASS'
-}
-
-if [[ "$SELF_TEST" == true ]]; then
-  self_test
-  exit 0
-fi
-
-if [[ "$POLICY" == true ]]; then
-  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
-  input="$(cat)"
-  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
-  full="$(sed -n 's/^full=//p' <<< "$input")"
-  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
-  exit 0
-fi
-mapfile -t PATHS
-if [[ "$CLASSIFY" == true ]]; then
-  classify_paths "${PATHS[@]}"
-  exit 0
-fi
-plan_from_paths "$FULL" "${PATHS[@]}"
- <<<"$out"
+  grep -q '^mode=full$' <<<"$out"
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ExhentaiPresenceMigrationTest.kt ]]; then
     local check_path selected
     for check_path in 'app/src/main/kotlin/org/koitharu/kotatsu/download/domain/DownloadDestinationStore.kt' \
