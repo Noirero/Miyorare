@@ -17,10 +17,13 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
     data class Snapshot(
         val activeRoot: String,
         val candidatesByTitle: Map<String, List<String>>,
+        val cachedContainers: Map<String, ContainerCache> = emptyMap(),
     ) {
         fun hasDownloaded(title: String): Boolean = candidatesFor(title).isNotEmpty()
         fun candidatesFor(title: String): List<String> = candidatesByTitle[titleKey(title)].orEmpty()
     }
+
+    data class ContainerCache(val modifiedAt: Long, val candidates: List<String>)
 
     enum class Availability { AVAILABLE, UNAVAILABLE }
 
@@ -35,6 +38,7 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
         activeRoot: File,
         otherSpaceRoot: File? = null,
         previous: Snapshot? = null,
+        full: Boolean = false,
         onProgress: (examined: Int, total: Int) -> Unit = { _, _ -> },
     ): Result {
         val root = try { activeRoot.canonicalFile }
@@ -47,7 +51,7 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
         )
         if (!root.isDirectory || !root.canRead()) return unavailable()
         return try {
-            scanReadableRoot(root, otherSpaceRoot, old, onProgress)
+            scanReadableRoot(root, otherSpaceRoot, old, full, onProgress)
         } catch (_: IOException) {
             unavailable()
         } catch (_: SecurityException) {
@@ -57,7 +61,7 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
 
     private fun scanReadableRoot(
         root: File, otherSpaceRoot: File?, old: Snapshot?,
-        onProgress: (Int, Int) -> Unit,
+        full: Boolean, onProgress: (Int, Int) -> Unit,
     ): Result {
         val other = otherSpaceRoot?.canonicalFile?.path
         fun visible(file: File): Boolean {
@@ -88,17 +92,26 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
         }
 
         val found = LinkedHashMap<String, LinkedHashSet<String>>()
+        val cachedContainers = LinkedHashMap<String, ContainerCache>()
         for ((index, entry) in entries.withIndex()) {
             val (title, container) = entry
             val key = titleKey(title)
             if (key.isNotBlank()) {
-                val candidates = if (container.isDirectory) container.listFiles()
-                    ?: return unavailable() else arrayOf(container)
-                for (candidate in candidates) {
-                    if (candidate.isFile && candidate.isCbz() && !candidate.isHidden && visible(candidate)) {
-                        found.getOrPut(key) { LinkedHashSet() }.add(candidate.canonicalPath)
-                    }
+                val path = container.canonicalPath
+                val modified = container.lastModified()
+                val cached = if (full) null else old?.cachedContainers?.get(path)
+                // Unchanged directories are reused; deleted files are still rechecked.
+                val candidates = if (cached != null && cached.modifiedAt == modified &&
+                    cached.candidates.all { File(it).isFile && visible(File(it)) }) {
+                    cached.candidates
+                } else {
+                    val files = if (container.isDirectory) container.listFiles()
+                        ?: return unavailable() else arrayOf(container)
+                    files.filter { it.isFile && it.isCbz() && !it.isHidden && visible(it) }
+                        .map { it.canonicalPath }.sorted()
                 }
+                cachedContainers[path] = ContainerCache(modified, candidates)
+                found.getOrPut(key) { LinkedHashSet() }.addAll(candidates)
             }
             onProgress(index + 1, entries.size)
         }
@@ -110,7 +123,8 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
             previous[it] != next[it]
         }
         return Result(
-            if (old != null && changed.isEmpty()) old else Snapshot(root.path, next),
+            if (old != null && changed.isEmpty() && old.cachedContainers == cachedContainers) old
+                else Snapshot(root.path, next, cachedContainers),
             Availability.AVAILABLE, entries.size, changed,
         )
     }
