@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.widget.Toast
@@ -10,6 +11,8 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.io.File
 
@@ -28,11 +31,11 @@ internal fun showExhentaiPhysicalDeleteConfirmation(
 	if (details.local == null || (source != EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
 		source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) return false
 	// This call must never fall back to legacy unconfirmed deletion for a locked vault.
-	val host = context.findExhentaiDetailsActivity()
-	if (host == null || !host.canShowExhentaiFileDetails()) return true
+	val host = context.findExhentaiDeleteHost()
+	if (host == null || !host.canShowExhentaiFileDetails(viewModel.favouriteSpace)) return true
 	scope.launch {
 		val approval = withContext(Dispatchers.IO) { viewModel.previewExhentaiPhysicalDeletion() }
-		if (!host.canShowExhentaiFileDetails()) return@launch
+		if (!host.canShowExhentaiFileDetails(viewModel.favouriteSpace)) return@launch
 		if (approval == null || viewModel.mangaDetails.value?.id != details.id) {
 			Toast.makeText(context, R.string.exhentai_delete_target_unavailable, Toast.LENGTH_LONG).show()
 			return@launch
@@ -52,20 +55,35 @@ internal fun showExhentaiPhysicalDeleteConfirmation(
 			setTitle(R.string.exhentai_delete_physical_title)
 			setMessage(message)
 			setPositiveButton(R.string.delete) { _, _ ->
-				if (host.canShowExhentaiFileDetails()) viewModel.deleteLocal(approval)
+				if (host.canShowExhentaiFileDetails(viewModel.favouriteSpace)) viewModel.deleteLocal(approval)
 			}
 			setNegativeButton(android.R.string.cancel, null)
 		}.show()
-		host.trackExhentaiDeleteDialog(confirmationDialog)
+		host.trackSensitiveExhentaiDeleteDialog(confirmationDialog)
 	}
 	return true
 }
 
-/** ContextThemeWrapper may wrap the Activity for a RecyclerView's themed action mode. */
-private fun Context.findExhentaiDetailsActivity(): DetailsExpressiveActivity? {
+/** Readers and Details use the same exact-file confirmation and vault policy. */
+private fun Activity.canShowExhentaiFileDetails(space: FavouriteSpace): Boolean = when (this) {
+	is DetailsExpressiveActivity -> canShowExhentaiFileDetails()
+	is ReaderActivity -> canShowExhentaiFileDetails(space)
+	else -> false
+}
+
+private fun Activity.trackSensitiveExhentaiDeleteDialog(dialog: androidx.appcompat.app.AlertDialog) {
+	when (this) {
+		is DetailsExpressiveActivity -> trackExhentaiDeleteDialog(dialog)
+		is ReaderActivity -> trackExhentaiDeleteDialog(dialog)
+		else -> dialog.dismiss()
+	}
+}
+
+/** ContextThemeWrapper may wrap a Reader or Details activity for a themed action mode. */
+private fun Context.findExhentaiDeleteHost(): Activity? {
 	var candidate: Context? = this
 	while (candidate is ContextWrapper) {
-		if (candidate is DetailsExpressiveActivity) return candidate
+		if (candidate is DetailsExpressiveActivity || candidate is ReaderActivity) return candidate
 		candidate = candidate.baseContext
 	}
 	return null
