@@ -78,7 +78,12 @@ class DetailsMenuProvider(
 		val managed = viewModel.isSmartLocal
 		menu.findItem(R.id.action_share).isVisible = manga != null && AppRouter.isShareSupported(manga)
 		menu.findItem(R.id.action_save).isVisible = manga?.source != null && manga.source != LocalMangaSource
-		menu.findItem(R.id.action_delete).isVisible = manga?.source == LocalMangaSource
+		val details = viewModel.mangaDetails.value
+		val sourceName = details?.sourceManga?.source?.name
+		val localExhentai = details?.local != null &&
+			(sourceName == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+				sourceName == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")
+		menu.findItem(R.id.action_delete).isVisible = manga?.source == LocalMangaSource || localExhentai
 		menu.findItem(R.id.action_browser).isVisible = manga?.publicUrl?.isHttpUrl() == true
 		menu.findItem(R.id.action_alternatives).isVisible = manga?.source != LocalMangaSource
 		menu.findItem(R.id.action_related).isVisible = !managed
@@ -118,6 +123,7 @@ class DetailsMenuProvider(
 					)
 					return true
 				}
+				if (showExhentaiPhysicalDeleteConfirmation(activity, activity.lifecycleScope, viewModel)) return true
 				buildAlertDialog(activity) {
 					setTitle(R.string.delete_manga)
 					setMessage(activity.getString(R.string.text_delete_local_manga, manga.title))
