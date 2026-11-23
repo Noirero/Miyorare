@@ -175,6 +175,63 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun activeDestinationStopsReadingOldFilesAndRestoresThemWhenSelectedAgain() = runBlocking {
+		val old = archive("Legacy Gallery", "Chapter.cbz")
+		val online = gallery(990027, GEKKO_SOURCE)
+		assertEquals(old.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		val next = File(root, "new-normal")
+		destinationStore.setRoot(FavouriteSpace.NORMAL, next)
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		val newCopy = archive("Legacy Gallery", "Chapter.cbz", destination = next)
+		assertEquals(newCopy.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		destinationStore.setRoot(FavouriteSpace.NORMAL, root)
+		assertEquals(old.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		assertTrue(old.exists())
+		assertTrue(newCopy.exists())
+	}
+
+	@Test fun nestedActivePrivateDestinationDoesNotLeakIntoNormal() = runBlocking {
+		val privateChapter = archive("Legacy Gallery", "Chapter.cbz", private = true)
+		val online = gallery(990028, GEKKO_SOURCE)
+		assertFalse(destinationStore.isVisibleInActiveExhentaiDestination(FavouriteSpace.NORMAL, privateChapter))
+		assertTrue(destinationStore.isVisibleInActiveExhentaiDestination(FavouriteSpace.PRIVATE, privateChapter))
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertEquals(privateChapter.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.PRIVATE, forExhentaiDetails = true)?.file?.canonicalFile)
+	}
+
+	@Test fun equalActiveDestinationsAllowReadOnlySharing() = runBlocking {
+		prefs.edit(commit = true) {
+			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+		}
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val online = gallery(990029, GEKKO_SOURCE)
+		for (space in FavouriteSpace.entries) {
+			assertTrue(destinationStore.isVisibleInActiveExhentaiDestination(space, chapter))
+			assertEquals(chapter.canonicalFile,
+				resolver.findSavedManga(online, space, forExhentaiDetails = true)?.file?.canonicalFile)
+		}
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.PRIVATE.dbValue, online.id))
+	}
+
+	@Test fun movingPrivateAwayFromOldSharedRootDoesNotReadPrivateHistory() = runBlocking {
+		prefs.edit(commit = true) {
+			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+		}
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val online = gallery(990030, GEKKO_SOURCE)
+		assertEquals(chapter.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.PRIVATE, forExhentaiDetails = true)?.file?.canonicalFile)
+		destinationStore.setRoot(FavouriteSpace.PRIVATE, File(root, "private"))
+		assertTrue(destinationStore.readableRoots(FavouriteSpace.PRIVATE).any { it.canonicalFile == root })
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.PRIVATE, forExhentaiDetails = true))
+		assertEquals(chapter.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+	}
+
 	@Test fun detailsReadsIndexedCbzWithForeignGalleryAndComicInfoWithoutChangingOwnership() = runBlocking {
 		val foreignIndex = """{"id":888100,"title":"Other gallery","url":"https://exhentai.org/g/888100/token/",
 			"source":"TSUKI:MIYORARE:miyorare-global:EXHENTAI","tags":[],
@@ -397,9 +454,9 @@ class ExhentaiTitleDownloadCompatibilityTest {
 
 	private fun archive(
 		folder: String, name: String, comment: String? = null, private: Boolean = false,
-		index: String? = null, comicInfo: String? = null,
+		index: String? = null, comicInfo: String? = null, destination: File? = null,
 	): File {
-		val base = if (private) File(root, "private") else root
+		val base = destination ?: if (private) File(root, "private") else root
 		val dir = File(base, "downloads/ExHentai (OTHER)/$folder")
 		check(dir.mkdirs())
 		return File(dir, name).apply {
