@@ -24,7 +24,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
@@ -123,6 +125,7 @@ class DetailsExpressiveActivity :
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
 	private val promptedExhentaiReadChoices = HashSet<String>()
+	private var exhentaiChoiceDialog: androidx.appcompat.app.AlertDialog? = null
 
 	private enum class PrivateContentState {
 		UNKNOWN,
@@ -209,37 +212,19 @@ class DetailsExpressiveActivity :
 		viewModel.isStatsAvailable.observe(this, menuInvalidator)
 		viewModel.remoteManga.observe(this, menuInvalidator)
 		viewModel.mangaDetails.observe(this) {
-			it?.let { d -> title = d.toManga().title }
+			it?.let { details -> title = details.toManga().title }
 			invalidateOptionsMenu()
-			val details = it ?: return@observe
-			val remote = details.sourceManga
-			val source = remote.source.name
-			if (details.local != null || !details.isLoaded || remote.chapters?.size != 1 ||
-				(source != org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
-					source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) return@observe
-			val key = "${remote.id}:${source}:${viewModel.favouriteSpace}"
-			if (promptedExhentaiReadChoices.add(key)) lifecycleScope.launch {
-				val choices = withContext(Dispatchers.IO) { viewModel.getExhentaiReadChoices() }
-				if (choices.isEmpty() || isFinishing ||
-					viewModel.mangaDetails.value?.sourceManga?.id != remote.id ||
-					viewModel.mangaDetails.value?.local != null) return@launch
-				buildAlertDialog(this@DetailsExpressiveActivity) {
-					setTitle(R.string.exhentai_choose_local_title)
-					setMessage(R.string.exhentai_choose_local_description)
-					setItems(choices.map { candidate ->
-						val id = candidate.galleryId?.let { getString(R.string.exhentai_choose_local_known_id, it) }
-							?: getString(R.string.exhentai_choose_local_unknown_id)
-						"${java.io.File(candidate.path).name} · $id\n${candidate.path}"
-					}.toTypedArray()) { _, index ->
-						lifecycleScope.launch {
-							if (!viewModel.selectExhentaiReadChoice(choices[index])) {
-								Toast.makeText(this@DetailsExpressiveActivity,
-									R.string.exhentai_choose_local_changed, Toast.LENGTH_LONG).show()
-							}
-						}
+			maybePromptExhentaiReadChoice(it)
+		}
+		// The picker is outside Compose. Keep it behind the same Private vault guard
+		// as the Details content; unlock/state changes re-evaluate a pending choice.
+		lifecycleScope.launch {
+			repeatOnLifecycle(Lifecycle.State.STARTED) {
+				combine(privateContentStateFlow, privateFavouritesSession.isUnlocked) { _, _ -> Unit }
+					.collect {
+						if (!canShowExhentaiFileDetails()) exhentaiChoiceDialog?.dismiss()
+						else maybePromptExhentaiReadChoice(viewModel.mangaDetails.value)
 					}
-					setNegativeButton(android.R.string.cancel, null)
-				}.show()
 			}
 		}
 		viewModel.onChapterDownloadRenameMessage.observeEvent(this) { message ->
@@ -329,6 +314,9 @@ class DetailsExpressiveActivity :
 	}
 
 	override fun onStop() {
+		// A suspended/locked Private session must not leave a physical CBZ path in a dialog.
+		exhentaiChoiceDialog?.dismiss()
+		promptedExhentaiReadChoices.clear()
 		viewModel.pauseExpandedRelated()
 		viewModel.pauseGenreRecommendations()
 		viewModel.pauseTrackerPeople()
@@ -594,6 +582,55 @@ class DetailsExpressiveActivity :
 						onGroupingChange = viewModel::setChapterGroupingMode,
 					)
 				}
+			}
+		}
+	}
+
+	private fun canShowExhentaiFileDetails(): Boolean {
+		val state = privateContentStateFlow.value
+		if (state == PrivateContentState.UNKNOWN) return false
+		val protected = state == PrivateContentState.PRIVATE ||
+			viewModel.favouriteSpace == FavouriteSpace.PRIVATE
+		return !protected || privateFavouritesSession.isUnlocked.value
+	}
+
+	private fun maybePromptExhentaiReadChoice(details: org.koitharu.kotatsu.details.data.MangaDetails?) {
+		if (details == null || details.local != null || !details.isLoaded ||
+			!canShowExhentaiFileDetails() || isFinishing || isDestroyed
+		) return
+		val remote = details.sourceManga
+		if (remote.chapters?.size != 1) return
+		val source = remote.source.name
+		if (source != org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
+			source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI") return
+		val key = "${remote.id}:${source}:${viewModel.favouriteSpace}"
+		if (!promptedExhentaiReadChoices.add(key)) return
+		lifecycleScope.launch {
+			val choices = withContext(Dispatchers.IO) { viewModel.getExhentaiReadChoices() }
+			if (choices.isEmpty() || !canShowExhentaiFileDetails() || isFinishing || isDestroyed ||
+				viewModel.mangaDetails.value?.sourceManga?.id != remote.id ||
+				viewModel.mangaDetails.value?.local != null) return@launch
+			val dialog = buildAlertDialog(this@DetailsExpressiveActivity) {
+				setTitle(R.string.exhentai_choose_local_title)
+				setMessage(R.string.exhentai_choose_local_description)
+				setItems(choices.map { candidate ->
+					val id = candidate.galleryId?.let { getString(R.string.exhentai_choose_local_known_id, it) }
+						?: getString(R.string.exhentai_choose_local_unknown_id)
+					"${java.io.File(candidate.path).name} · $id\\n${candidate.path}"
+				}.toTypedArray()) { _, index ->
+					lifecycleScope.launch {
+						if (!canShowExhentaiFileDetails() ||
+							!viewModel.selectExhentaiReadChoice(choices[index])) {
+							Toast.makeText(this@DetailsExpressiveActivity,
+								R.string.exhentai_choose_local_changed, Toast.LENGTH_LONG).show()
+						}
+					}
+				}
+				setNegativeButton(android.R.string.cancel, null)
+			}.show()
+			exhentaiChoiceDialog = dialog
+			dialog.setOnDismissListener {
+				if (exhentaiChoiceDialog === dialog) exhentaiChoiceDialog = null
 			}
 		}
 	}
