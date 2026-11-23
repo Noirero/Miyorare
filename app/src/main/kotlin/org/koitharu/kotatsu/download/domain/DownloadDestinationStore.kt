@@ -99,6 +99,20 @@ class DownloadDestinationStore @Inject constructor(
 		return other == active || !other.isAtOrBelow(active) || !target.isAtOrBelow(other)
 	}
 
+	/**
+	 * Index-only projection for Favorites cards and counters. Do NOT resolve canonicalPath
+	 * here: it can access an unmounted SD card during an interactive list refresh.
+	 * Actual Reader/Delete authorization uses isVisibleInActiveExhentaiDestination().
+	 */
+	fun isVisibleInActiveExhentaiIndex(space: FavouriteSpace, file: File): Boolean {
+		val active = effectiveRoot(space)?.absoluteFile?.normalize()?.path ?: return false
+		val target = file.absoluteFile.normalize().path
+		if (!target.isAtOrBelow(active)) return false
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val other = effectiveRoot(otherSpace)?.absoluteFile?.normalize()?.path ?: return true
+		return other == active || !other.isAtOrBelow(active) || !target.isAtOrBelow(other)
+	}
+
 	private fun String.isAtOrBelow(root: String): Boolean {
 		val cleanRoot = root.trimEnd(File.separatorChar)
 		return this == cleanRoot || startsWith(cleanRoot + File.separator)
