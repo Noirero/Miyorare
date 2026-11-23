@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.ui
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,8 +27,12 @@ internal fun showExhentaiPhysicalDeleteConfirmation(
 	val source = details.sourceManga.source.name
 	if (details.local == null || (source != EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
 		source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) return false
+	// This call must never fall back to legacy unconfirmed deletion for a locked vault.
+	val host = context.findExhentaiDetailsActivity()
+	if (host == null || !host.canShowExhentaiFileDetails()) return true
 	scope.launch {
 		val approval = withContext(Dispatchers.IO) { viewModel.previewExhentaiPhysicalDeletion() }
+		if (!host.canShowExhentaiFileDetails()) return@launch
 		if (approval == null || viewModel.mangaDetails.value?.id != details.id) {
 			Toast.makeText(context, R.string.exhentai_delete_target_unavailable, Toast.LENGTH_LONG).show()
 			return@launch
@@ -43,14 +48,25 @@ internal fun showExhentaiPhysicalDeleteConfirmation(
 				append(context.getString(R.string.exhentai_delete_shared_space_warning))
 			}
 		}
-		buildAlertDialog(context) {
+		val confirmationDialog = buildAlertDialog(context) {
 			setTitle(R.string.exhentai_delete_physical_title)
 			setMessage(message)
 			setPositiveButton(R.string.delete) { _, _ ->
-				viewModel.deleteLocal(approval)
+				if (host.canShowExhentaiFileDetails()) viewModel.deleteLocal(approval)
 			}
 			setNegativeButton(android.R.string.cancel, null)
 		}.show()
+		host.trackExhentaiDeleteDialog(confirmationDialog)
 	}
 	return true
+}
+
+/** ContextThemeWrapper may wrap the Activity for a RecyclerView's themed action mode. */
+private fun Context.findExhentaiDetailsActivity(): DetailsExpressiveActivity? {
+	var candidate: Context? = this
+	while (candidate is ContextWrapper) {
+		if (candidate is DetailsExpressiveActivity) return candidate
+		candidate = candidate.baseContext
+	}
+	return null
 }
