@@ -80,7 +80,7 @@ class KotatsuMangaRepository(
 	override suspend fun getImageRequestHeaders(imageUrl: String, page: MangaPage): Headers = runtimeRequestHeaders()
 
 	/**
-	 * The parser's own request headers, for host-side cover loading (KotatsuImageFetcher).
+	 * Supplies the parser's browser headers to the host-side Coil cover interceptor.
 	 * Some image hosts only serve covers to requests that carry the source's Referer;
 	 * without it they answer 403 and the cover stays blank even though reading works.
 	 */
