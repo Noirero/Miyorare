@@ -988,6 +988,11 @@ class DownloadMaintenanceRegressionTest {
 		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
 		assertNull(resolver.findSavedManga(gallery, space))
 		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(gallery.id, space.dbValue, cbz.canonicalPath))
+		// A matching receipt and persisted row do not make files outside the selected
+		// active destination visible. Selecting that destination restores the exact copy.
+		assertNull(resolver.findSavedManga(gallery, space))
+		assertLocalCbzReadable(cbz)
+		destinationStore.setRoot(space, selected)
 		assertExhentaiLocalRead(gallery, cbz, space)
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 	}
@@ -999,7 +1004,8 @@ class DownloadMaintenanceRegressionTest {
 		val normalReceipt = ExhentaiChapterOwnership.Receipt(normal, UUID.randomUUID())
 		val privateReceipt = ExhentaiChapterOwnership.Receipt(privateSpace, UUID.randomUUID())
 		val normalFile = writeGalleryFixture(gallery, false, byteArrayOf(1), DownloadFormat.SINGLE_CBZ, normalReceipt)
-		val privateFile = writeGalleryFixture(gallery, false, byteArrayOf(2), DownloadFormat.SINGLE_CBZ, privateReceipt)
+		val privateFile = writeGalleryFixture(gallery, false, byteArrayOf(2), DownloadFormat.SINGLE_CBZ,
+			privateReceipt, destination = File(root, "private"))
 		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
 		val dao = db.getFavouriteDownloadIndexDao()
 		val normalRow = FavouriteDownloadIndexEntity(gallery.id, normal.dbValue, normalFile.canonicalPath)
@@ -1144,9 +1150,15 @@ class DownloadMaintenanceRegressionTest {
 		assertTrue(dao.findEntries(listOf(gallery.id)).isEmpty())
 
 		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.PRIVATE.dbValue, cbz.canonicalPath))
-		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		// Persisted ownership of a historical directory cannot override the currently
+		// selected Private destination. Re-selecting the shared destination restores reads.
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 		assertNull(resolver.findSavedManga(gallery, null))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		destinationStore.setRoot(FavouriteSpace.PRIVATE, root)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		destinationStore.setRoot(FavouriteSpace.PRIVATE, File(root, "private"))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 
 		dao.delete(FavouriteSpace.PRIVATE.dbValue, gallery.id)
 		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath))
