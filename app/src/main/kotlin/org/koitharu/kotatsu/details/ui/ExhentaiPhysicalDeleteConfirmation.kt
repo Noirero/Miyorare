@@ -58,7 +58,8 @@ internal fun showExhentaiPhysicalDeleteConfirmation(
 				if (host.canShowExhentaiFileDetails(viewModel.favouriteSpace)) viewModel.deleteLocal(approval)
 			}
 			setNegativeButton(android.R.string.cancel, null)
-		}.show()
+		}
+		confirmationDialog.show()
 		host.trackSensitiveExhentaiDeleteDialog(confirmationDialog)
 	}
 	return true

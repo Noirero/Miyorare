@@ -647,7 +647,8 @@ class DetailsExpressiveActivity :
 					}
 				}
 				setNegativeButton(android.R.string.cancel, null)
-			}.show()
+			}
+			dialog.show()
 			exhentaiChoiceDialog = dialog
 			dialog.setOnDismissListener {
 				if (exhentaiChoiceDialog === dialog) exhentaiChoiceDialog = null
