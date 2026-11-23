@@ -37,17 +37,15 @@ class DownloadedContentClassifier @Inject constructor(
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
 		val allowedRoots = getDownloadRoots(space)
 		if (allowedRoots.isEmpty()) return emptySet()
-
-		val result = db.getFavouriteDownloadIndexDao()
-			.findEntries(space.dbValue)
-			.asSequence()
-			.filter { File(it.path).isInsideAny(allowedRoots) }
-			.mapTo(HashSet()) { it.mangaId }
-
-		if (canInferSpaceFromPath()) {
-			findIndexedEntriesInRoots(allowedRoots).mapTo(result) { it.mangaId }
+		val candidates = ArrayList<Pair<Long, File>>()
+		for (entry in db.getFavouriteDownloadIndexDao().findEntries(space.dbValue)) {
+			val path = File(entry.path)
+			if (path.isInsideAny(allowedRoots)) candidates += entry.mangaId to path
 		}
-		return result
+		if (canInferSpaceFromPath()) {
+			findIndexedEntriesInRoots(allowedRoots).forEach { candidates += it.mangaId to File(it.path) }
+		}
+		return filterActiveExhentaiCandidates(space, candidates)
 	}
 
 	/**
@@ -59,28 +57,24 @@ class DownloadedContentClassifier @Inject constructor(
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
-		val allowedRoots = getDownloadRoots(space)
-		if (allowedRoots.isEmpty()) return emptySet()
-
-		val ids = mangaIds.toSet()
-		val ownershipDao = db.getFavouriteDownloadIndexDao()
-		val result = HashSet<Long>(minOf(ids.size, 256))
-
-		for (chunk in ids.chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			ownershipDao.findEntries(space.dbValue, chunk)
-				.asSequence()
-				.filter { File(it.path).isInsideAny(allowedRoots) }
-				.mapTo(result) { it.mangaId }
+		val roots = getDownloadRoots(space)
+		if (roots.isEmpty()) return emptySet()
+		val candidates = ArrayList<Pair<Long, File>>()
+		val requested = mangaIds.toSet()
+		for (chunk in requested.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			for (entry in db.getFavouriteDownloadIndexDao().findEntries(space.dbValue, chunk)) {
+				val path = File(entry.path)
+				if (path.isInsideAny(roots)) candidates += entry.mangaId to path
+			}
 		}
-		if (result.size == ids.size || !canInferSpaceFromPath()) return result
-
-		val localDao = db.getLocalMangaIndexDao()
-		for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			localDao.findEntries(chunk)
-				.filterToDownloadRoots(allowedRoots)
-				.mapTo(result) { it.mangaId }
+		if (canInferSpaceFromPath()) {
+			for (chunk in requested.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+				db.getLocalMangaIndexDao().findEntries(chunk)
+					.filterToDownloadRoots(roots)
+					.forEach { candidates += it.mangaId to File(it.path) }
+			}
 		}
-		return result
+		return filterActiveExhentaiCandidates(space, candidates)
 	}
 
 	/** Fast alias used by interactive counts/cards; always index-only and filesystem-free. */
@@ -171,6 +165,32 @@ class DownloadedContentClassifier @Inject constructor(
 			}
 		}
 		return result
+	}
+
+	/**
+	 * Keep other sources' historical-root classification untouched. Main/Gekko are
+	 * active-destination-only even when an old ownership/index row remains in Room.
+	 * All work here is index-backed; never scan CBZ files while rendering Favorites.
+	 */
+	private suspend fun filterActiveExhentaiCandidates(
+		space: FavouriteSpace,
+		candidates: List<Pair<Long, File>>,
+	): Set<Long> {
+		if (candidates.isEmpty()) return emptySet()
+		val sourceById = HashMap<Long, String>()
+		for (chunk in candidates.map { it.first }.distinct().chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			db.getMangaDao().findSourceNamesByIds(chunk).forEach { sourceById[it.mangaId] = it.source }
+		}
+		return candidates.asSequence()
+			.filter { (id, file) ->
+				when (sourceById[id]) {
+					org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME,
+					"TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI" ->
+						downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)
+					else -> true
+				}
+			}
+			.mapTo(HashSet()) { it.first }
 	}
 
 	private fun File.isInsideAny(roots: Collection<File>): Boolean {
