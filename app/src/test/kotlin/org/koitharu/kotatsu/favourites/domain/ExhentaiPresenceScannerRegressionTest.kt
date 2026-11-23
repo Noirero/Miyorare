@@ -5,6 +5,22 @@ import java.nio.file.Files
 import org.junit.Test
 
 internal class ExhentaiPresenceScannerRegressionTest {
+    @Test fun normalizedLegacyFolderTitleMatchesTaggedGalleryTitle() {
+        val root = Files.createTempDirectory("exhentai-title-compat").toFile()
+        try {
+            val chapter = File(root, "downloads/E-Hentai (EN)/My Manga/Chapter.cbz")
+            check(chapter.parentFile!!.mkdirs())
+            chapter.writeText("CBZ contents need not be readable")
+            val scanner = ExhentaiPresenceScanner(setOf("E-Hentai (EN)"))
+            val scan = scanner.scan(root)
+            check(scan.availability == ExhentaiPresenceScanner.Availability.AVAILABLE)
+            check(scan.snapshot.candidatesFor("[Artist] My Manga (C99)") == listOf(chapter.canonicalPath))
+            check(scan.snapshot.candidatesFor("Unrelated Gallery").isEmpty())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun manualCbzPresenceIsIsolatedAndDoesNotRequireValidArchive() {
         val tmp = Files.createTempDirectory("exhentai-presence").toFile()
         try {

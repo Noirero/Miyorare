@@ -2,8 +2,7 @@ package org.koitharu.kotatsu.favourites.domain
 
 import java.io.File
 import java.io.IOException
-import java.text.Normalizer
-import java.util.Locale
+import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 
 /**
  * Filesystem-presence discovery for ExHentai. This does not open ZIPs, write ownership
@@ -134,8 +133,9 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
 
     companion object {
         private val duplicateSuffix = Regex("_\\d+$")
-        fun titleKey(title: String): String = Normalizer.normalize(
-            title.trim().replace(duplicateSuffix, ""), Normalizer.Form.NFC,
-        ).lowercase(Locale.ROOT)
+        // Match the same sanitized ExHentai titles accepted by the legacy read resolver.
+        fun titleKey(title: String): String = EhentaiLegacyDownloadResolver.normalizedTitle(
+            title.trim().replace(duplicateSuffix, ""),
+        )
     }
 }
