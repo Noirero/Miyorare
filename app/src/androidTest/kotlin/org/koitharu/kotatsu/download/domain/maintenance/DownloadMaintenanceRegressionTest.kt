@@ -91,6 +91,7 @@ class DownloadMaintenanceRegressionTest {
 	@Inject lateinit var mangaRepositories: MangaRepository.Factory
 	@Inject lateinit var sizeResolver: DownloadSizeResolver
 	@Inject lateinit var maintenance: DownloadMaintenanceUseCase
+	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var db: MangaDatabase
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var index: LocalMangaIndex
