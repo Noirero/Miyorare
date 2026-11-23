@@ -96,7 +96,9 @@ class ExhentaiPresenceDiscovery @Inject constructor(
         }
     }
 
-    private fun File.stablePath(): String = runCatching { canonicalPath }.getOrDefault(absolutePath)
+    // Canonical filesystem path resolution is not permitted on interactive Favorites reads.
+    // Persist the same normalized absolute root representation used in SQL classification.
+    private fun File.stablePath(): String = absoluteFile.normalize().path
 
     companion object {
         const val KEY_SCAN_ON_RESUME = "exhentai_presence_scan_on_resume"

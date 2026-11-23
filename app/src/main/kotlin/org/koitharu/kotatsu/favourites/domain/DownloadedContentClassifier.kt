@@ -48,7 +48,7 @@ class DownloadedContentClassifier @Inject constructor(
 			findIndexedEntriesInRoots(allowedRoots).forEach { candidates += it.mangaId to File(it.path) }
 		}
 		val indexed = filterActiveExhentaiCandidates(space, candidates)
-		val root = downloadDestinationStore.effectiveRoot(space)?.canonicalPath ?: return indexed
+		val root = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path ?: return indexed
 		return indexed + db.getExhentaiPresenceDao().findIds(space.dbValue, root)
 	}
 
@@ -80,7 +80,7 @@ class DownloadedContentClassifier @Inject constructor(
 			}
 		}
 		val indexed = filterActiveExhentaiCandidates(space, candidates)
-		val root = downloadDestinationStore.effectiveRoot(space)?.canonicalPath ?: return indexed
+		val root = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path ?: return indexed
 		val found = HashSet<Long>()
 		for (chunk in requested.chunked(INDEX_QUERY_CHUNK_SIZE)) {
 			found.addAll(db.getExhentaiPresenceDao().findIds(space.dbValue, root, chunk))
@@ -121,7 +121,7 @@ class DownloadedContentClassifier @Inject constructor(
 		)
 		val gekkoSource = sqlEscapeString("TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")
 		val scopedSource = "$sourceColumn IN ($mainSource, $gekkoSource)"
-		val root = downloadDestinationStore.effectiveRoot(space)?.canonicalPath
+		val root = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path
 		val detected = if (root == null) "0" else {
 			"EXISTS(SELECT 1 FROM exhentai_presence ep WHERE ep.mangaId = $mangaIdColumn " +
 				"AND ep.space = ${space.dbValue} AND ep.root = ${sqlEscapeString(root)})"
