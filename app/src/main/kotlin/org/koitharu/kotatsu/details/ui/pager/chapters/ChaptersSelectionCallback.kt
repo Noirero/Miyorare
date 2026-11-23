@@ -6,6 +6,8 @@ import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.recyclerview.widget.RecyclerView
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -18,6 +20,7 @@ import org.koitharu.kotatsu.core.util.ext.toSet
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.local.ui.LocalChaptersRemoveService
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
+import org.koitharu.kotatsu.details.ui.showExhentaiPhysicalDeleteConfirmation
 
 class ChaptersSelectionCallback(
 	private val viewModel: ChaptersPagesViewModel,
@@ -86,7 +89,12 @@ class ChaptersSelectionCallback(
 					viewModel.isSmartLocal -> org.koitharu.kotatsu.local.ui.confirmLocalChapterDeletion(
 						recyclerView.context,
 					) { viewModel.deleteSmartLocalChapters(ids) }
-					ids.size == manga.chapters?.size -> viewModel.deleteLocal()
+					ids.size == manga.chapters?.size -> {
+						val owner = recyclerView.findViewTreeLifecycleOwner()
+						if (owner == null || !showExhentaiPhysicalDeleteConfirmation(
+							recyclerView.context, owner.lifecycleScope, viewModel,
+						)) viewModel.deleteLocal()
+					}
 					else -> {
 						LocalChaptersRemoveService.start(
 							recyclerView.context,
