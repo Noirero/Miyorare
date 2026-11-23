@@ -469,6 +469,85 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun comicInfoGalleryIdRequiresExplicitChoiceWhenItDisagrees() = runBlocking {
+		val chapter = archive(
+			"Legacy Gallery", "Chapter.cbz",
+			comicInfo = "<ComicInfo><Web>https://exhentai.org/g/990037/token/</Web></ComicInfo>",
+		)
+		val online = gallery(990038, GEKKO_SOURCE)
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		val choices = resolver.getExhentaiReadChoices(online, FavouriteSpace.NORMAL)
+		assertEquals(1, choices.size)
+		assertEquals(990037L, choices.single().galleryId)
+		assertEquals(chapter.canonicalPath, choices.single().path)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
+	@Test fun confirmedDeleteRecognizesSingleCbzDirectlyUnderSourceDirectory() = runBlocking {
+		val source = File(root, "downloads/ExHentai (OTHER)").apply { check(mkdirs() || isDirectory) }
+		val file = File(source, "Legacy Gallery.cbz")
+		ZipOutputStream(file.outputStream()).use { zip ->
+			zip.putNextEntry(ZipEntry("1.webp"))
+			zip.write(byteArrayOf(1, 2, 3))
+			zip.closeEntry()
+		}
+		val manga = gallery(990039, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+		assertEquals(file.canonicalFile, local?.file?.canonicalFile)
+		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local!!)
+		assertNotNull(approval)
+		assertEquals(file.canonicalPath, approval!!.canonicalPath)
+		assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval))
+		assertFalse(file.exists())
+	}
+
+	@Test fun confirmedDeleteRejectsSameSizeReplacementEvenWithRestoredMtime() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990040, GEKKO_SOURCE)
+		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)!!
+		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local)!!
+		val bytes = chapter.readBytes()
+		val changed = bytes.copyOf().apply { this[40] = (this[40].toInt() xor 1).toByte() }
+		chapter.writeBytes(changed)
+		assertTrue(chapter.setLastModified(approval.lastModified))
+		assertEquals(approval.length, chapter.length())
+		assertEquals(approval.lastModified, chapter.lastModified())
+		var rejected = false
+		try {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval)
+		} catch (e: UnverifiedDownloadRemovalException) {
+			rejected = true
+		}
+		assertTrue(rejected)
+		assertTrue(chapter.exists())
+	}
+
+	@Test fun deletingOneLegacyCbzKeepsParentOwnershipIfAnotherCbzRemains() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val sibling = File(chapter.parentFile, "Other.cbz")
+		chapter.copyTo(sibling)
+		val manga = gallery(990041, GEKKO_SOURCE)
+		val another = gallery(990042, GEKKO_SOURCE)
+		data.storeManga(another, replaceExisting = true, detailsFetched = true)
+		database.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(
+				another.id, FavouriteSpace.NORMAL.dbValue, chapter.parentFile.canonicalPath,
+			),
+		)
+		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)!!
+		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local)!!
+		try {
+			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval))
+			assertFalse(chapter.exists())
+			assertTrue(sibling.isFile)
+			assertNotNull(database.getFavouriteDownloadIndexDao().findEntry(
+				FavouriteSpace.NORMAL.dbValue, another.id,
+			))
+		} finally {
+			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, another.id)
+		}
+	}
+
 	@Test fun confirmedLegacyDeleteRemovesExactlyTheSharedFileAndLeavesNoFakeOwnership() = runBlocking {
 		prefs.edit(commit = true) {
 			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
