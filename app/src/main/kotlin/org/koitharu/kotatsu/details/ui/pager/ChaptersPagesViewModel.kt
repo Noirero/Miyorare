@@ -75,6 +75,7 @@ import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.ExhentaiDeletionApproval
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaState
@@ -812,7 +813,14 @@ abstract class ChaptersPagesViewModel(
 		}
 	}
 
-	fun deleteLocal() {
+	/** Read-only preparation: the user must explicitly accept the displayed physical target. */
+	suspend fun previewExhentaiPhysicalDeletion(): ExhentaiDeletionApproval? {
+		val details = mangaDetails.value ?: return null
+		val local = details.local ?: return null
+		return deleteLocalMangaUseCase.previewExhentaiPhysicalDeletion(details.sourceManga, favouriteSpace, local)
+	}
+
+	fun deleteLocal(approvedExhentaiFile: ExhentaiDeletionApproval? = null) {
 		if (isSmartLocal) {
 			val manga = requireManga()
 			launchLoadingJob(Dispatchers.IO) {
@@ -830,7 +838,11 @@ abstract class ChaptersPagesViewModel(
 		}
 		launchLoadingJob(Dispatchers.Default) {
 			val remote = details?.sourceManga
-			if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
+			if (remote != null && approvedExhentaiFile != null) {
+				check(deleteLocalMangaUseCase.deleteConfirmedExhentaiPhysicalFile(
+					remote, favouriteSpace, local, approvedExhentaiFile,
+				)) { "Confirmed ExHentai file could not be removed" }
+			} else if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
 				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {
 					"Downloaded ExHentai gallery is unavailable"
 				}
