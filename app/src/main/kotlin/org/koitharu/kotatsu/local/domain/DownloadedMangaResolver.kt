@@ -125,6 +125,12 @@ class DownloadedMangaResolver @Inject constructor(
 						))
 				) return match.local
 			} else if (inKnownRoot) {
+				if (detailsTitleRead && manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME && ownedFile.isDirectory) {
+					// Older ownership rows may point at a gallery directory. Details/Delete must use
+					// the unambiguous CBZ itself, not the generic directory-backed LocalManga.
+					findTitleMatchedChapter(manga, space, roots, detailsTitleRead = true)?.let { return it }
+					if (getExhentaiReadChoices(manga, space).isNotEmpty()) return null
+				}
 				localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let { return it }
 			}
 		}

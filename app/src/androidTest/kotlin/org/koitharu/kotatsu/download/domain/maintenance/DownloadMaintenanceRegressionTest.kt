@@ -1122,7 +1122,7 @@ class DownloadMaintenanceRegressionTest {
 	@Test fun unmarkedExhentaiWithSharedActiveRootNeedsSpaceOwnership() = runBlocking {
 		// Private follows Normal, so both lookups can see the same candidate path.
 		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
-		assertOverlappingExhentaiRequiresOwnership(812307L)
+		assertOverlappingExhentaiRequiresOwnership(812307L, sharedActiveDestination = true)
 	}
 
 	@Test fun unmarkedExhentaiWithOverlappingHistoricalRootNeedsSpaceOwnership() = runBlocking {
@@ -1130,10 +1130,10 @@ class DownloadMaintenanceRegressionTest {
 		prefs.edit(commit = true) {
 			putStringSet("private_download_legacy_roots", setOf(root.path))
 		}
-		assertOverlappingExhentaiRequiresOwnership(812308L)
+		assertOverlappingExhentaiRequiresOwnership(812308L, sharedActiveDestination = false)
 	}
 
-	private suspend fun assertOverlappingExhentaiRequiresOwnership(gid: Long) {
+	private suspend fun assertOverlappingExhentaiRequiresOwnership(gid: Long, sharedActiveDestination: Boolean) {
 		val gallery = offlineExhentaiGallery(gid)
 		val directory = folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture")
 		val cbz = chapterFile(directory, "Chapter.cbz")
@@ -1148,12 +1148,26 @@ class DownloadMaintenanceRegressionTest {
 		// A matching Local alias and a readable archive do not establish space ownership.
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		// Read-only Details can discover a valid CBZ in the active destination without
+		// creating a space ownership row. A historical root must stay invisible.
+		assertEquals(cbz.canonicalFile,
+			resolver.findSavedManga(gallery, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		if (sharedActiveDestination) {
+			assertEquals(cbz.canonicalFile,
+				resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE, forExhentaiDetails = true)?.file?.canonicalFile)
+		} else {
+			assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE, forExhentaiDetails = true))
+		}
 		assertTrue(dao.findEntries(listOf(gallery.id)).isEmpty())
 
 		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.PRIVATE.dbValue, cbz.canonicalPath))
-		// Persisted ownership of a historical directory cannot override the currently
-		// selected Private destination. Re-selecting the shared destination restores reads.
-		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		// An ownership row does not override the active destination. A shared active
+		// root may be read; an isolated Private root must not see the Normal CBZ.
+		if (sharedActiveDestination) {
+			assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		} else {
+			assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		}
 		assertNull(resolver.findSavedManga(gallery, null))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		destinationStore.setRoot(FavouriteSpace.PRIVATE, root)

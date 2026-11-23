@@ -542,8 +542,10 @@ class ExhentaiTitleDownloadCompatibilityTest {
 				),
 			)
 		}
-		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)!!
-		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local)!!
+		val local = checkNotNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		// A legacy directory ownership row must not redirect confirmed Delete to the directory.
+		assertEquals(chapter.canonicalFile, local.file.canonicalFile)
+		val approval = checkNotNull(deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local))
 		try {
 			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval))
 			assertFalse(chapter.exists())
