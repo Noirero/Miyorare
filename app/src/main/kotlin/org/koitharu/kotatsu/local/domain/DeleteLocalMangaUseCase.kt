@@ -137,6 +137,24 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		remote.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
 			remote.source.name == GEKKO_EXHENTAI_SOURCE_NAME
 
+	/** Ensure the confirmed CBZ belongs to a recognized source folder directly under the
+	 * selected downloads root (or its historical pre-downloads layout).
+	 */
+	private fun isApprovedExhentaiSourceFolder(remote: Manga, space: FavouriteSpace, source: File?): Boolean {
+		if (source == null) return false
+		val folder = source.canonicalFile
+		return downloadDestinationStore.activeExhentaiRoots(space).any { root ->
+			val active = root.canonicalFile
+			val downloads = File(active, LocalMangaOutput.DOWNLOADS_DIR_NAME).canonicalFile
+			val parent = folder.parentFile
+			val knownLegacy = folder.name.equals("ExHentai (OTHER)", ignoreCase = true) ||
+				EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(folder.name)
+			val currentSource = LocalMangaOutput.getSourceDirectory(downloads, remote).canonicalFile
+			(knownLegacy && (parent == active || parent == downloads)) ||
+				(folder == currentSource && currentSource != downloads)
+		}
+	}
+
 	/**
 	 * Metadata for a user-facing confirmation dialog. No file or database mutation occurs.
 	 * This is restricted to a flat, readable legacy ExHentai CBZ in the active destination.
@@ -148,10 +166,15 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	): ExhentaiDeletionApproval? {
 		if (!isExhentaiConfirmationSource(remote)) return null
 		val file = local.file.canonicalFile
-		val sourceFolder = file.parentFile?.parentFile ?: return null
-		if (!file.isFile || !EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(file.name) ||
-			!(sourceFolder.name.equals("ExHentai (OTHER)", ignoreCase = true) ||
-				EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(sourceFolder.name)) ||
+		val parent = file.parentFile ?: return null
+		// Historical MULTIPLE_CBZ uses <source>/<title>/Chapter.cbz, while SINGLE_CBZ
+		// publishes <source>/<title>.cbz. Both can be explicitly selected for deletion.
+		val legacyChapter = EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(file.name) &&
+			isApprovedExhentaiSourceFolder(remote, space, parent.parentFile)
+		val singleArchive = file.extension.equals("cbz", ignoreCase = true) &&
+			EhentaiLegacyDownloadResolver.titlesMatch(remote.title, file.nameWithoutExtension) &&
+			isApprovedExhentaiSourceFolder(remote, space, parent)
+		if (!file.isFile || !(legacyChapter || singleArchive) ||
 			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file) ||
 			ExhentaiDownloadedCopy.readTitleMatchedChapter(remote, file, allowIndexed = true) == null
 		) return null
