@@ -33,6 +33,13 @@ add_class() {
   CLASSES+=("$candidate")
 }
 
+add_exhentai_presence_migration_test() {
+  # The Android selector is an explicit class filter, not test APK auto-discovery.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ExhentaiPresenceMigrationTest.kt ]]; then
+    add_class org.koitharu.kotatsu.core.db.ExhentaiPresenceMigrationTest
+  fi
+}
+
 add_sync_suite() {
   add_class org.koitharu.kotatsu.sync.data.GoogleDriveAuthRecoveryTest
   add_class org.koitharu.kotatsu.sync.data.SyncSettingsAuthStateTest
@@ -105,6 +112,7 @@ add_local_download_suite() {
   add_class org.koitharu.kotatsu.favourites.domain.DownloadedLocalStateTest
   add_class org.koitharu.kotatsu.local.data.LocalChapterDeleteStateTest
   add_class org.koitharu.kotatsu.details.domain.DetailsLiveLocalStateTest
+  add_exhentai_presence_migration_test
   MAPPED=true
 }
 
@@ -124,6 +132,7 @@ add_discovery_suite() {
 
 add_database_suite() {
   add_class org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest
+  add_exhentai_presence_migration_test
   MAPPED=true
 }
 
@@ -265,6 +274,7 @@ add_full_suite() {
     add_class org.koitharu.kotatsu.download.DownloadFixRegressionTest
   fi
   add_verbose_diagnostics_suite
+  add_exhentai_presence_migration_test
 
   RUN_RUNTIME_ISOLATION=true
   RUN_MIGRATION_PERSISTENCE=true
@@ -662,7 +672,53 @@ self_test() {
   done
 
   out="$(plan_from_paths true 'README.md')"
-  grep -q '^mode=full$' <<<"$out"
+  grep -q '^mode=full
+  grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
+  grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.download.DownloadFixRegressionTest')" == 1 ]]
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
+    grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
+  fi
+  grep -q '^run_runtime_isolation=true$' <<<"$out"
+  grep -q '^run_migration_persistence=true$' <<<"$out"
+  ! grep -q 'HistoryScrollBenchmarkTest' <<<"$out"
+
+  classify_self_test
+  policy_self_test
+  echo 'Runtime selector self-test: PASS'
+}
+
+if [[ "$SELF_TEST" == true ]]; then
+  self_test
+  exit 0
+fi
+
+if [[ "$POLICY" == true ]]; then
+  : "${DRAFT:?}" "${LABEL_RUNTIME:?}" "${LABEL_FULL:?}" "${TARGETED_AVAILABLE:?}" "${LABEL_USER_ISSUE:?}" "${LABEL_THEME:?}" "${LABEL_OWNER:?}"
+  input="$(cat)"
+  run="$(sed -n 's/^run_runtime=//p' <<< "$input")"
+  full="$(sed -n 's/^full=//p' <<< "$input")"
+  resolve_policy "$run" "$full" "$DRAFT" "$LABEL_RUNTIME" "$LABEL_FULL" "$TARGETED_AVAILABLE" "$LABEL_USER_ISSUE" "$LABEL_THEME" "$LABEL_OWNER"
+  exit 0
+fi
+mapfile -t PATHS
+if [[ "$CLASSIFY" == true ]]; then
+  classify_paths "${PATHS[@]}"
+  exit 0
+fi
+plan_from_paths "$FULL" "${PATHS[@]}"
+ <<<"$out"
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ExhentaiPresenceMigrationTest.kt ]]; then
+    local check_path selected
+    for check_path in 'app/src/main/kotlin/org/koitharu/kotatsu/download/domain/DownloadDestinationStore.kt' \
+                      'app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt'; do
+      selected="$(plan_from_paths false "$check_path")"
+      [[ "$(sed -n 's/^classes=//p' <<<"$selected" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.core.db.ExhentaiPresenceMigrationTest')" == 1 ]]
+    done
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.core.db.ExhentaiPresenceMigrationTest')" == 1 ]]
+  fi
   grep -q 'CategorySetsUiTest' <<<"$out"
   grep -q 'SimpleMigrationTransferRegressionTest' <<<"$out"
   grep -q 'SmartLocalCoverPipelineTest' <<<"$out"
