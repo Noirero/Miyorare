@@ -938,7 +938,16 @@ abstract class ChaptersPagesViewModel(
 		val current = mangaDetails.value ?: return
 		// Official ExHentai publications carry an explicit space; the generic signal is for Local.
 		if (downloadedManga != null && current.isOfficialExhentai) return
-		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
+		val sourceName = current.sourceManga.source.name
+		val activeExhentai = sourceName == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+			sourceName == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
+		val expectedRoots = if (activeExhentai) {
+			downloadDestinationStore.activeExhentaiRoots(favouriteSpace)
+		} else downloadDestinationStore.readableRoots(favouriteSpace)
+		if (downloadedManga != null &&
+			activeExhentai &&
+			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(favouriteSpace, downloadedManga.file)
+		) return
 		if (downloadedManga != null) {
 			val matchingRoot = expectedRoots.filter { downloadedManga.file.isInside(it) }
 				.maxByOrNull { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath).length } ?: return
@@ -956,7 +965,8 @@ abstract class ChaptersPagesViewModel(
 			// removals publish the updated LocalManga instead, so scanning every chapter file here adds
 			// O(N) filesystem stats without improving correctness. Root existence covers manga folders,
 			// single EPUB novels, and multi-EPUB novel directories uniformly.
-			if (local.file.exists()) {
+			if (local.file.exists() && (!activeExhentai ||
+					downloadDestinationStore.isVisibleInActiveExhentaiDestination(favouriteSpace, local.file))) {
 				return
 			}
 			// Removing a downloaded copy must not tear down an online Reader session. The active pages
