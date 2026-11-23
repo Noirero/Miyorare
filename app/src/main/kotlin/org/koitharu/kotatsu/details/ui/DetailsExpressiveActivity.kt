@@ -126,6 +126,15 @@ class DetailsExpressiveActivity :
 	private var pendingPrivateFavourite: Manga? = null
 	private val promptedExhentaiReadChoices = HashSet<String>()
 	private var exhentaiChoiceDialog: androidx.appcompat.app.AlertDialog? = null
+	private var exhentaiDeleteDialog: androidx.appcompat.app.AlertDialog? = null
+
+	internal fun trackExhentaiDeleteDialog(dialog: androidx.appcompat.app.AlertDialog) {
+		exhentaiDeleteDialog?.dismiss()
+		exhentaiDeleteDialog = dialog
+		dialog.setOnDismissListener {
+			if (exhentaiDeleteDialog === dialog) exhentaiDeleteDialog = null
+		}
+	}
 
 	private enum class PrivateContentState {
 		UNKNOWN,
@@ -316,6 +325,7 @@ class DetailsExpressiveActivity :
 	override fun onStop() {
 		// A suspended/locked Private session must not leave a physical CBZ path in a dialog.
 		exhentaiChoiceDialog?.dismiss()
+		exhentaiDeleteDialog?.dismiss()
 		promptedExhentaiReadChoices.clear()
 		viewModel.pauseExpandedRelated()
 		viewModel.pauseGenreRecommendations()
@@ -586,7 +596,7 @@ class DetailsExpressiveActivity :
 		}
 	}
 
-	private fun canShowExhentaiFileDetails(): Boolean {
+	internal fun canShowExhentaiFileDetails(): Boolean {
 		val state = privateContentStateFlow.value
 		if (state == PrivateContentState.UNKNOWN) return false
 		val protected = state == PrivateContentState.PRIVATE ||
