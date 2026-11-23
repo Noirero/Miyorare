@@ -150,7 +150,8 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		val file = local.file.canonicalFile
 		val sourceFolder = file.parentFile?.parentFile ?: return null
 		if (!file.isFile || !EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(file.name) ||
-			!EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(sourceFolder.name) ||
+			!(sourceFolder.name.equals("ExHentai (OTHER)", ignoreCase = true) ||
+				EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(sourceFolder.name)) ||
 			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file) ||
 			ExhentaiDownloadedCopy.readTitleMatchedChapter(remote, file, allowIndexed = true) == null
 		) return null
