@@ -1610,4 +1610,8 @@
     <string name="icon_model_other">Other packs</string>
     <string name="reader_tools">Tools</string>
     <string name="reader_advanced_options">Advanced reader options</string>
+    <string name="exhentai_delete_physical_title">Delete local ExHentai file?</string>
+    <string name="exhentai_delete_target_description">Delete this physical CBZ file?\n\nManga: %1$s\nFile: %2$s\nLocation: %3$s\n\nThis cannot be undone. The manga remains in Favorites and may be downloaded again.</string>
+    <string name="exhentai_delete_shared_space_warning">Normal and Private both use this file. Deleting it makes the chapter unavailable offline in both Favorites spaces.</string>
+    <string name="exhentai_delete_target_unavailable">The selected local CBZ could not be verified. No file was deleted.</string>
 </resources>
