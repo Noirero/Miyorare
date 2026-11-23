@@ -751,7 +751,9 @@ class DetailsViewModel @Inject constructor(
 
 	suspend fun selectExhentaiReadChoice(choice: DownloadedMangaResolver.ExhentaiReadChoice): Boolean {
 		val manga = mangaDetails.value?.sourceManga ?: return false
-		val chosen = downloadedMangaResolver.selectExhentaiReadChoice(manga, favouriteSpace, choice)
+		val chosen = withContext(Dispatchers.IO) {
+			downloadedMangaResolver.selectExhentaiReadChoice(manga, favouriteSpace, choice)
+		}
 		if (chosen) reload()
 		return chosen
 	}
