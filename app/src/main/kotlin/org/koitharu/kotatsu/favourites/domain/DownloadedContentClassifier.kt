@@ -186,7 +186,7 @@ class DownloadedContentClassifier @Inject constructor(
 				when (sourceById[id]) {
 					org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME,
 					"TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI" ->
-						downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)
+						downloadDestinationStore.isVisibleInActiveExhentaiIndex(space, file)
 					else -> true
 				}
 			}
