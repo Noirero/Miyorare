@@ -21,6 +21,52 @@ internal class ExhentaiPresenceScannerRegressionTest {
         }
     }
 
+    @Test fun twoThousandCbzFilesRetainShallowScanAndDetectSingleChangedTitle() {
+        val root = Files.createTempDirectory("exhentai-presence-scale").toFile()
+        try {
+            // All are deliberately empty/corrupt: presence must not open archives.
+            val source = File(root, "downloads/ExHentai (OTHER)")
+            val titleCount = 250
+            val chaptersPerTitle = 8
+            for (title in 0 until titleCount) {
+                val folder = File(source, "Gallery $title")
+                check(folder.mkdirs())
+                for (chapter in 0 until chaptersPerTitle) {
+                    check(File(folder, "Chapter $chapter.cbz").createNewFile())
+                }
+            }
+            val scanner = ExhentaiPresenceScanner(setOf("ExHentai (OTHER)"))
+            var progress = 0 to 0
+            val scanStart = System.nanoTime()
+            val first = scanner.scan(root, full = true) { done, total -> progress = done to total }
+            val fullMillis = (System.nanoTime() - scanStart) / 1_000_000
+            check(first.availability == ExhentaiPresenceScanner.Availability.AVAILABLE)
+            check(first.examinedEntries == titleCount)
+            check(progress == titleCount to titleCount)
+            check(first.snapshot.candidatesByTitle.size == titleCount)
+            check(first.snapshot.candidatesByTitle.values.sumOf { it.size } == titleCount * chaptersPerTitle)
+
+            val incrementalStart = System.nanoTime()
+            val unchanged = scanner.scan(root, previous = first.snapshot)
+            val incrementalMillis = (System.nanoTime() - incrementalStart) / 1_000_000
+            check(unchanged.changedTitles.isEmpty())
+
+            val affected = File(source, "Gallery 42")
+            val folderTimestamp = affected.lastModified()
+            val extra = File(affected, "Another chapter.cbz")
+            check(extra.createNewFile())
+            check(affected.setLastModified(folderTimestamp))
+            val updated = scanner.scan(root, previous = unchanged.snapshot)
+            check(updated.changedTitles == setOf("gallery 42"))
+            check(updated.snapshot.candidatesFor("Gallery 42").size == chaptersPerTitle + 1)
+            check(updated.snapshot.candidatesFor("Gallery 43").size == chaptersPerTitle)
+            println("ExHentai presence scan: ${titleCount * chaptersPerTitle} CBZ; " +
+                "full=${fullMillis}ms; unchanged=${incrementalMillis}ms")
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun manualCbzPresenceIsIsolatedAndDoesNotRequireValidArchive() {
         val tmp = Files.createTempDirectory("exhentai-presence").toFile()
         try {
