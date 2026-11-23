@@ -191,6 +191,8 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
 			assertNotNull(found)
 			assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
+			// A foreign optional index must not become the identity of this read-only local copy.
+			assertTrue(found.manga.id != 888100L)
 			assertTrue(downloaded(online, found))
 			val pages = localRepository.getPages(found.manga.chapters!!.single())
 			assertEquals(1, pages.size)
@@ -198,6 +200,20 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 		}
 		assertArrayEquals(original, chapter.readBytes())
+	}
+
+	@Test fun detailsReadsMalformedOptionalIndexAsFlatChapter() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz", index = "{malformed json")
+		val before = chapter.readBytes()
+		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
+			val online = gallery(990026, source)
+			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+			assertEquals(chapter.canonicalFile, found?.file?.canonicalFile)
+			assertTrue(downloaded(online, found!!))
+			assertEquals(1, localRepository.getPages(found.manga.chapters!!.single()).size)
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+		}
+		assertArrayEquals(before, chapter.readBytes())
 	}
 
 	@Test fun detailsPrefersExactReceiptButCanChooseStableLegacyDuplicate() = runBlocking {
