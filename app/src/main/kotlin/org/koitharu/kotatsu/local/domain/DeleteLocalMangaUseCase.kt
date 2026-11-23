@@ -16,6 +16,8 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
+import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -29,6 +31,20 @@ internal class UnverifiedDownloadRemovalException(
 	message: String = "Cannot verify ownership of the selected download. Files were kept.",
 	val missing: Boolean = false,
 ) : IOException(message)
+
+/**
+ * Snapshot explicitly approved by the user. Never use this as proof of download ownership.
+ * Revalidate the physical target, destination and file identity immediately before unlinking.
+ */
+data class ExhentaiDeletionApproval(
+	val sourceName: String,
+	val mangaId: Long,
+	val space: FavouriteSpace,
+	val canonicalPath: String,
+	val length: Long,
+	val lastModified: Long,
+	val sharedWithOtherSpace: Boolean,
+)
 
 class DeleteLocalMangaUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
@@ -115,6 +131,67 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		) {
 			throw UnverifiedDownloadRemovalException("The file may belong to both favourite spaces. Files were kept.")
 		}
+	}
+
+	private fun isExhentaiConfirmationSource(remote: Manga): Boolean =
+		remote.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+			remote.source.name == GEKKO_EXHENTAI_SOURCE_NAME
+
+	/**
+	 * Metadata for a user-facing confirmation dialog. No file or database mutation occurs.
+	 * This is restricted to a flat, readable legacy ExHentai CBZ in the active destination.
+	 */
+	suspend fun previewExhentaiPhysicalDeletion(
+		remote: Manga,
+		space: FavouriteSpace,
+		local: LocalManga,
+	): ExhentaiDeletionApproval? {
+		if (!isExhentaiConfirmationSource(remote)) return null
+		val file = local.file.canonicalFile
+		val sourceFolder = file.parentFile?.parentFile ?: return null
+		if (!file.isFile || !EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(file.name) ||
+			!EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(sourceFolder.name) ||
+			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file) ||
+			ExhentaiDownloadedCopy.readTitleMatchedChapter(remote, file, allowIndexed = true) == null
+		) return null
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		return ExhentaiDeletionApproval(
+			sourceName = remote.source.name,
+			mangaId = remote.id,
+			space = space,
+			canonicalPath = file.canonicalPath,
+			length = file.length(),
+			lastModified = file.lastModified(),
+			sharedWithOtherSpace = downloadDestinationStore.isVisibleInActiveExhentaiDestination(otherSpace, file),
+		)
+	}
+
+	/**
+	 * User-authorized physical deletion is deliberately separate from strict automatic removal.
+	 * A title match alone never authorizes this method, and approval of one CBZ cannot delete
+	 * another same-title copy, directory, stale destination or concurrently replaced file.
+	 */
+	suspend fun deleteConfirmedExhentaiPhysicalFile(
+		remote: Manga,
+		space: FavouriteSpace,
+		local: LocalManga,
+		approval: ExhentaiDeletionApproval,
+	): Boolean = mangaLock.withLock(remote) {
+		val file = local.file.canonicalFile
+		val fresh = previewExhentaiPhysicalDeletion(remote, space, local)
+		if (fresh == null || fresh != approval || approval.sourceName != remote.source.name ||
+			approval.mangaId != remote.id || approval.space != space ||
+			approval.canonicalPath != file.canonicalPath
+		) {
+			throw UnverifiedDownloadRemovalException(
+				"The selected ExHentai file or destination changed after confirmation. Files were kept.",
+			)
+		}
+		localMangaRepository.deleteExhentaiDestinationCopy(local)
+	}
+
+	private companion object {
+		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 	}
 
 	/** Reading a legacy title path alone does not authorize deletion. */
