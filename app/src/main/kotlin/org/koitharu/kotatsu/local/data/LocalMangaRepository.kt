@@ -374,13 +374,28 @@ class LocalMangaRepository @Inject constructor(
 		}
 
 	/** Delete the physical artifact, not the archive's embedded manga identity. */
-	internal suspend fun deleteExhentaiDestinationCopy(local: LocalManga): Boolean {
-		val file = local.file
+	internal suspend fun deleteExhentaiDestinationCopy(
+		local: LocalManga,
+		cleanupEmptyLegacyParent: Boolean = false,
+	): Boolean {
+		val file = local.file.canonicalFile
 		if (!file.deleteAwait()) return false
-		if (localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile == file.canonicalFile) {
-			localMangaIndex.delete(local.manga.id)
-		}
+		val indexed = localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile
+		if (indexed == file) localMangaIndex.delete(local.manga.id)
 		favouriteDownloadOwnershipIndex.removePath(file)
+		if (cleanupEmptyLegacyParent) {
+			// Older task rows can index a directory containing Chapter.cbz rather than
+			// the CBZ itself. Clear them before emitting the storage invalidation so
+			// both Favorites spaces observe the final state, not a stale folder row.
+			val parent = file.parentFile
+			if (parent != null && parent.listFiles()?.none { sibling ->
+				sibling.isFile && org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
+					.isLegacyChapterArtifactName(sibling.name)
+			} == true) {
+				favouriteDownloadOwnershipIndex.removePath(parent)
+				if (indexed == parent) localMangaIndex.delete(local.manga.id)
+			}
+		}
 		localStorageChanges.emit(null)
 		return true
 	}
