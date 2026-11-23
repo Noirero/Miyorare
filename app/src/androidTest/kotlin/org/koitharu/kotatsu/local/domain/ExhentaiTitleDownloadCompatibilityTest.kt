@@ -582,6 +582,28 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun normalContextAlsoKeepsGalleryFileChoicesOutsideBackedUpSettings() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		archive("Legacy Gallery_1", "Chapter.cbz")
+		val manga = gallery(990056, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val options = resolver.getExhentaiReadChoices(manga, space)
+		assertEquals(2, options.size)
+		val selected = options.single { it.path == chapter.canonicalPath }
+		val key = "exhentai_read_choice_${space.dbValue}_${manga.source.name}_${manga.id}"
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val choices = context.getSharedPreferences("exhentai_read_choices", android.content.Context.MODE_PRIVATE)
+		try {
+			assertTrue(resolver.selectExhentaiReadChoice(manga, space, selected))
+			assertNull(prefs.getString(key, null))
+			assertTrue(choices.contains(key))
+			assertEquals(chapter.canonicalFile,
+				resolver.findSavedManga(manga, space, forExhentaiDetails = true)?.file?.canonicalFile)
+		} finally {
+			choices.edit(commit = true) { remove(key) }
+		}
+	}
+
 	@Test fun confirmedLegacyDeleteRemovesExactlyTheSharedFileAndLeavesNoFakeOwnership() = runBlocking {
 		prefs.edit(commit = true) {
 			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
