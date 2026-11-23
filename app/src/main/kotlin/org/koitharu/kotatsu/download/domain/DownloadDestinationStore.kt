@@ -77,6 +77,33 @@ class DownloadDestinationStore @Inject constructor(
 	 * change the virtual Lokal shelf instead of merging old and new destinations. Both `local`
 	 * and `lokal` are accepted case-insensitively.
 	 */
+	/**
+	 * ExHentai Main/Gekko Details and their local-availability views use only the selected
+	 * destination. Legacy roots remain registered for storage management, not for downloaded
+	 * status after the user changes the destination.
+	 */
+	fun activeExhentaiRoots(space: FavouriteSpace): List<File> =
+		listOfNotNull(effectiveRoot(space))
+
+	/**
+	 * Two spaces share a file only when their effective destinations are identical.
+	 * With nested destinations, the most specific active destination owns its subtree.
+	 * This is read visibility, not evidence of file ownership or permission to delete.
+	 */
+	fun isVisibleInActiveExhentaiDestination(space: FavouriteSpace, file: File): Boolean {
+		val active = effectiveRoot(space)?.canonicalOrAbsolute() ?: return false
+		val target = file.canonicalOrAbsolute()
+		if (!target.isAtOrBelow(active)) return false
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val other = effectiveRoot(otherSpace)?.canonicalOrAbsolute() ?: return true
+		return other == active || !other.isAtOrBelow(active) || !target.isAtOrBelow(other)
+	}
+
+	private fun String.isAtOrBelow(root: String): Boolean {
+		val cleanRoot = root.trimEnd(File.separatorChar)
+		return this == cleanRoot || startsWith(cleanRoot + File.separator)
+	}
+
 	fun localRoots(space: FavouriteSpace): List<File> {
 		val destination = effectiveRoot(space) ?: return emptyList()
 		if (!destination.isDirectory || !destination.canRead()) return emptyList()
