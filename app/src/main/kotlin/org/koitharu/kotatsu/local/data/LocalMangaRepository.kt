@@ -329,7 +329,11 @@ class LocalMangaRepository @Inject constructor(
 	 * Only deterministic title destinations participate. A shared-root CBZ needs a matching
 	 * space receipt or exact ownership row; a title folder alone does not prove space.
 	 */
-	internal suspend fun findExhentaiDestinationCopy(remote: Manga, space: FavouriteSpace): LocalManga? =
+	internal suspend fun findExhentaiDestinationCopy(
+		remote: Manga,
+		space: FavouriteSpace,
+		roots: Collection<File> = downloadDestinationStore.readableRoots(space),
+	): LocalManga? =
 		withContext(Dispatchers.IO) {
 			if (!ExhentaiDownloadedCopy.isOfficial(remote)) return@withContext null
 			if (remote.chapters?.size != 1) {
@@ -337,8 +341,7 @@ class LocalMangaRepository @Inject constructor(
 				return@withContext null
 			}
 			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
-			val otherRoots = downloadDestinationStore.readableRoots(otherSpace)
-			for (root in downloadDestinationStore.readableRoots(space)) {
+			for (root in roots) {
 				for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote, preferFullTitle = true)) {
 					LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_CANDIDATE)
 					val target = if (path.isDirectory) {
@@ -349,16 +352,12 @@ class LocalMangaRepository @Inject constructor(
 						} ?: continue
 					} else path
 					val file = target.canonicalFile
-					if (file != target.absoluteFile || !file.isInsideAny(listOf(root))) continue
+					if (file != target.absoluteFile || !file.isInsideAny(listOf(root)) ||
+						!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)) continue
 					val evidence = ExhentaiChapterOwnership.inspectDestination(file)
 					val receiptSpace = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt?.space
 					if (evidence == ExhentaiChapterOwnership.Evidence.Unusable || receiptSpace == otherSpace) continue
 
-					if (file.isInsideAny(otherRoots) && receiptSpace != space &&
-						!favouriteDownloadOwnershipIndex.ownsExactExhentaiFile(remote.id, space, file)) {
-						LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_SHARED_ROOT)
-						continue
-					}
 					val match = findExhentaiAtPath(remote, file, withDetails = true, space = space)
 					if (match?.verified == true) return@withContext match.local
 					if (evidence is ExhentaiChapterOwnership.Evidence.Owned ||
@@ -423,7 +422,9 @@ class LocalMangaRepository @Inject constructor(
 			downloadDestinationStore.readableRoots(if (it == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL)
 		}.orEmpty()
 		suspend fun ExhentaiDownloadedCopy.Match.allowed(): Boolean {
-			val allowed = !local.file.isInsideAny(otherRoots) || (space != null && receipt?.space == space)
+			val allowed = if (space != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
+				downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, local.file)
+			} else !local.file.isInsideAny(otherRoots) || (space != null && receipt?.space == space)
 			if (!allowed) LegacyCbzTrace.record(LegacyCbzTrace.Stage.SPACE_REJECTED)
 			return allowed
 		}
