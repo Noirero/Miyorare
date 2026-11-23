@@ -236,7 +236,11 @@ class DeleteLocalMangaUseCase @Inject constructor(
 				"The selected ExHentai file or destination changed after confirmation. Files were kept.",
 			)
 		}
-		localMangaRepository.deleteExhentaiDestinationCopy(local, cleanupEmptyLegacyParent = true)
+		localMangaRepository.deleteExhentaiDestinationCopy(
+			local,
+			cleanupEmptyLegacyParent = true,
+			confirmedRemoteMangaId = remote.id,
+		)
 	}
 
 	private companion object {
