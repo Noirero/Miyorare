@@ -132,6 +132,25 @@ class ReaderActivity :
     @Inject
     lateinit var epubBookSettingsStore: EpubBookSettingsStore
 
+    @Inject
+    lateinit var privateFavouritesSession: org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
+
+    private var exhentaiDeleteDialog: androidx.appcompat.app.AlertDialog? = null
+
+    internal fun canShowExhentaiFileDetails(space: org.koitharu.kotatsu.favourites.data.FavouriteSpace): Boolean {
+        val privateContent = space == org.koitharu.kotatsu.favourites.data.FavouriteSpace.PRIVATE ||
+            entryPoint.screenshotPolicyHelper.isPrivateContent(this)
+        return !privateContent || privateFavouritesSession.isUnlocked.value
+    }
+
+    internal fun trackExhentaiDeleteDialog(dialog: androidx.appcompat.app.AlertDialog) {
+        exhentaiDeleteDialog?.dismiss()
+        exhentaiDeleteDialog = dialog
+        dialog.setOnDismissListener {
+            if (exhentaiDeleteDialog === dialog) exhentaiDeleteDialog = null
+        }
+    }
+
     private val idlingDetector = IdlingDetector(TimeUnit.SECONDS.toMillis(10), this)
 
     private val viewModel: ReaderViewModel by viewModels()
@@ -339,6 +358,9 @@ class ReaderActivity :
     }
 
     override fun onStop() {
+        // A Reader opened from Private must not keep a physical-file deletion path
+        // visible once the owning process/vault stops.
+        exhentaiDeleteDialog?.dismiss()
         super.onStop()
         viewModel.onStop()
     }
