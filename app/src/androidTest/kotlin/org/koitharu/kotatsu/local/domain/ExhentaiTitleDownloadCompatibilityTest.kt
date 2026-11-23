@@ -534,21 +534,28 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val manga = gallery(990041, GEKKO_SOURCE)
 		val another = gallery(990042, GEKKO_SOURCE)
 		data.storeManga(another, replaceExisting = true, detailsFetched = true)
-		database.getFavouriteDownloadIndexDao().upsert(
-			FavouriteDownloadIndexEntity(
-				another.id, FavouriteSpace.NORMAL.dbValue, chapter.parentFile.canonicalPath,
-			),
-		)
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		for (id in listOf(manga.id, another.id)) {
+			database.getFavouriteDownloadIndexDao().upsert(
+				FavouriteDownloadIndexEntity(
+					id, FavouriteSpace.NORMAL.dbValue, chapter.parentFile.canonicalPath,
+				),
+			)
+		}
 		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)!!
 		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local)!!
 		try {
 			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval))
 			assertFalse(chapter.exists())
 			assertTrue(sibling.isFile)
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(
+				FavouriteSpace.NORMAL.dbValue, manga.id,
+			))
 			assertNotNull(database.getFavouriteDownloadIndexDao().findEntry(
 				FavouriteSpace.NORMAL.dbValue, another.id,
 			))
 		} finally {
+			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, manga.id)
 			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, another.id)
 		}
 	}
