@@ -15,7 +15,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
 import org.koitharu.kotatsu.parsers.model.MangaPage
-import org.koitharu.kotatsu.parsers.model.MangaParserSource
+import org.koitharu.kotatsu.parsers.model.ParserMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.SortOrder
@@ -25,17 +25,17 @@ import java.util.concurrent.ConcurrentHashMap
 /** Miyorare-owned protocol-v1 bridge around the pinned Kotatsu-Redo parser runtime. */
 class KotatsuRuntimeEntrypoint(context: Context) {
 	private val loader = RuntimeLoaderContext(context.applicationContext)
-	private val parsers = ConcurrentHashMap<MangaParserSource, MangaParser>()
+	private val parsers = ConcurrentHashMap<ParserMangaSource, MangaParser>()
 
 	fun protocolVersion(): Int = 1
 
 	fun healthCheck(): Boolean {
-		val sources = MangaParserSource.entries
+		val sources = loader.parsers.sources
 		return sources.isNotEmpty() && sources.map { it.name }.toSet().size == sources.size && sources.any { !it.isBroken }
 	}
 
 	fun catalogJson(): String = JSONArray().apply {
-		MangaParserSource.entries.forEach { source ->
+		loader.parsers.sources.forEach { source ->
 			put(JSONObject().put("key", source.name).put("title", source.title).put("locale", source.locale)
 				.put("contentType", source.contentType.name).put("broken", source.isBroken))
 		}
@@ -132,10 +132,11 @@ class KotatsuRuntimeEntrypoint(context: Context) {
 		for ((name, value) in parser(source(sourceKey)).getRequestHeaders()) append(name, value)
 	}.toString()
 
-	private fun source(key: String): MangaParserSource = runCatching { MangaParserSource.valueOf(key) }
-		.getOrElse { throw IllegalArgumentException("Unknown Kotatsu source: $key", it) }
+	private fun source(key: String): ParserMangaSource = requireNotNull(loader.parsers.findSource(key)) {
+		"Unknown Kotatsu source: $key"
+	}
 
-	private fun parser(source: MangaParserSource): MangaParser = parsers.getOrPut(source) { loader.newParserInstance(source) }
+	private fun parser(source: ParserMangaSource): MangaParser = parsers.getOrPut(source) { loader.newParserInstance(source) }
 
 	@Suppress("UNCHECKED_CAST")
 	private fun configValue(config: org.koitharu.kotatsu.parsers.config.MangaSourceConfig, key: ConfigKey<*>): Any? =
@@ -175,7 +176,7 @@ class KotatsuRuntimeEntrypoint(context: Context) {
 		else -> key.defaultValue
 	}
 
-	private fun decodeFilter(json: JSONObject, source: MangaParserSource): MangaListFilter = MangaListFilter(
+	private fun decodeFilter(json: JSONObject, source: ParserMangaSource): MangaListFilter = MangaListFilter(
 		query = json.stringOrNull("query"),
 		tags = json.optJSONArray("tags").objects().mapTo(LinkedHashSet()) { decodeTag(it, source) },
 		tagsExclude = json.optJSONArray("tagsExclude").objects().mapTo(LinkedHashSet()) { decodeTag(it, source) },
@@ -199,7 +200,7 @@ class KotatsuRuntimeEntrypoint(context: Context) {
 		.put("state", value.state?.name).put("authors", JSONArray(value.authors)).put("description", value.description)
 		.put("chapters", value.chapters?.let { JSONArray(it.map(::encodeChapter)) } ?: JSONObject.NULL)
 
-	private fun decodeManga(json: JSONObject, source: MangaParserSource): Manga = Manga(
+	private fun decodeManga(json: JSONObject, source: ParserMangaSource): Manga = Manga(
 		id = json.getLong("id"), title = json.getString("title"), altTitles = json.strings("altTitles"),
 		url = json.getString("url"), publicUrl = json.optString("publicUrl", json.getString("url")),
 		rating = json.optDouble("rating", -1.0).toFloat(),
@@ -214,16 +215,16 @@ class KotatsuRuntimeEntrypoint(context: Context) {
 		.put("id", value.id).put("title", value.title).put("number", value.number.toDouble()).put("volume", value.volume)
 		.put("url", value.url).put("scanlator", value.scanlator).put("uploadDate", value.uploadDate).put("branch", value.branch)
 
-	private fun decodeChapter(json: JSONObject, source: MangaParserSource): MangaChapter = MangaChapter(
+	private fun decodeChapter(json: JSONObject, source: ParserMangaSource): MangaChapter = MangaChapter(
 		id = json.getLong("id"), title = json.stringOrNull("title"), number = json.optDouble("number", 0.0).toFloat(),
 		volume = json.optInt("volume", 0), url = json.getString("url"), scanlator = json.stringOrNull("scanlator"),
 		uploadDate = json.optLong("uploadDate", 0L), branch = json.stringOrNull("branch"), source = source,
 	)
 
 	private fun encodePage(value: MangaPage): JSONObject = JSONObject().put("id", value.id).put("url", value.url).put("preview", value.preview)
-	private fun decodePage(json: JSONObject, source: MangaParserSource): MangaPage = MangaPage(json.getLong("id"), json.getString("url"), json.stringOrNull("preview"), source)
+	private fun decodePage(json: JSONObject, source: ParserMangaSource): MangaPage = MangaPage(json.getLong("id"), json.getString("url"), json.stringOrNull("preview"), source)
 	private fun encodeTag(value: MangaTag): JSONObject = JSONObject().put("title", value.title).put("key", value.key)
-	private fun decodeTag(json: JSONObject, source: MangaParserSource): MangaTag = MangaTag(json.getString("title"), json.getString("key"), source)
+	private fun decodeTag(json: JSONObject, source: ParserMangaSource): MangaTag = MangaTag(json.getString("title"), json.getString("key"), source)
 }
 
 private fun JSONObject.stringOrNull(key: String): String? = if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }

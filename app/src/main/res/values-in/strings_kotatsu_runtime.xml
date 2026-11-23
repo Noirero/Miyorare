@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kotatsu_parsers_unknown_language">Bahasa tidak diketahui</string>
+    <string name="kotatsu_source_settings_named">Setelan sumber %1$s</string>
+    <string name="kotatsu_source_enable_named">Aktifkan %1$s</string>
+</resources>
