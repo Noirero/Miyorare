@@ -187,7 +187,21 @@ class DeleteLocalMangaUseCase @Inject constructor(
 				"The selected ExHentai file or destination changed after confirmation. Files were kept.",
 			)
 		}
-		localMangaRepository.deleteExhentaiDestinationCopy(local)
+		val removed = localMangaRepository.deleteExhentaiDestinationCopy(local)
+		if (removed) {
+			// Older Gekko downloads sometimes index the chapter's parent directory.
+			// Remove that stale ownership only when there is no remaining legacy CBZ.
+			val folder = file.parentFile
+			if (folder != null && folder.listFiles()?.none { sibling ->
+					sibling.isFile && EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(sibling.name)
+				} == true) {
+				favouriteDownloadOwnershipIndex.removePath(folder)
+				if (localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile == folder.canonicalFile) {
+					localMangaIndex.delete(local.manga.id)
+				}
+			}
+		}
+		removed
 	}
 
 	private companion object {
