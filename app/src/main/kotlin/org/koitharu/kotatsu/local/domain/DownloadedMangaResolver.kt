@@ -97,19 +97,22 @@ class DownloadedMangaResolver @Inject constructor(
 			return localMangaRepository.findSavedManga(manga, withDetails = true)
 		}
 
-		val roots = downloadDestinationStore.readableRoots(space)
+		val activeExhentaiScope = officialExhentai || manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME
+		val roots = if (activeExhentaiScope) downloadDestinationStore.activeExhentaiRoots(space)
+			else downloadDestinationStore.readableRoots(space)
 
 		// Space ownership is stronger than the global Local index for sidecar-free downloads.
 		val ownership = database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id)
 		if (ownership != null) {
 			val ownedFile = File(ownership.path)
-			val inKnownRoot = roots.any { ownedFile.isInside(it) }
+			val inKnownRoot = roots.any { ownedFile.isInside(it) } &&
+				(!activeExhentaiScope || downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, ownedFile))
 			if (officialExhentai) {
 				val match = localMangaRepository.findExhentaiAtPath(
 					manga, ownedFile, withDetails = true, space = space,
 					trustedOwnedPath = inKnownRoot,
 				)
-				if (match != null && (inKnownRoot || (
+				if (match != null && (!activeExhentaiScope || inKnownRoot) && (inKnownRoot || (
 						match.verified && match.receipt?.space == space &&
 							match.local.file.canonicalFile == ownedFile.canonicalFile
 						))
@@ -124,7 +127,7 @@ class DownloadedMangaResolver @Inject constructor(
 		// active space; the background legacy reconciler is the only compatibility path allowed to
 		// persist ownership after checking favourite membership and chapter evidence.
 		if (officialExhentai) {
-			return localMangaRepository.findExhentaiDestinationCopy(manga, space)
+			return localMangaRepository.findExhentaiDestinationCopy(manga, space, roots)
 				?: localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
 				?: findTitleMatchedChapter(manga, space, roots, detailsTitleRead)
 		}
@@ -163,7 +166,10 @@ class DownloadedMangaResolver @Inject constructor(
 		val candidates = LinkedHashSet<File>()
 		for (root in roots) {
 			for (file in EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, manga.title)) {
-				if (!file.isInside(root)) continue
+				if (!file.isInside(root) ||
+					((manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+						manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME) &&
+						!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file))) continue
 				candidates += file.canonicalFile
 				// Bound total candidates across all historical roots, not only per source directory.
 				// The Details path must not inspect an unbounded number of duplicate archives.
