@@ -200,7 +200,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertArrayEquals(original, chapter.readBytes())
 	}
 
-	@Test fun detailsChoosesUniqueExactReceiptButNeverArbitrarySameTitleCopy() = runBlocking {
+	@Test fun detailsPrefersExactReceiptButCanChooseStableLegacyDuplicate() = runBlocking {
 		val legacy = archive("Legacy Gallery", "Chapter.cbz")
 		val receipt = ExhentaiChapterOwnership.scopedComment(
 			990017, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
@@ -210,8 +210,9 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
 		assertEquals(exact.canonicalFile,
 			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
-		assertNull(resolver.findSavedManga(gallery(990018, GEKKO_SOURCE),
-			FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertEquals(legacy.canonicalFile, resolver.findSavedManga(
+			gallery(990018, GEKKO_SOURCE), FavouriteSpace.NORMAL, forExhentaiDetails = true,
+		)?.file?.canonicalFile)
 		assertTrue(legacy.isFile)
 		assertTrue(exact.isFile)
 		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
@@ -254,18 +255,21 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 	}
 
-	@Test fun detailsCannotCrossPrivateReceiptEvenWhenTitleAndChapterMatch() = runBlocking {
+	@Test fun detailsCanReadForeignSpaceReceiptWithoutGrantingDeletionRights() = runBlocking {
 		val privateReceipt = ExhentaiChapterOwnership.scopedComment(
 			990020, ExhentaiChapterOwnership.Receipt(FavouriteSpace.PRIVATE, UUID.randomUUID()), false,
 		)
 		val chapter = archive("Legacy Gallery", "Chapter.cbz", comment = privateReceipt)
 		val online = gallery(990020, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
-		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+		val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+		assertEquals(chapter.canonicalFile, found?.file?.canonicalFile)
+		assertEquals(1, localRepository.getPages(found!!.manga.chapters!!.single()).size)
 		assertTrue(chapter.isFile)
 		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 	}
 
-	@Test fun detailsDoesNotGuessLegacySpaceAfterPrivateRootMigration() = runBlocking {
+	@Test fun detailsCanReadHistoricalSharedRootWithoutWritingOwnership() = runBlocking {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		val before = chapter.readBytes()
 		val online = gallery(990021, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
@@ -276,19 +280,25 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue(destinationStore.readableRoots(FavouriteSpace.PRIVATE).any {
 			it.canonicalFile == root.canonicalFile
 		})
-		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
+		assertEquals(chapter.canonicalFile,
+			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
 		assertArrayEquals(before, chapter.readBytes())
 		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 	}
 
-	@Test fun sharedRootRequiresExistingSpaceProofAndNeverWritesOwnership() = runBlocking {
+	@Test fun sharedRootIsReadOnlyInDetailsAndStrictForOtherCallers() = runBlocking {
 		prefs.edit(commit = true) {
 			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
 		}
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		val online = gallery(990008, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
 		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
-		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+		assertEquals(chapter.canonicalFile, found?.file?.canonicalFile)
+		assertTrue(downloaded(online, found!!))
+		assertEquals(1, localRepository.getPages(found.manga.chapters!!.single()).size)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 		val ownerId = 990009L // Gekko's existing task owns the folder, not Main.
 		data.storeManga(gallery(ownerId, GEKKO_SOURCE), replaceExisting = true, detailsFetched = true)
 		database.getFavouriteDownloadIndexDao().upsert(
@@ -301,6 +311,55 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		} finally {
 			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, ownerId)
 		}
+	}
+
+	@Test fun detailsReadsUserLegacyFolderAfterNewReceiptCopyIsRemoved() = runBlocking {
+		val title = "[Jinsei Yokosuberi. (Alexi Laiho)] Amaama Succubus Maid Lise-san"
+		val legacy = archive("Amaama Succubus Maid Lise-san", "Chapter.cbz")
+		val receipt = ExhentaiChapterOwnership.scopedComment(
+			3480905, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
+		)
+		val newer = archive(title, "Chapter.cbz", comment = receipt)
+		val legacyBytes = legacy.readBytes()
+		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
+			val online = gallery(3480905, source).copy(title = title)
+			assertEquals(newer.canonicalFile,
+				resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		}
+		assertTrue(newer.delete())
+		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
+			val online = gallery(3480905, source).copy(title = title)
+			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+			assertEquals(legacy.canonicalFile, found?.file?.canonicalFile)
+			assertTrue(downloaded(online, found!!))
+			assertEquals(1, localRepository.getPages(found.manga.chapters!!.single()).size)
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+		}
+		assertArrayEquals(legacyBytes, legacy.readBytes())
+	}
+
+	@Test fun detailsSkipsUnreadableDuplicateAndUsesValidLegacyCbz() = runBlocking {
+		val badDir = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery")
+		check(badDir.mkdirs())
+		val bad = File(badDir, "Chapter.cbz").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+		val good = archive("Legacy Gallery_1", "Chapter.cbz")
+		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
+			val online = gallery(990024, source)
+			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+			assertEquals(good.canonicalFile, found?.file?.canonicalFile)
+			assertEquals(1, localRepository.getPages(found!!.manga.chapters!!.single()).size)
+		}
+		assertEquals(3L, bad.length())
+	}
+
+	@Test fun permissiveDetailsReadIsLimitedToMainAndGekkoSources() = runBlocking {
+		prefs.edit(commit = true) {
+			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+		}
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val anotherTsuki = gallery(990025, "TSUKI:OTHER:other:EXHENTAI")
+		assertNull(resolver.findSavedManga(anotherTsuki, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertTrue(chapter.exists())
 	}
 
 	private fun gallery(id: Long, sourceName: String): Manga {
