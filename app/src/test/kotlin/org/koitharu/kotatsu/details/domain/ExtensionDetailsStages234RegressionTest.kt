@@ -50,6 +50,16 @@ class ExtensionDetailsStages234RegressionTest {
 	}
 
 	@Test
+	fun `ExHentai local callbacks only trust active destination`() {
+		val source = source("org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
+		val callback = source.substringAfter("privatesuspendfunonDownloadComplete(")
+			.substringBefore("privatefunFile.isInside(")
+		assertTrue(callback.contains("activeExhentaiRoots(favouriteSpace)"))
+		assertTrue(callback.contains("isVisibleInActiveExhentaiDestination(favouriteSpace,downloadedManga.file)"))
+		assertTrue(callback.contains("isVisibleInActiveExhentaiDestination(favouriteSpace,local.file)"))
+	}
+
+	@Test
 	fun `Stage 4 persists source result before publication and keeps Room Flow ownership`() {
 		val loader = source("org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt")
 		val details = source("org/koitharu/kotatsu/details/ui/DetailsViewModel.kt")
