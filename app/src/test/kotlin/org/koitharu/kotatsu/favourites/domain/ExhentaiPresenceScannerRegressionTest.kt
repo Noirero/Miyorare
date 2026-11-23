@@ -41,8 +41,15 @@ internal class ExhentaiPresenceScannerRegressionTest {
             val gone = scanner.scan(normal, privateRoot, renamedResult.snapshot)
             check(!gone.snapshot.hasDownloaded("Gallery A"))
 
+            // Reproduce same-mtime additions (e.g. FAT timestamp granularity or a copied
+            // folder preserving its original timestamp). Cached empty listings must not win.
+            val galleryDir = cbz.parentFile!!
+            val unchangedTimestamp = galleryDir.lastModified()
             val restored = chapter(normal, "Gallery A", "Chapter.cbz")
+            check(galleryDir.setLastModified(unchangedTimestamp))
             val retained = scanner.scan(normal, privateRoot, gone.snapshot)
+            check(retained.snapshot.hasDownloaded("Gallery A"))
+            check(retained.snapshot.candidatesFor("Gallery A") == listOf(restored.canonicalPath))
             check(restored.delete())
             check(normal.renameTo(File(tmp, "unmounted")))
             val unavailable = scanner.scan(normal, privateRoot, retained.snapshot)

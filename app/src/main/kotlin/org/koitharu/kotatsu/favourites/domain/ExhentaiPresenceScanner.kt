@@ -100,16 +100,15 @@ internal class ExhentaiPresenceScanner(recognizedSourceFolders: Set<String>) {
                 val path = container.canonicalPath
                 val modified = container.lastModified()
                 val cached = if (full) null else old?.cachedContainers?.get(path)
-                // Unchanged directories are reused; deleted files are still rechecked.
+                // Directory mtime alone is not reliable: some filesystems have coarse timestamp
+                // resolution, and copied files may preserve directory timestamps. Always compare
+                // the shallow CBZ listing, without opening or hashing archive contents.
+                val files = if (container.isDirectory) container.listFiles()
+                    ?: return unavailable() else arrayOf(container)
+                val current = files.filter { it.isFile && it.isCbz() && !it.isHidden && visible(it) }
+                    .map { it.canonicalPath }.sorted()
                 val candidates = if (cached != null && cached.modifiedAt == modified &&
-                    cached.candidates.all { File(it).isFile && visible(File(it)) }) {
-                    cached.candidates
-                } else {
-                    val files = if (container.isDirectory) container.listFiles()
-                        ?: return unavailable() else arrayOf(container)
-                    files.filter { it.isFile && it.isCbz() && !it.isHidden && visible(it) }
-                        .map { it.canonicalPath }.sorted()
-                }
+                    cached.candidates == current) cached.candidates else current
                 cachedContainers[path] = ContainerCache(modified, candidates)
                 found.getOrPut(key) { LinkedHashSet() }.addAll(candidates)
             }
