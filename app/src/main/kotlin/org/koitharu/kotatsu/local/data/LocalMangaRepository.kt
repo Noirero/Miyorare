@@ -389,8 +389,7 @@ class LocalMangaRepository @Inject constructor(
 			// both Favorites spaces observe the final state, not a stale folder row.
 			val parent = file.parentFile
 			if (parent != null && parent.listFiles()?.none { sibling ->
-				sibling.isFile && org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
-					.isLegacyChapterArtifactName(sibling.name)
+				sibling.isFile && sibling.extension.equals("cbz", ignoreCase = true)
 			} == true) {
 				favouriteDownloadOwnershipIndex.removePath(parent)
 				if (indexed == parent) localMangaIndex.delete(local.manga.id)
