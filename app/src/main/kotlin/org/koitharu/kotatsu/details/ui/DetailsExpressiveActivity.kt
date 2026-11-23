@@ -616,7 +616,7 @@ class DetailsExpressiveActivity :
 				setItems(choices.map { candidate ->
 					val id = candidate.galleryId?.let { getString(R.string.exhentai_choose_local_known_id, it) }
 						?: getString(R.string.exhentai_choose_local_unknown_id)
-					"${java.io.File(candidate.path).name} · $id\\n${candidate.path}"
+					"${java.io.File(candidate.path).name} · $id\n${candidate.path}"
 				}.toTypedArray()) { _, index ->
 					lifecycleScope.launch {
 						if (!canShowExhentaiFileDetails() ||
