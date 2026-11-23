@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
 	<exclude domain="file" path="logs" />
+	<!-- Keep private read association metadata out of Android Auto Backup. -->
+	<exclude domain="sharedpref" path="exhentai_private_read_choices.xml" />
 </full-backup-content>
