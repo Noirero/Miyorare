@@ -84,15 +84,16 @@ class ChaptersSelectionCallback(
 			R.id.action_delete -> {
 				val ids = controller.peekCheckedIds().toSet()
 				val manga = viewModel.getMangaOrNull()
+				val sourceName = viewModel.mangaDetails.value?.sourceManga?.source?.name ?: manga?.source?.name
+				val isExhentaiConfirmation =
+					sourceName == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+						sourceName == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 				when {
 					ids.isEmpty() || manga == null -> Unit
 					viewModel.isSmartLocal -> org.koitharu.kotatsu.local.ui.confirmLocalChapterDeletion(
 						recyclerView.context,
 					) { viewModel.deleteSmartLocalChapters(ids) }
 					ids.size == manga.chapters?.size -> {
-						val sourceName = viewModel.mangaDetails.value?.sourceManga?.source?.name
-						val isExhentaiConfirmation = sourceName == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
-							sourceName == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 						if (isExhentaiConfirmation) {
 							// Never fall back to unconfirmed deletion if this view is detached.
 							recyclerView.findViewTreeLifecycleOwner()?.let { owner ->
@@ -101,6 +102,15 @@ class ChaptersSelectionCallback(
 						} else viewModel.deleteLocal()
 					}
 					else -> {
+						// Main/Gekko archives expose a single gallery chapter. A partial
+						// selection cannot authorize deletion of an entire physical CBZ.
+						if (isExhentaiConfirmation) {
+							Toast.makeText(
+								recyclerView.context, R.string.exhentai_delete_target_unavailable, Toast.LENGTH_LONG,
+							).show()
+							mode?.finish()
+							return true
+						}
 						LocalChaptersRemoveService.start(
 							recyclerView.context,
 							manga,
