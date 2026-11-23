@@ -820,7 +820,9 @@ abstract class ChaptersPagesViewModel(
 		return deleteLocalMangaUseCase.previewExhentaiPhysicalDeletion(details.sourceManga, favouriteSpace, local)
 	}
 
-	fun deleteLocal(approvedExhentaiFile: ExhentaiDeletionApproval? = null) {
+	fun deleteLocal() = deleteLocal(approvedExhentaiFile = null)
+
+	fun deleteLocal(approvedExhentaiFile: ExhentaiDeletionApproval?) {
 		if (isSmartLocal) {
 			val manga = requireManga()
 			launchLoadingJob(Dispatchers.IO) {
