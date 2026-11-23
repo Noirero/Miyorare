@@ -1,5 +1,11 @@
 package org.koitharu.kotatsu.local.domain
 
+import android.content.Context
+import android.net.Uri
+import androidx.preference.PreferenceManager
+import dagger.hilt.android.qualifiers.ApplicationContext
+import org.json.JSONObject
+import java.util.zip.ZipFile
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
@@ -42,6 +48,7 @@ class DownloadedMangaResolver @Inject constructor(
 	private val localMangaIndex: LocalMangaIndex,
 	private val downloadDestinationStore: DownloadDestinationStore,
 	private val mihonExtensionManager: MihonExtensionManager,
+	@ApplicationContext private val context: Context,
 ) {
 
 	suspend fun resolveCanonicalManga(manga: Manga): Manga {
@@ -127,6 +134,12 @@ class DownloadedMangaResolver @Inject constructor(
 		// active space; the background legacy reconciler is the only compatibility path allowed to
 		// persist ownership after checking favourite membership and chapter evidence.
 		if (officialExhentai) {
+			// Details must not fall through to another same-title copy while a user choice
+			// is unresolved. Verified exact ownership above still takes precedence.
+			if (detailsTitleRead) {
+				findTitleMatchedChapter(manga, space, roots, detailsTitleRead = true)?.let { return it }
+				if (getExhentaiReadChoices(manga, space).isNotEmpty()) return null
+			}
 			return localMangaRepository.findExhentaiDestinationCopy(manga, space, roots)
 				?: localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
 				?: findTitleMatchedChapter(manga, space, roots, detailsTitleRead)
@@ -163,6 +176,19 @@ class DownloadedMangaResolver @Inject constructor(
 		detailsTitleRead: Boolean,
 	): LocalManga? {
 		if (manga.chapters?.size != 1) return null
+		if (detailsTitleRead) {
+			val readable = loadActiveExhentaiTitleCandidates(manga, space)
+			if (readable.isEmpty()) return null
+			val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
+			val exact = readable.filter { it.first.galleryId != null && it.first.galleryId == galleryId }
+			val knownChoice = readStoredExhentaiChoice(manga, space, readable)
+			return when {
+				exact.size == 1 -> exact.single().second
+				knownChoice != null -> knownChoice
+				readable.size == 1 && readable.single().first.galleryId == null -> readable.single().second
+				else -> null // Ambiguous or explicitly foreign gallery ID: ask in Details.
+			}
+		}
 		val candidates = LinkedHashSet<File>()
 		for (root in roots) {
 			for (file in EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, manga.title)) {
@@ -177,28 +203,6 @@ class DownloadedMangaResolver @Inject constructor(
 				// Existing non-Details call sites fail closed on multiple physical copies.
 				if (!detailsTitleRead && candidates.size > 1) return null
 			}
-		}
-		if (detailsTitleRead) {
-			// Read-only Details discovery is intentionally permissive for legacy chapters:
-			// no receipt, gallery-id or FavouriteSpace ownership proof is required.
-			// Prefer an exact gallery receipt when available, then a stable path order;
-			// a corrupt candidate must not mask a valid older Chapter.cbz.
-			val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
-			val ordered = candidates.sortedWith(compareBy<File>(
-				{ candidate ->
-					val receipt = ExhentaiChapterOwnership.inspectDestination(candidate)
-					if (galleryId != null &&
-						receipt is ExhentaiChapterOwnership.Evidence.Owned &&
-						receipt.galleryId == galleryId
-					) 0 else 1
-				},
-				{ it.canonicalPath },
-			))
-			for (candidate in ordered) {
-				ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, candidate, allowIndexed = true)
-					?.let { return it }
-			}
-			return null
 		}
 		val file = candidates.singleOrNull() ?: return null
 		val evidence = ExhentaiChapterOwnership.inspectDestination(file)
@@ -218,6 +222,101 @@ class DownloadedMangaResolver @Inject constructor(
 
 		return ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file, allowIndexed = detailsTitleRead)
 	}
+
+	data class ExhentaiReadChoice(
+		val path: String,
+		val galleryId: Long?,
+		val length: Long,
+		val lastModified: Long,
+	)
+
+	/**
+	 * A choice is needed for multiple readable candidates without a unique matching gallery ID,
+	 * or for a single file containing an explicitly different gallery ID. This never writes
+	 * ownership or changes any archive.
+	 */
+	suspend fun getExhentaiReadChoices(manga: Manga, space: FavouriteSpace): List<ExhentaiReadChoice> {
+		if (!supportsActiveExhentaiChoice(manga)) return emptyList()
+		val readable = loadActiveExhentaiTitleCandidates(manga, space)
+		val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
+		if (readable.count { it.first.galleryId != null && it.first.galleryId == galleryId } == 1 ||
+			(readable.size == 1 && readable.single().first.galleryId == null)
+		) return emptyList()
+		return readable.map { it.first }
+	}
+
+	suspend fun selectExhentaiReadChoice(
+		manga: Manga,
+		space: FavouriteSpace,
+		choice: ExhentaiReadChoice,
+	): Boolean {
+		if (getExhentaiReadChoices(manga, space).none { it == choice }) return false
+		val value = JSONObject()
+			.put("path", choice.path)
+			.put("length", choice.length)
+			.put("modified", choice.lastModified)
+			.toString()
+		PreferenceManager.getDefaultSharedPreferences(context).edit()
+			.putString(exhentaiChoiceKey(manga, space), value)
+			.apply()
+		return true
+	}
+
+	private fun supportsActiveExhentaiChoice(manga: Manga) =
+		manga.chapters?.size == 1 &&
+			(manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+				manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME)
+
+	private fun exhentaiChoiceKey(manga: Manga, space: FavouriteSpace): String =
+		"exhentai_read_choice_${space.dbValue}_${manga.source.name}_${manga.id}"
+
+	private fun readStoredExhentaiChoice(
+		manga: Manga,
+		space: FavouriteSpace,
+		readable: List<Pair<ExhentaiReadChoice, LocalManga>>,
+	): LocalManga? {
+		val raw = PreferenceManager.getDefaultSharedPreferences(context)
+			.getString(exhentaiChoiceKey(manga, space), null) ?: return null
+		val saved = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+		return readable.firstOrNull { (candidate, _) ->
+			candidate.path == saved.optString("path") &&
+				candidate.length == saved.optLong("length", -1L) &&
+				candidate.lastModified == saved.optLong("modified", -1L)
+		}?.second
+	}
+
+	private suspend fun loadActiveExhentaiTitleCandidates(
+		manga: Manga,
+		space: FavouriteSpace,
+	): List<Pair<ExhentaiReadChoice, LocalManga>> {
+		if (!supportsActiveExhentaiChoice(manga)) return emptyList()
+		val candidates = LinkedHashSet<File>()
+		for (root in downloadDestinationStore.activeExhentaiRoots(space)) {
+			for (path in EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, manga.title)) {
+				if (!path.isInside(root) ||
+					!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, path)) continue
+				candidates += path.canonicalFile
+				if (candidates.size > MAX_DETAILS_TITLE_CANDIDATES) return emptyList()
+			}
+		}
+		return candidates.mapNotNull { file ->
+			val local = ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file, allowIndexed = true)
+				?: return@mapNotNull null
+			val evidence = ExhentaiChapterOwnership.inspectDestination(file)
+			val id = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.galleryId
+				?: readGalleryIdFromOptionalArchiveIndex(file)
+			val choice = ExhentaiReadChoice(file.canonicalPath, id, file.length(), file.lastModified())
+			choice to local
+		}
+	}
+
+	private fun readGalleryIdFromOptionalArchiveIndex(file: File): Long? = runCatching {
+		ZipFile(file).use { archive ->
+			val entry = archive.getEntry("index.json")?.takeIf { it.size in 1..65536 } ?: return@use null
+			val index = archive.getInputStream(entry).bufferedReader().use { it.readText() }
+			JSONObject(index).optLong("id", -1).takeIf { it > 0 }
+		}
+	}.getOrNull()
 
 	private companion object {
 		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
