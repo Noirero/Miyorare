@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
@@ -47,6 +48,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var destinationStore: DownloadDestinationStore
+	@Inject lateinit var classifier: DownloadedContentClassifier
 	@Inject lateinit var localRepository: LocalMangaRepository
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
@@ -434,6 +436,24 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertEquals(1, localRepository.getPages(found!!.manga.chapters!!.single()).size)
 		}
 		assertEquals(3L, bad.length())
+	}
+
+	@Test fun mainGekkoDownloadedIndexUsesOnlyActiveDestinationNotHistoricalRoots() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val online = gallery(990034, GEKKO_SOURCE)
+		data.storeManga(online, replaceExisting = true, detailsFetched = true)
+		database.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(
+			online.id, FavouriteSpace.NORMAL.dbValue, chapter.canonicalPath,
+		))
+		try {
+			assertTrue(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(online.id)))
+			destinationStore.setRoot(FavouriteSpace.NORMAL, File(root, "new-normal"))
+			assertTrue(destinationStore.readableRoots(FavouriteSpace.NORMAL).any { it.canonicalFile == root })
+			assertFalse(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(online.id)))
+			assertFalse(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL))
+		} finally {
+			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, online.id)
+		}
 	}
 
 	@Test fun confirmedLegacyDeleteRemovesExactlyTheSharedFileAndLeavesNoFakeOwnership() = runBlocking {
