@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.local.domain
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
@@ -256,7 +257,7 @@ class DownloadedMangaResolver @Inject constructor(
 			.put("length", choice.length)
 			.put("modified", choice.lastModified)
 			.toString()
-		PreferenceManager.getDefaultSharedPreferences(context).edit()
+		readChoicePreferences(space).edit()
 			.putString(exhentaiChoiceKey(manga, space), value)
 			.apply()
 		return true
@@ -267,6 +268,16 @@ class DownloadedMangaResolver @Inject constructor(
 			(manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
 				manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME)
 
+	/**
+	 * Private file selections contain physical paths and manga IDs. Never place them in the
+	 * general settings preference backup when Private Favourites backup is disabled.
+	 * Android backup XML excludes this dedicated preference file for every transport.
+	 */
+	private fun readChoicePreferences(space: FavouriteSpace): SharedPreferences =
+		if (space == FavouriteSpace.PRIVATE) {
+			context.getSharedPreferences(PRIVATE_EXHENTAI_CHOICES_PREFS, Context.MODE_PRIVATE)
+		} else PreferenceManager.getDefaultSharedPreferences(context)
+
 	private fun exhentaiChoiceKey(manga: Manga, space: FavouriteSpace): String =
 		"exhentai_read_choice_${space.dbValue}_${manga.source.name}_${manga.id}"
 
@@ -275,7 +286,7 @@ class DownloadedMangaResolver @Inject constructor(
 		space: FavouriteSpace,
 		readable: List<Pair<ExhentaiReadChoice, LocalManga>>,
 	): LocalManga? {
-		val raw = PreferenceManager.getDefaultSharedPreferences(context)
+		val raw = readChoicePreferences(space)
 			.getString(exhentaiChoiceKey(manga, space), null) ?: return null
 		val saved = runCatching { JSONObject(raw) }.getOrNull() ?: return null
 		return readable.firstOrNull { (candidate, _) ->
@@ -324,6 +335,7 @@ class DownloadedMangaResolver @Inject constructor(
 	private companion object {
 		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 		const val MAX_DETAILS_TITLE_CANDIDATES = 32
+		private const val PRIVATE_EXHENTAI_CHOICES_PREFS = "exhentai_private_read_choices"
 	}
 
 	private fun canInferSpaceFromPath(): Boolean =
