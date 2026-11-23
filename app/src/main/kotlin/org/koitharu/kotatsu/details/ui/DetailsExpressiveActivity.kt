@@ -463,6 +463,7 @@ class DetailsExpressiveActivity :
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
+				val exhentaiDownloaded by viewModel.exhentaiDownloadedPresence.collectAsState()
 				val chapterReleaseOrigin by viewModel.chapterReleaseCalendarOrigin.collectAsState()
 				val chapterPresentation by viewModel.groupedChapterPresentation.collectAsState()
 				val chapters = chapterPresentation.chapters
@@ -504,6 +505,7 @@ class DetailsExpressiveActivity :
 
 				DetailsExpressiveScreen(
 					details = details,
+					isExhentaiDownloaded = exhentaiDownloaded,
 					note = mangaNote.value,
 					tags = tags,
 					historyInfo = history,

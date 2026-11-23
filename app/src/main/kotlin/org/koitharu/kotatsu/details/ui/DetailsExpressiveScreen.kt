@@ -53,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -151,6 +152,7 @@ internal fun detailsPullRefreshAllowed(gallerySelected: Boolean, firstItem: Int,
 @Composable
 fun DetailsExpressiveScreen(
 	details: MangaDetails?,
+	isExhentaiDownloaded: Boolean = false,
 	note: String?,
 	tags: List<ChipsView.ChipModel>,
 	historyInfo: HistoryInfo,
@@ -364,6 +366,17 @@ fun DetailsExpressiveScreen(
 							compactExpanded = heroExpanded,
 							onTitleOverflowChanged = { if (!heroExpanded) titleOverflow = it },
 							onCreatorOverflowChanged = { if (!heroExpanded) creatorOverflow = it },
+						)
+					}
+
+					// File presence is shown independently from ZIP readability and chapter mapping.
+					if (isExhentaiDownloaded) item(contentType = "exhentai-presence") {
+						Text(
+							text = stringResource(R.string.downloaded),
+							style = MaterialTheme.typography.labelMedium,
+							color = accentColor,
+							textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+							modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
 						)
 					}
 
