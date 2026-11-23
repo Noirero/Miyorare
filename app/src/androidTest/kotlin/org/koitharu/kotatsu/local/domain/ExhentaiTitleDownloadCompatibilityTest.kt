@@ -512,6 +512,11 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue(chapter.setLastModified(approval.lastModified))
 		assertEquals(approval.length, chapter.length())
 		assertEquals(approval.lastModified, chapter.lastModified())
+		// The modified archive still enumerates a readable page. The rejection must
+		// come from the content fingerprint, not from a corrupt ZIP/layout.
+		assertNotNull(org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy.readTitleMatchedChapter(
+			manga, chapter, allowIndexed = true,
+		))
 		var rejected = false
 		try {
 			deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval)
