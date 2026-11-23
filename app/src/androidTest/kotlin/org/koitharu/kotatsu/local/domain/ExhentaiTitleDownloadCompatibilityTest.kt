@@ -469,6 +469,41 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun directActiveRootLegacyCbzUsesIndexOnlyDownloadedClassification() = runBlocking {
+		val temporary = archive("Legacy Gallery", "Chapter.cbz")
+		val direct = File(root, "E-Hentai (EN)/Legacy Gallery/Chapter.cbz")
+		check(direct.parentFile!!.mkdirs())
+		temporary.copyTo(direct)
+		assertTrue(temporary.delete())
+		val online = gallery(990058, GEKKO_SOURCE)
+		val unrelated = gallery(990059, "TSUKI:OTHER:unrelated:OTHER")
+		data.storeManga(online, replaceExisting = true, detailsFetched = true)
+		data.storeManga(unrelated, replaceExisting = true, detailsFetched = true)
+		val dao = database.getFavouriteDownloadIndexDao()
+		try {
+			// Details uses the active destination. Cards intentionally require persisted index evidence.
+			assertEquals(direct.canonicalFile,
+				resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+			assertFalse(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(online.id)))
+			assertFalse(sqlDownloadedCondition(online.id))
+			dao.upsert(FavouriteDownloadIndexEntity(online.id, FavouriteSpace.NORMAL.dbValue, direct.canonicalPath))
+			dao.upsert(FavouriteDownloadIndexEntity(unrelated.id, FavouriteSpace.NORMAL.dbValue, direct.canonicalPath))
+			assertTrue(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(online.id)))
+			assertTrue(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL))
+			assertTrue(sqlDownloadedCondition(online.id))
+			assertFalse(unrelated.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(unrelated.id)))
+			assertFalse(sqlDownloadedCondition(unrelated.id))
+			destinationStore.setRoot(FavouriteSpace.NORMAL, File(root, "new-normal"))
+			assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+			assertFalse(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(online.id)))
+			assertFalse(sqlDownloadedCondition(online.id))
+			assertTrue(direct.isFile)
+		} finally {
+			dao.delete(FavouriteSpace.NORMAL.dbValue, online.id)
+			dao.delete(FavouriteSpace.NORMAL.dbValue, unrelated.id)
+		}
+	}
+
 	@Test fun comicInfoGalleryIdRequiresExplicitChoiceWhenItDisagrees() = runBlocking {
 		val chapter = archive(
 			"Legacy Gallery", "Chapter.cbz",
@@ -581,6 +616,40 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.PRIVATE.dbValue, manga.id))
 		} finally {
 			privatePrefs.edit(commit = true) { remove(key) }
+		}
+	}
+
+	@Test fun selectedGalleryChoiceRejectsSameSizeSameMtimeCbzReplacement() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		archive("Legacy Gallery_1", "Chapter.cbz")
+		val online = gallery(990057, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val choices = resolver.getExhentaiReadChoices(online, space)
+		assertEquals(2, choices.size)
+		val selected = choices.single { it.path == chapter.canonicalPath }
+		val key = "exhentai_read_choice_${space.dbValue}_${online.source.name}_${online.id}"
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val savedChoices = context.getSharedPreferences("exhentai_read_choices", android.content.Context.MODE_PRIVATE)
+		try {
+			assertTrue(resolver.selectExhentaiReadChoice(online, space, selected))
+			assertEquals(chapter.canonicalFile,
+				resolver.findSavedManga(online, space, forExhentaiDetails = true)?.file?.canonicalFile)
+			val original = chapter.readBytes()
+			val originalLength = chapter.length()
+			val originalModified = chapter.lastModified()
+			val replacement = archive("Detached Fixture", "Chapter.cbz", pageBytes = byteArrayOf(3, 2, 1))
+			assertEquals(originalLength, replacement.length())
+			replacement.copyTo(chapter, overwrite = true)
+			assertTrue(chapter.setLastModified(originalModified))
+			assertFalse(original.contentEquals(chapter.readBytes()))
+			assertEquals(originalLength, chapter.length())
+			assertEquals(originalModified, chapter.lastModified())
+			// An unchanged candidate path/size/mtime is not the same physical content.
+			assertNull(resolver.findSavedManga(online, space, forExhentaiDetails = true))
+			assertEquals(2, resolver.getExhentaiReadChoices(online, space).size)
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, online.id))
+		} finally {
+			savedChoices.edit(commit = true) { remove(key) }
 		}
 	}
 
@@ -703,6 +772,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	private fun archive(
 		folder: String, name: String, comment: String? = null, private: Boolean = false,
 		index: String? = null, comicInfo: String? = null, destination: File? = null,
+		pageBytes: ByteArray = byteArrayOf(1, 2, 3),
 	): File {
 		val base = destination ?: if (private) File(root, "private") else root
 		val dir = File(base, "downloads/ExHentai (OTHER)/$folder")
@@ -711,7 +781,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			ZipOutputStream(outputStream()).use { zip ->
 				if (comment != null) zip.setComment(comment)
 				zip.putNextEntry(ZipEntry("1.webp"))
-				zip.write(byteArrayOf(1, 2, 3))
+				zip.write(pageBytes)
 				zip.closeEntry()
 				if (index != null) {
 					zip.putNextEntry(ZipEntry("index.json"))

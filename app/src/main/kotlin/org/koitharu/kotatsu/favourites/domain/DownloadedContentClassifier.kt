@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.io.File
 import javax.inject.Inject
 
@@ -37,10 +38,11 @@ class DownloadedContentClassifier @Inject constructor(
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
 		val allowedRoots = getDownloadRoots(space)
 		if (allowedRoots.isEmpty()) return emptySet()
+		val legacyRoots = getActiveLegacyExhentaiIndexRoots(space)
 		val candidates = ArrayList<Pair<Long, File>>()
 		for (entry in db.getFavouriteDownloadIndexDao().findEntries(space.dbValue)) {
 			val path = File(entry.path)
-			if (path.isInsideAny(allowedRoots)) candidates += entry.mangaId to path
+			if (path.isInsideAny(allowedRoots) || path.isInsideAny(legacyRoots)) candidates += entry.mangaId to path
 		}
 		if (canInferSpaceFromPath()) {
 			findIndexedEntriesInRoots(allowedRoots).forEach { candidates += it.mangaId to File(it.path) }
@@ -59,12 +61,13 @@ class DownloadedContentClassifier @Inject constructor(
 		if (mangaIds.isEmpty()) return emptySet()
 		val roots = getDownloadRoots(space)
 		if (roots.isEmpty()) return emptySet()
+		val legacyRoots = getActiveLegacyExhentaiIndexRoots(space)
 		val candidates = ArrayList<Pair<Long, File>>()
 		val requested = mangaIds.toSet()
 		for (chunk in requested.chunked(INDEX_QUERY_CHUNK_SIZE)) {
 			for (entry in db.getFavouriteDownloadIndexDao().findEntries(space.dbValue, chunk)) {
 				val path = File(entry.path)
-				if (path.isInsideAny(roots)) candidates += entry.mangaId to path
+				if (path.isInsideAny(roots) || path.isInsideAny(legacyRoots)) candidates += entry.mangaId to path
 			}
 		}
 		if (canInferSpaceFromPath()) {
@@ -95,7 +98,7 @@ class DownloadedContentClassifier @Inject constructor(
 		val activeRoot = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path
 		val activeDownloadRoots = listOfNotNull(activeRoot?.let {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME).normalizedAbsolutePath()
-		})
+		}) + getActiveLegacyExhentaiIndexRoots(space).map { it.normalizedAbsolutePath() }
 		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
 		val otherRoot = downloadDestinationStore.effectiveRoot(otherSpace)?.absoluteFile?.normalize()?.path
 		val exclusions = if (otherRoot != null && activeRoot != null && otherRoot != activeRoot &&
@@ -208,13 +211,17 @@ class DownloadedContentClassifier @Inject constructor(
 		for (chunk in candidates.map { it.first }.distinct().chunked(INDEX_QUERY_CHUNK_SIZE)) {
 			db.getMangaDao().findSourceNamesByIds(chunk).forEach { sourceById[it.mangaId] = it.source }
 		}
+		val standardRoots = getDownloadRoots(space)
+		val legacyRoots = getActiveLegacyExhentaiIndexRoots(space)
 		return candidates.asSequence()
 			.filter { (id, file) ->
 				when (sourceById[id]) {
-					org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME,
+					EhentaiSourceFamily.OFFICIAL_SOURCE_NAME,
 					"TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI" ->
-						downloadDestinationStore.isVisibleInActiveExhentaiIndex(space, file)
-					else -> true
+						downloadDestinationStore.isVisibleInActiveExhentaiIndex(space, file) &&
+							(file.isInsideAny(standardRoots) || file.isInsideAny(legacyRoots))
+					// Do not let another source acquire Downloaded through a legacy ExHentai path.
+					else -> file.isInsideAny(standardRoots)
 				}
 			}
 			.mapTo(HashSet()) { it.first }
@@ -232,6 +239,13 @@ class DownloadedContentClassifier @Inject constructor(
 		downloadDestinationStore.readableRoots(space).map {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
 		}
+
+	/** Historical pre-downloads layout: <active root>/<recognized E-Hentai source>/<gallery>. */
+	private fun getActiveLegacyExhentaiIndexRoots(space: FavouriteSpace): List<File> {
+		val active = downloadDestinationStore.effectiveRoot(space) ?: return emptyList()
+		return (sequenceOf("ExHentai (OTHER)") + EhentaiSourceFamily.legacySourceDirectoryNames.asSequence())
+			.map { File(active, it) }.toList()
+	}
 
 	private fun canInferSpaceFromPath(): Boolean =
 		downloadDestinationStore.privateUsesOwnRoot() && !downloadDestinationStore.rootsOverlap()

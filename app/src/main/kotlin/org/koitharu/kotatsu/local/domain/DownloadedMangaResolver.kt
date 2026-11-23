@@ -2,9 +2,12 @@ package org.koitharu.kotatsu.local.domain
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
+import java.security.MessageDigest
 import java.util.zip.ZipFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
@@ -187,9 +190,10 @@ class DownloadedMangaResolver @Inject constructor(
 			if (readable.isEmpty()) return null
 			val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
 			val exact = readable.filter { it.first.galleryId != null && it.first.galleryId == galleryId }
+			// A unique exact gallery match needs no persisted-choice fingerprint read.
+			if (exact.size == 1) return exact.single().second
 			val knownChoice = readStoredExhentaiChoice(manga, space, readable)
 			return when {
-				exact.size == 1 -> exact.single().second
 				knownChoice != null -> knownChoice
 				readable.size == 1 && readable.single().first.galleryId == null -> readable.single().second
 				else -> null // Ambiguous or explicitly foreign gallery ID: ask in Details.
@@ -257,10 +261,12 @@ class DownloadedMangaResolver @Inject constructor(
 		choice: ExhentaiReadChoice,
 	): Boolean {
 		if (getExhentaiReadChoices(manga, space).none { it == choice }) return false
+		val fingerprint = fingerprintOfChoice(choice) ?: return false
 		val value = JSONObject()
 			.put("path", choice.path)
 			.put("length", choice.length)
 			.put("modified", choice.lastModified)
+			.put("sha256", fingerprint)
 			.toString()
 		readChoicePreferences().edit()
 			.putString(exhentaiChoiceKey(manga, space), value)
@@ -284,7 +290,7 @@ class DownloadedMangaResolver @Inject constructor(
 	private fun exhentaiChoiceKey(manga: Manga, space: FavouriteSpace): String =
 		"exhentai_read_choice_${space.dbValue}_${manga.source.name}_${manga.id}"
 
-	private fun readStoredExhentaiChoice(
+	private suspend fun readStoredExhentaiChoice(
 		manga: Manga,
 		space: FavouriteSpace,
 		readable: List<Pair<ExhentaiReadChoice, LocalManga>>,
@@ -292,11 +298,37 @@ class DownloadedMangaResolver @Inject constructor(
 		val raw = readChoicePreferences()
 			.getString(exhentaiChoiceKey(manga, space), null) ?: return null
 		val saved = runCatching { JSONObject(raw) }.getOrNull() ?: return null
-		return readable.firstOrNull { (candidate, _) ->
+		// Old metadata-only choices have no fingerprint: require explicit re-selection.
+		val savedHash = saved.optString("sha256").takeIf(String::isNotEmpty) ?: return null
+		val selected = readable.firstOrNull { (candidate, _) ->
 			candidate.path == saved.optString("path") &&
 				candidate.length == saved.optLong("length", -1L) &&
 				candidate.lastModified == saved.optLong("modified", -1L)
-		}?.second
+		} ?: return null
+		val actualHash = fingerprintOfChoice(selected.first) ?: return null
+		return if (actualHash == savedHash) selected.second else null
+	}
+
+	/** A read association is not ownership; still invalidate it on same-size/mtime replacement. */
+	private suspend fun fingerprintOfChoice(choice: ExhentaiReadChoice): String? = withContext(Dispatchers.IO) {
+		val file = File(choice.path)
+		if (!file.isFile || file.canonicalPath != choice.path ||
+			file.length() != choice.length || file.lastModified() != choice.lastModified
+		) return@withContext null
+		val hash = runCatching {
+			val digest = MessageDigest.getInstance("SHA-256")
+			file.inputStream().buffered(65536).use { input ->
+				val buffer = ByteArray(65536)
+				while (true) {
+					val count = input.read(buffer)
+					if (count < 0) break
+					if (count > 0) digest.update(buffer, 0, count)
+				}
+			}
+			Base64.encodeToString(digest.digest(), Base64.NO_WRAP)
+		}.getOrNull()
+		hash?.takeIf { file.isFile && file.length() == choice.length &&
+			file.lastModified() == choice.lastModified }
 	}
 
 	private suspend fun loadActiveExhentaiTitleCandidates(
