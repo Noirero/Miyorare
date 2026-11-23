@@ -569,7 +569,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val selected = options.single { it.path == first.canonicalPath }
 		val key = "exhentai_read_choice_${FavouriteSpace.PRIVATE.dbValue}_${manga.source.name}_${manga.id}"
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
-		val privatePrefs = context.getSharedPreferences("exhentai_private_read_choices", android.content.Context.MODE_PRIVATE)
+		val privatePrefs = context.getSharedPreferences("exhentai_read_choices", android.content.Context.MODE_PRIVATE)
 		try {
 			assertTrue(resolver.selectExhentaiReadChoice(manga, FavouriteSpace.PRIVATE, selected))
 			assertNull(prefs.getString(key, null))
