@@ -88,35 +88,65 @@ class DownloadedContentClassifier @Inject constructor(
 	 * the two spaces have distinct roots; on a shared root its path carries no Normal/Private identity.
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
-		val rootPaths = getDownloadRoots(space)
-			.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }
-			.distinct()
+		val allRoots = getDownloadRoots(space)
+			.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }.distinct()
+		val defaultCondition = downloadConditionForRoots(space, mangaIdColumn, allRoots)
 
+		val activeRoot = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path
+		val activeDownloadRoots = listOfNotNull(activeRoot?.let {
+			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME).normalizedAbsolutePath()
+		})
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val otherRoot = downloadDestinationStore.effectiveRoot(otherSpace)?.absoluteFile?.normalize()?.path
+		val exclusions = if (otherRoot != null && activeRoot != null && otherRoot != activeRoot &&
+			otherRoot.startsWith(activeRoot.trimEnd(File.separatorChar) + File.separator)
+		) listOf(otherRoot) else emptyList()
+		val activeCondition = downloadConditionForRoots(
+			space, mangaIdColumn, activeDownloadRoots, exclusions,
+		)
+		val sourceColumn = "(SELECT ms.source FROM manga ms WHERE ms.manga_id = $mangaIdColumn)"
+		val mainSource = sqlEscapeString(
+			org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME,
+		)
+		val gekkoSource = sqlEscapeString("TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")
+		val scopedSource = "$sourceColumn IN ($mainSource, $gekkoSource)"
+		return "((($scopedSource) AND $activeCondition) OR (NOT($scopedSource) AND $defaultCondition))"
+	}
+
+	private fun downloadConditionForRoots(
+		space: FavouriteSpace,
+		mangaIdColumn: String,
+		roots: List<String>,
+		excluded: List<String> = emptyList(),
+	): String {
 		val localCondition = if (canInferSpaceFromPath()) {
 			buildSqlPathExists(
 				table = "local_index",
 				idColumn = "local_index.manga_id",
 				pathColumn = "local_index.path",
 				mangaIdColumn = mangaIdColumn,
-				rootPaths = rootPaths,
+				rootPaths = roots,
+				excludedRoots = excluded,
 			)
-		} else {
-			"0"
+		} else "0"
+		val ownerPath = sqlPathPredicate("fdi.path", roots, excluded)
+		val ownerCondition = "EXISTS(SELECT 1 FROM favourite_download_index fdi " +
+			"WHERE fdi.space = ${space.dbValue} AND fdi.manga_id = $mangaIdColumn AND $ownerPath)"
+		return "($localCondition OR $ownerCondition)"
+	}
+
+	private fun sqlPathPredicate(pathColumn: String, roots: List<String>, excluded: List<String>): String {
+		if (roots.isEmpty()) return "0"
+		fun atOrBelow(rootPath: String): String {
+			val path = sqlEscapeString(rootPath)
+			val prefix = sqlEscapeString(rootPath.trimEnd(File.separatorChar) + File.separator)
+			return "($pathColumn = $path OR instr($pathColumn, $prefix) = 1)"
 		}
-		val ownershipPathCondition = if (rootPaths.isEmpty()) {
-			"0"
-		} else {
-			rootPaths.joinToString(separator = " OR ") { rootPath ->
-				val root = sqlEscapeString(rootPath)
-				val childPrefix = sqlEscapeString(rootPath + File.separator)
-				"(fdi.path = $root OR instr(fdi.path, $childPrefix) = 1)"
-			}
+		val allowed = roots.joinToString(" OR ") { atOrBelow(it) }
+		return if (excluded.isEmpty()) "($allowed)" else {
+			val denied = excluded.joinToString(" OR ") { atOrBelow(it) }
+			"(($allowed) AND NOT ($denied))"
 		}
-		val ownershipCondition =
-			"EXISTS(SELECT 1 FROM favourite_download_index fdi " +
-				"WHERE fdi.space = ${space.dbValue} AND fdi.manga_id = $mangaIdColumn " +
-				"AND ($ownershipPathCondition))"
-		return "($localCondition OR $ownershipCondition)"
 	}
 
 	private fun buildSqlPathExists(
@@ -125,14 +155,11 @@ class DownloadedContentClassifier @Inject constructor(
 		pathColumn: String,
 		mangaIdColumn: String,
 		rootPaths: List<String>,
+		excludedRoots: List<String> = emptyList(),
 	): String {
 		if (rootPaths.isEmpty()) return "0"
-		val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
-			val root = sqlEscapeString(rootPath)
-			val childPrefix = sqlEscapeString(rootPath + File.separator)
-			"($pathColumn = $root OR instr($pathColumn, $childPrefix) = 1)"
-		}
-		return "EXISTS(SELECT 1 FROM $table WHERE $idColumn = $mangaIdColumn AND ($pathCondition))"
+		return "EXISTS(SELECT 1 FROM $table WHERE $idColumn = $mangaIdColumn AND " +
+			sqlPathPredicate(pathColumn, rootPaths, excludedRoots) + ")"
 	}
 
 	/**
