@@ -231,8 +231,13 @@ class DetailsExpressiveActivity :
 			repeatOnLifecycle(Lifecycle.State.STARTED) {
 				combine(privateContentStateFlow, privateFavouritesSession.isUnlocked) { _, _ -> Unit }
 					.collect {
-						if (!canShowExhentaiFileDetails()) exhentaiChoiceDialog?.dismiss()
-						else maybePromptExhentaiReadChoice(viewModel.mangaDetails.value)
+						if (!canShowExhentaiFileDetails()) {
+							if (exhentaiChoiceDialog != null) {
+								exhentaiChoiceDialog?.dismiss()
+								// A transient vault reclassification must not permanently suppress the picker.
+								promptedExhentaiReadChoices.clear()
+							}
+						} else maybePromptExhentaiReadChoice(viewModel.mangaDetails.value)
 					}
 			}
 		}
@@ -617,9 +622,13 @@ class DetailsExpressiveActivity :
 		if (!promptedExhentaiReadChoices.add(key)) return
 		lifecycleScope.launch {
 			val choices = withContext(Dispatchers.IO) { viewModel.getExhentaiReadChoices() }
-			if (choices.isEmpty() || !canShowExhentaiFileDetails() || isFinishing || isDestroyed ||
+			if (choices.isEmpty()) return@launch
+			if (!canShowExhentaiFileDetails() || isFinishing || isDestroyed ||
 				viewModel.mangaDetails.value?.sourceManga?.id != remote.id ||
-				viewModel.mangaDetails.value?.local != null) return@launch
+				viewModel.mangaDetails.value?.local != null) {
+				promptedExhentaiReadChoices.remove(key)
+				return@launch
+			}
 			val dialog = buildAlertDialog(this@DetailsExpressiveActivity) {
 				setTitle(R.string.exhentai_choose_local_title)
 				setMessage(R.string.exhentai_choose_local_description)
