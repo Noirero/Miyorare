@@ -24,6 +24,10 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
 import java.io.IOException
+import android.util.Base64
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import javax.inject.Inject
 
 /** Rejection before any file or index mutation. */
@@ -43,6 +47,7 @@ data class ExhentaiDeletionApproval(
 	val canonicalPath: String,
 	val length: Long,
 	val lastModified: Long,
+	val sha256: String,
 	val sharedWithOtherSpace: Boolean,
 )
 
@@ -178,6 +183,12 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file) ||
 			ExhentaiDownloadedCopy.readTitleMatchedChapter(remote, file, allowIndexed = true) == null
 		) return null
+		// Snapshot the archive contents, not only size/mtime: a replaced same-size CBZ
+		// with restored timestamps must never inherit an earlier user confirmation.
+		val initialLength = file.length()
+		val initialModified = file.lastModified()
+		val hash = withContext(Dispatchers.IO) { runCatching { sha256Of(file) }.getOrNull() } ?: return null
+		if (!file.isFile || file.length() != initialLength || file.lastModified() != initialModified) return null
 		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
 		return ExhentaiDeletionApproval(
 			sourceName = remote.source.name,
@@ -185,9 +196,23 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			space = space,
 			canonicalPath = file.canonicalPath,
 			length = file.length(),
-			lastModified = file.lastModified(),
+			lastModified = initialModified,
+			sha256 = hash,
 			sharedWithOtherSpace = downloadDestinationStore.isVisibleInActiveExhentaiDestination(otherSpace, file),
 		)
+	}
+
+	private fun sha256Of(file: File): String {
+		val digest = MessageDigest.getInstance("SHA-256")
+		file.inputStream().buffered(65536).use { input ->
+			val buffer = ByteArray(65536)
+			while (true) {
+				val count = input.read(buffer)
+				if (count < 0) break
+				if (count > 0) digest.update(buffer, 0, count)
+			}
+		}
+		return Base64.encodeToString(digest.digest(), Base64.NO_WRAP)
 	}
 
 	/**
