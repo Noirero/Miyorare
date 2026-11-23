@@ -377,12 +377,22 @@ class LocalMangaRepository @Inject constructor(
 	internal suspend fun deleteExhentaiDestinationCopy(
 		local: LocalManga,
 		cleanupEmptyLegacyParent: Boolean = false,
+		confirmedRemoteMangaId: Long? = null,
 	): Boolean {
 		val file = local.file.canonicalFile
 		if (!file.deleteAwait()) return false
 		val indexed = localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile
 		if (indexed == file) localMangaIndex.delete(local.manga.id)
 		favouriteDownloadOwnershipIndex.removePath(file)
+		if (confirmedRemoteMangaId != null) {
+			val indexedRemote = localMangaIndex.findIndexedPath(confirmedRemoteMangaId)?.canonicalFile
+			if (indexedRemote == file || indexedRemote == file.parentFile) {
+				localMangaIndex.delete(confirmedRemoteMangaId)
+			}
+			favouriteDownloadOwnershipIndex.removeMangaPaths(
+				confirmedRemoteMangaId, listOfNotNull(file, file.parentFile),
+			)
+		}
 		if (cleanupEmptyLegacyParent) {
 			// Older task rows can index a directory containing Chapter.cbz rather than
 			// the CBZ itself. Clear them before emitting the storage invalidation so
