@@ -245,6 +245,11 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val original = chapter.readBytes()
 		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
 			val online = gallery(990016, source)
+			assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+			val choices = resolver.getExhentaiReadChoices(online, FavouriteSpace.NORMAL)
+			assertEquals(1, choices.size)
+			assertEquals(888100L, choices.single().galleryId)
+			assertTrue(resolver.selectExhentaiReadChoice(online, FavouriteSpace.NORMAL, choices.single()))
 			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
 			assertNotNull(found)
 			assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
@@ -283,8 +288,14 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
 		assertEquals(exact.canonicalFile,
 			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		val otherGallery = gallery(990018, GEKKO_SOURCE)
+		assertNull(resolver.findSavedManga(otherGallery, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		val ambiguous = resolver.getExhentaiReadChoices(otherGallery, FavouriteSpace.NORMAL)
+		assertEquals(2, ambiguous.size)
+		val chosenLegacy = ambiguous.single { it.path == legacy.canonicalPath }
+		assertTrue(resolver.selectExhentaiReadChoice(otherGallery, FavouriteSpace.NORMAL, chosenLegacy))
 		assertEquals(legacy.canonicalFile, resolver.findSavedManga(
-			gallery(990018, GEKKO_SOURCE), FavouriteSpace.NORMAL, forExhentaiDetails = true,
+			otherGallery, FavouriteSpace.NORMAL, forExhentaiDetails = true,
 		)?.file?.canonicalFile)
 		assertTrue(legacy.isFile)
 		assertTrue(exact.isFile)
@@ -423,6 +434,56 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertEquals(1, localRepository.getPages(found!!.manga.chapters!!.single()).size)
 		}
 		assertEquals(3L, bad.length())
+	}
+
+	@Test fun confirmedLegacyDeleteRemovesExactlyTheSharedFileAndLeavesNoFakeOwnership() = runBlocking {
+		prefs.edit(commit = true) {
+			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+		}
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990031, GEKKO_SOURCE)
+		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+		assertNotNull(local)
+		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local!!)
+		assertNotNull(approval)
+		assertTrue(approval!!.sharedWithOtherSpace)
+		assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval))
+		assertFalse(chapter.exists())
+		assertNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		assertNull(resolver.findSavedManga(manga, FavouriteSpace.PRIVATE, forExhentaiDetails = true))
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+	}
+
+	@Test fun approvedDeleteRejectsChangedFileWithoutDeletingIt() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990032, GEKKO_SOURCE)
+		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)!!
+		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local)!!
+		chapter.appendBytes(byteArrayOf(9))
+		var rejected = false
+		try {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval)
+		} catch (e: UnverifiedDownloadRemovalException) {
+			rejected = true
+		}
+		assertTrue(rejected)
+		assertTrue(chapter.exists())
+	}
+
+	@Test fun approvedDeleteRejectsDestinationChange() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990033, GEKKO_SOURCE)
+		val local = resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true)!!
+		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local)!!
+		destinationStore.setRoot(FavouriteSpace.NORMAL, File(root, "moved"))
+		var rejected = false
+		try {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval)
+		} catch (e: UnverifiedDownloadRemovalException) {
+			rejected = true
+		}
+		assertTrue(rejected)
+		assertTrue(chapter.exists())
 	}
 
 	@Test fun permissiveDetailsReadIsLimitedToMainAndGekkoSources() = runBlocking {
