@@ -312,8 +312,10 @@ class DownloadedMangaResolver @Inject constructor(
 	private fun readGalleryIdFromOptionalArchiveIndex(file: File): Long? = runCatching {
 		ZipFile(file).use { archive ->
 			val entry = archive.getEntry("index.json")?.takeIf { it.size in 1L..65536L } ?: return@use null
-			val index = archive.getInputStream(entry).bufferedReader().use { it.readText() }
-			JSONObject(index).optLong("id", -1).takeIf { it > 0 }
+			val index = JSONObject(archive.getInputStream(entry).bufferedReader().use { it.readText() })
+			// index.json.id is a Kotatsu Manga ID, not the ExHentai gallery number.
+			// Only the gallery URL establishes a comparable ExHentai gallery ID.
+			EhentaiSourceFamily.galleryId(index.optString("public_url"), index.optString("url"))
 		}
 	}.getOrNull()
 
