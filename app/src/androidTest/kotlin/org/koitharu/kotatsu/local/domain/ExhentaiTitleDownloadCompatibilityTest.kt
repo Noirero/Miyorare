@@ -266,6 +266,17 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertArrayEquals(original, chapter.readBytes())
 	}
 
+	@Test fun embeddedInternalMangaIdIsNotMistakenForGalleryId() = runBlocking {
+		val online = gallery(990035, GEKKO_SOURCE)
+		val index = """{"id":123456789,"url":"https://exhentai.org/g/990035/token/",
+			"source":"TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"}"""
+		val chapter = archive("Legacy Gallery", "Chapter.cbz", index = index)
+		val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+		assertEquals(chapter.canonicalFile, found?.file?.canonicalFile)
+		assertTrue(resolver.getExhentaiReadChoices(online, FavouriteSpace.NORMAL).isEmpty())
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
+	}
+
 	@Test fun detailsReadsMalformedOptionalIndexAsFlatChapter() = runBlocking {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz", index = "{malformed json")
 		val before = chapter.readBytes()
