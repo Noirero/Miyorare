@@ -447,10 +447,12 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		))
 		try {
 			assertTrue(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(online.id)))
+			assertTrue(sqlDownloadedCondition(online.id))
 			destinationStore.setRoot(FavouriteSpace.NORMAL, File(root, "new-normal"))
 			assertTrue(destinationStore.readableRoots(FavouriteSpace.NORMAL).any { it.canonicalFile == root })
 			assertFalse(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(online.id)))
 			assertFalse(online.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL))
+			assertFalse(sqlDownloadedCondition(online.id))
 		} finally {
 			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, online.id)
 		}
@@ -514,6 +516,13 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val anotherTsuki = gallery(990025, "TSUKI:OTHER:other:EXHENTAI")
 		assertNull(resolver.findSavedManga(anotherTsuki, FavouriteSpace.NORMAL, forExhentaiDetails = true))
 		assertTrue(chapter.exists())
+	}
+
+	private fun sqlDownloadedCondition(id: Long): Boolean {
+		val clause = classifier.getDownloadedCondition(FavouriteSpace.NORMAL, "m.manga_id")
+		return database.openHelper.readableDatabase
+			.query("SELECT $clause FROM manga m WHERE m.manga_id = $id")
+			.use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
 	}
 
 	private fun gallery(id: Long, sourceName: String): Manga {
