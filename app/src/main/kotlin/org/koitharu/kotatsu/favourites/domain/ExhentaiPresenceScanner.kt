@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.domain
 
 import java.io.File
 import java.io.IOException
+import java.util.Locale
 import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 
 /**
