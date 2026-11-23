@@ -497,6 +497,44 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertFalse(gekko.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(main.id, gekko.id)))
 	}
 
+	/**
+	 * A temporarily missing mount must not erase the persisted Downloaded badge.
+	 * Successful recovery/scan, not temporary storage loss, is what clears stale presence.
+	 */
+	@Test fun unavailableActiveStorageKeepsManualPresenceUntilSuccessfulRescan() = runBlocking {
+		val manga = gallery(990075, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		val manual = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery/Chapter.cbz")
+		check(manual.parentFile!!.mkdirs() || manual.parentFile!!.isDirectory)
+		manual.writeText("corrupt archive still counts as present")
+		val ids = listOf(manga.id)
+
+		presence.run(full = true)
+		assertTrue(manga.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, ids))
+		assertTrue(sqlDownloadedCondition(manga.id))
+
+		// Simulate a temporarily unmounted selected destination, preserving its configured path.
+		val parked = File(root.parentFile, root.name + "-temporarily-unavailable")
+		check(!parked.exists())
+		assertTrue(root.renameTo(parked))
+		try {
+			presence.run(full = true)
+			assertTrue(FavouriteSpace.NORMAL in presence.state.value.unavailableSpaces)
+			assertTrue(manga.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, ids))
+			assertTrue(sqlDownloadedCondition(manga.id))
+			assertTrue(database.getExhentaiPresenceDao().findForSpace(FavouriteSpace.NORMAL.dbValue)
+				.any { it.mangaId == manga.id })
+		} finally {
+			assertTrue("Failed to restore test destination", parked.renameTo(root))
+		}
+
+		assertTrue(manual.delete())
+		presence.run(full = true)
+		assertFalse(FavouriteSpace.NORMAL in presence.state.value.unavailableSpaces)
+		assertFalse(manga.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, ids))
+		assertFalse(sqlDownloadedCondition(manga.id))
+	}
+
 	@Test fun directActiveRootLegacyCbzUsesIndexOnlyDownloadedClassification() = runBlocking {
 		val temporary = archive("Legacy Gallery", "Chapter.cbz")
 		val direct = File(root, "E-Hentai (EN)/Legacy Gallery/Chapter.cbz")
