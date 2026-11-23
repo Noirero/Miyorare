@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.local.domain
 
 import android.content.Context
-import android.net.Uri
 import androidx.preference.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
@@ -312,7 +311,7 @@ class DownloadedMangaResolver @Inject constructor(
 
 	private fun readGalleryIdFromOptionalArchiveIndex(file: File): Long? = runCatching {
 		ZipFile(file).use { archive ->
-			val entry = archive.getEntry("index.json")?.takeIf { it.size in 1..65536 } ?: return@use null
+			val entry = archive.getEntry("index.json")?.takeIf { it.size in 1L..65536L } ?: return@use null
 			val index = archive.getInputStream(entry).bufferedReader().use { it.readText() }
 			JSONObject(index).optLong("id", -1).takeIf { it > 0 }
 		}
