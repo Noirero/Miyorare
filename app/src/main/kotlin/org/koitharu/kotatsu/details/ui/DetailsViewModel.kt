@@ -743,6 +743,19 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
+	/** Read-only title-choice dialog; selecting a file does not create download ownership. */
+	suspend fun getExhentaiReadChoices(): List<DownloadedMangaResolver.ExhentaiReadChoice> {
+		val manga = mangaDetails.value?.sourceManga ?: return emptyList()
+		return downloadedMangaResolver.getExhentaiReadChoices(manga, favouriteSpace)
+	}
+
+	suspend fun selectExhentaiReadChoice(choice: DownloadedMangaResolver.ExhentaiReadChoice): Boolean {
+		val manga = mangaDetails.value?.sourceManga ?: return false
+		val chosen = downloadedMangaResolver.selectExhentaiReadChoice(manga, favouriteSpace, choice)
+		if (chosen) reload()
+		return chosen
+	}
+
 	override fun reload() {
 		peopleController.refresh()
 		recommendationController.refresh()
