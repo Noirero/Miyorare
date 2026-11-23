@@ -814,4 +814,10 @@
     <string name="exhentai_choose_local_known_id">ID gallery: %1$d</string>
     <string name="exhentai_choose_local_unknown_id">Tanpa ID gallery</string>
     <string name="exhentai_choose_local_changed">CBZ yang dipilih berubah atau tidak lagi tersedia. Asosiasi tidak disimpan.</string>
+    <string name="exhentai_presence_resume_scan">Pindai CBZ ExHentai saat kembali ke aplikasi</string>
+    <string name="exhentai_presence_resume_scan_summary">Periksa file lokal ExHentai Main dan Gekko secara incremental. Pemindaian startup tetap aktif.</string>
+    <string name="exhentai_presence_full_scan">Pindai lengkap file CBZ ExHentai</string>
+    <string name="exhentai_presence_full_scan_summary">Periksa folder download aktif tanpa mengubah ownership download.</string>
+    <string name="exhentai_presence_progress">Memeriksa %1$d dari %2$d entri</string>
+    <string name="exhentai_presence_unavailable">Sebagian penyimpanan download tidak tersedia; status terakhir dipertahankan.</string>
 </resources>

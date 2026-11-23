@@ -1619,4 +1619,10 @@
     <string name="exhentai_choose_local_known_id">Gallery ID: %1$d</string>
     <string name="exhentai_choose_local_unknown_id">No gallery ID</string>
     <string name="exhentai_choose_local_changed">The selected CBZ changed or is no longer available. No association was saved.</string>
+    <string name="exhentai_presence_resume_scan">Scan ExHentai CBZ when returning to the app</string>
+    <string name="exhentai_presence_resume_scan_summary">Incrementally check local ExHentai Main and Gekko files. Startup scanning stays enabled.</string>
+    <string name="exhentai_presence_full_scan">Full scan of ExHentai CBZ files</string>
+    <string name="exhentai_presence_full_scan_summary">Check active download folders without changing download ownership.</string>
+    <string name="exhentai_presence_progress">Checking %1$d of %2$d entries</string>
+    <string name="exhentai_presence_unavailable">Some download storage is unavailable; last known status was preserved.</string>
 </resources>
