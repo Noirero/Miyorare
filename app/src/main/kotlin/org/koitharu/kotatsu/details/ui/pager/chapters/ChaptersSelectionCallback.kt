@@ -90,10 +90,15 @@ class ChaptersSelectionCallback(
 						recyclerView.context,
 					) { viewModel.deleteSmartLocalChapters(ids) }
 					ids.size == manga.chapters?.size -> {
-						val owner = recyclerView.findViewTreeLifecycleOwner()
-						if (owner == null || !showExhentaiPhysicalDeleteConfirmation(
-							recyclerView.context, owner.lifecycleScope, viewModel,
-						)) viewModel.deleteLocal()
+						val sourceName = viewModel.mangaDetails.value?.sourceManga?.source?.name
+						val isExhentaiConfirmation = sourceName == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+							sourceName == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
+						if (isExhentaiConfirmation) {
+							// Never fall back to unconfirmed deletion if this view is detached.
+							recyclerView.findViewTreeLifecycleOwner()?.let { owner ->
+								showExhentaiPhysicalDeleteConfirmation(recyclerView.context, owner.lifecycleScope, viewModel)
+							}
+						} else viewModel.deleteLocal()
 					}
 					else -> {
 						LocalChaptersRemoveService.start(
