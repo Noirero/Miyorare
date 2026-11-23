@@ -215,7 +215,8 @@ internal object ExhentaiDownloadedCopy {
 		verified: Boolean,
 		titleMatchedDetails: Boolean = false,
 	): Match? {
-		val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails = false) ?: return null
+		val local = LocalMangaParser.getOrNull(file, ignoreArchiveIndex = titleMatchedDetails)
+			?.getManga(withDetails = false) ?: return null
 		// A foreign index.json must not replace the remote chapter ID used by Details.
 		// The marker makes Reader enumerate flat archive pages without interpreting
 		// the foreign index, and is never added to an ownership/download record.
