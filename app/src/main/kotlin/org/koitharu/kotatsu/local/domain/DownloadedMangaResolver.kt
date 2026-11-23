@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.sources.compat.EhentaiComicInfo
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -304,6 +305,7 @@ class DownloadedMangaResolver @Inject constructor(
 			val evidence = ExhentaiChapterOwnership.inspectDestination(file)
 			val id = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.galleryId
 				?: readGalleryIdFromOptionalArchiveIndex(file)
+				?: (EhentaiComicInfo.inspect(file) as? EhentaiComicInfo.Evidence.Gallery)?.id
 			val choice = ExhentaiReadChoice(file.canonicalPath, id, file.length(), file.lastModified())
 			choice to local
 		}
