@@ -77,7 +77,16 @@ class KotatsuMangaRepository(
 		decodeRuntimeMangaList(runtimeManager.runtime().getRelated(source.sourceKey, seed.toKotatsuRuntimeJson()), source)
 	}
 
-	override suspend fun getImageRequestHeaders(imageUrl: String, page: MangaPage): Headers = withContext(Dispatchers.IO) {
+	override suspend fun getImageRequestHeaders(imageUrl: String, page: MangaPage): Headers = runtimeRequestHeaders()
+
+	/**
+	 * The parser's own request headers, for host-side cover loading (KotatsuImageFetcher).
+	 * Some image hosts only serve covers to requests that carry the source's Referer;
+	 * without it they answer 403 and the cover stays blank even though reading works.
+	 */
+	suspend fun getCoverHeaders(): Headers = runtimeRequestHeaders()
+
+	private suspend fun runtimeRequestHeaders(): Headers = withContext(Dispatchers.IO) {
 		val root = runtimeManager.runtime().requestHeaders(source.sourceKey)
 		Headers.Builder().apply {
 			for (name in root.keys()) {

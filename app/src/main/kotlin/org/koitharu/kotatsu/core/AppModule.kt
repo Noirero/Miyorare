@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.image.AvifImageDecoder
 import org.koitharu.kotatsu.core.image.CbzFetcher
 import org.koitharu.kotatsu.core.image.MangaSourceHeaderInterceptor
+import org.koitharu.kotatsu.core.image.KotatsuImageFetcher
 import org.koitharu.kotatsu.core.image.MihonImageFetcher
 import org.koitharu.kotatsu.core.image.MiyorareImageDiskCache
 import org.koitharu.kotatsu.core.image.TsukiImageFetcher
@@ -132,6 +133,7 @@ interface AppModule {
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
 			tsukiRuntimeProvider: Provider<TsukiPluginRuntime>,
+		mangaRepositoryFactoryProvider: Provider<org.koitharu.kotatsu.core.parser.MangaRepository.Factory>,
 			performanceImageListener: PerformanceImageListener,
 		): ImageLoader {
 			val okHttpClientLazy = lazy {
@@ -155,6 +157,14 @@ interface AppModule {
 					// Same isolation for optional Tsuki/Usagi sources. Factory construction is inert;
 					// the runtime Provider is resolved only for an actual Tsuki image request.
 					add(TsukiImageFetcher.Factory(tsukiRuntimeProvider))
+					// Same isolation for Kotatsu runtime sources: their covers must carry the
+					// parser's own headers (e.g. Referer), which the generic fetcher never adds.
+					add(
+						KotatsuImageFetcher.Factory(
+							repositoryFactoryProvider = mangaRepositoryFactoryProvider,
+							httpClientProvider = okHttpClientProvider,
+						),
+					)
 					add(
 						OkHttpNetworkFetcherFactory(
 							callFactory = okHttpClientLazy::value,
