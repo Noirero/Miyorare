@@ -469,11 +469,21 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val approval = deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local!!)
 		assertNotNull(approval)
 		assertTrue(approval!!.sharedWithOtherSpace)
+		// Old ExHentai task rows may point at the gallery directory, not Chapter.cbz.
+		// Both spaces must lose their stale downloaded badge after physical deletion.
+		data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		for (space in FavouriteSpace.entries) {
+			database.getFavouriteDownloadIndexDao().upsert(
+				FavouriteDownloadIndexEntity(manga.id, space.dbValue, chapter.parentFile.canonicalPath),
+			)
+		}
 		assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, FavouriteSpace.NORMAL, local, approval))
 		assertFalse(chapter.exists())
 		assertNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true))
 		assertNull(resolver.findSavedManga(manga, FavouriteSpace.PRIVATE, forExhentaiDetails = true))
-		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		for (space in FavouriteSpace.entries) {
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
+		}
 	}
 
 	@Test fun approvedDeleteRejectsChangedFileWithoutDeletingIt() = runBlocking {
