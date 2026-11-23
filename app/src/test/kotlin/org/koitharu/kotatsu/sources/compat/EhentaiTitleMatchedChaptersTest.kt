@@ -40,6 +40,19 @@ class EhentaiTitleMatchedChaptersTest {
 			EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, "Legacy Gallery").toSet())
 	}
 
+	@Test fun koreanTaggedDuplicateNamesFromLegacyArchivesNormalizeToTheSameTitle() = withRoot { root ->
+		val title = "Otona no Yoyuu _ 어른의 여유 (COMIC Kairakuten BEAST 2026-09)"
+		val legacy = chapter(root, "ExHentai (OTHER)", title)
+		val tagged = chapter(
+			root, "ExHentai (OTHER)",
+			"[Bekotarou] $title [Korean] [Team Edge] [Decensored]",
+		)
+		assertEquals(
+			setOf(legacy.canonicalFile, tagged.canonicalFile),
+			EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, title).toSet(),
+		)
+	}
+
 	@Test fun wrongTitleAndOtherSourceNeverEnterCandidateSet() = withRoot { root ->
 		chapter(root, "Unrelated (OTHER)", "Legacy Gallery")
 		chapter(root, "ExHentai (OTHER)", "Different Gallery")

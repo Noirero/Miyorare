@@ -60,9 +60,14 @@ import java.util.zip.ZipFile
 class LocalMangaParser(
 	private val uri: Uri,
 	private val ignoreDirectoryIndex: Boolean = false,
+	private val ignoreArchiveIndex: Boolean = false,
 ) {
 
-	constructor(file: File, ignoreDirectoryIndex: Boolean = false) : this(file.toUri(), ignoreDirectoryIndex)
+	constructor(
+		file: File,
+		ignoreDirectoryIndex: Boolean = false,
+		ignoreArchiveIndex: Boolean = false,
+	) : this(file.toUri(), ignoreDirectoryIndex, ignoreArchiveIndex)
 
 	private val rootFile: File = File(uri.schemeSpecificPart)
 
@@ -87,7 +92,10 @@ class LocalMangaParser(
 			return@runInterruptible getEpubManga(epubFiles, withDetails)
 		}
 		(uri.resolveFsAndPath()).use { (fileSystem, rootPath) ->
-			val index = if (ignoreDirectoryIndex && rootFile.isDirectory) null else MangaIndex.read(fileSystem, rootPath / ENTRY_NAME_INDEX)
+			// Details' read-only legacy CBZ lookup must never adopt another gallery's index identity.
+			val index = if (ignoreArchiveIndex || (ignoreDirectoryIndex && rootFile.isDirectory)) {
+				null
+			} else MangaIndex.read(fileSystem, rootPath / ENTRY_NAME_INDEX)
 			val mangaInfo = index?.getMangaInfo()
 			if (mangaInfo != null) {
 				val coverEntry: Path? = index.getCoverEntry()?.let { rootPath / it }?.takeIf {
@@ -474,7 +482,10 @@ class LocalMangaParser(
 		val file = runCatching { chapterUri.toFile() }.getOrNull() ?: return null
 		if (!file.isFile || !file.isZipArchive) return null
 		return ZipFile(file).use { zip ->
-			if (zip.getEntry(ENTRY_NAME_INDEX) != null) return@use null
+			// Only a Details ExHentai title match may ignore a foreign archive index.
+			if (zip.getEntry(ENTRY_NAME_INDEX) != null &&
+				chapterUri.fragment != EXHENTAI_TITLE_READ_FRAGMENT
+			) return@use null
 			val entries = zip.entries().asSequence()
 				.filter { entry ->
 					!entry.isDirectory &&
@@ -655,15 +666,16 @@ class LocalMangaParser(
 
 	companion object {
 
+		internal const val EXHENTAI_TITLE_READ_FRAGMENT = "miyorare-exhentai-title-read"
 		private const val MAX_NESTED_COVER_ARCHIVE_DEPTH = 8
 		private val REGEX_PARENT_PATH_PREFIX = Regex("^(/\\.\\.)+")
 
 		@Blocking
-		fun getOrNull(file: File): LocalMangaParser? = if (
+		fun getOrNull(file: File, ignoreArchiveIndex: Boolean = false): LocalMangaParser? = if (
 			file.canRead() &&
 			(file.isZipArchive || file.isPdfFile || file.isEpubFile || (file.isDirectory && file.hasMangaContent()))
 		) {
-			LocalMangaParser(file)
+			LocalMangaParser(file, ignoreArchiveIndex = ignoreArchiveIndex)
 		} else {
 			null
 		}

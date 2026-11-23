@@ -60,13 +60,19 @@ class DownloadedMangaResolver @Inject constructor(
 	suspend fun findSavedManga(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
+		forExhentaiDetails: Boolean = false,
 	): LocalManga? {
+		// Details alone may interpret an unrelated/old CBZ as a read-only title match.
+		// All existing callers retain strict ownership and download-completion semantics.
+		val detailsTitleRead = forExhentaiDetails &&
+			(manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+				manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME)
 		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
-			return resolveSavedManga(manga, favouriteSpace)
+			return resolveSavedManga(manga, favouriteSpace, detailsTitleRead)
 		}
 		val trace = LegacyCbzTrace()
 		return withContext(trace) {
-			val saved = resolveSavedManga(manga, favouriteSpace)
+			val saved = resolveSavedManga(manga, favouriteSpace, detailsTitleRead)
 			val result = when {
 				saved == null && trace.hasCandidate -> "REJECTED"
 				saved == null -> "NOT_FOUND"
@@ -81,6 +87,7 @@ class DownloadedMangaResolver @Inject constructor(
 	private suspend fun resolveSavedManga(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
+		detailsTitleRead: Boolean,
 	): LocalManga? {
 		val officialExhentai = ExhentaiDownloadedCopy.isOfficial(manga)
 		val titleFallback = EhentaiSourceFamily.supportsTitleMatchedDownloads(manga.source.name)
@@ -119,12 +126,12 @@ class DownloadedMangaResolver @Inject constructor(
 		if (officialExhentai) {
 			return localMangaRepository.findExhentaiDestinationCopy(manga, space)
 				?: localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
-				?: findTitleMatchedChapter(manga, space, roots)
+				?: findTitleMatchedChapter(manga, space, roots, detailsTitleRead)
 		}
 		// The generic title/index bridge persists aliases and can silently promote another
 		// ExHentai source's file into ownership. For title-compatible sources, only the
 		// explicit source-owned row above or the read-only fallback may supply local state.
-		if (titleFallback) return findTitleMatchedChapter(manga, space, roots)
+		if (titleFallback) return findTitleMatchedChapter(manga, space, roots, detailsTitleRead)
 		if (!canInferSpaceFromPath()) return null
 
 		// With distinct roots the global Local index is safe as a compatibility hint, but it still has
@@ -150,6 +157,7 @@ class DownloadedMangaResolver @Inject constructor(
 		manga: Manga,
 		space: FavouriteSpace,
 		roots: Collection<File>,
+		detailsTitleRead: Boolean,
 	): LocalManga? {
 		if (manga.chapters?.size != 1) return null
 		val candidates = LinkedHashSet<File>()
@@ -157,13 +165,38 @@ class DownloadedMangaResolver @Inject constructor(
 			for (file in EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, manga.title)) {
 				if (!file.isInside(root)) continue
 				candidates += file.canonicalFile
-				// More than one physical copy is ambiguous, even if names differ only by _1.
-				if (candidates.size > 1) return null
+				// Bound total candidates across all historical roots, not only per source directory.
+				// The Details path must not inspect an unbounded number of duplicate archives.
+				if (candidates.size > MAX_DETAILS_TITLE_CANDIDATES) return null
+				// Existing non-Details call sites fail closed on multiple physical copies.
+				if (!detailsTitleRead && candidates.size > 1) return null
 			}
+		}
+		if (detailsTitleRead) {
+			// Read-only Details discovery is intentionally permissive for legacy chapters:
+			// no receipt, gallery-id or FavouriteSpace ownership proof is required.
+			// Prefer an exact gallery receipt when available, then a stable path order;
+			// a corrupt candidate must not mask a valid older Chapter.cbz.
+			val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
+			val ordered = candidates.sortedWith(compareBy<File>(
+				{ candidate ->
+					val receipt = ExhentaiChapterOwnership.inspectDestination(candidate)
+					if (galleryId != null &&
+						receipt is ExhentaiChapterOwnership.Evidence.Owned &&
+						receipt.galleryId == galleryId
+					) 0 else 1
+				},
+				{ it.canonicalPath },
+			))
+			for (candidate in ordered) {
+				ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, candidate, allowIndexed = true)
+					?.let { return it }
+			}
+			return null
 		}
 		val file = candidates.singleOrNull() ?: return null
 		val evidence = ExhentaiChapterOwnership.inspectDestination(file)
-		if (evidence == ExhentaiChapterOwnership.Evidence.Unusable) return null
+		if (!detailsTitleRead && evidence == ExhentaiChapterOwnership.Evidence.Unusable) return null
 		val receiptSpace = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt?.space
 		if (receiptSpace != null && receiptSpace != space) return null
 
@@ -177,7 +210,12 @@ class DownloadedMangaResolver @Inject constructor(
 		val sharedRoot = downloadDestinationStore.readableRoots(otherSpace).any { file.isInsideExhentaiLayout(it) }
 		if (sharedRoot && receiptSpace != space && existingOwners.none { it.space == space.dbValue }) return null
 
-		return ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file)
+		return ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file, allowIndexed = detailsTitleRead)
+	}
+
+	private companion object {
+		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
+		const val MAX_DETAILS_TITLE_CANDIDATES = 32
 	}
 
 	private fun canInferSpaceFromPath(): Boolean =
