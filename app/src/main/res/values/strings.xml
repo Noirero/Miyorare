@@ -1614,4 +1614,9 @@
     <string name="exhentai_delete_target_description">Delete this physical CBZ file?\n\nManga: %1$s\nFile: %2$s\nLocation: %3$s\n\nThis cannot be undone. The manga remains in Favorites and may be downloaded again.</string>
     <string name="exhentai_delete_shared_space_warning">Normal and Private both use this file. Deleting it makes the chapter unavailable offline in both Favorites spaces.</string>
     <string name="exhentai_delete_target_unavailable">The selected local CBZ could not be verified. No file was deleted.</string>
+    <string name="exhentai_choose_local_title">Choose local ExHentai CBZ</string>
+    <string name="exhentai_choose_local_description">More than one chapter file matches this gallery, or the file contains a different gallery ID. Choose the file you want to read. This does not change ownership or download history.</string>
+    <string name="exhentai_choose_local_known_id">Gallery ID: %1$d</string>
+    <string name="exhentai_choose_local_unknown_id">No gallery ID</string>
+    <string name="exhentai_choose_local_changed">The selected CBZ changed or is no longer available. No association was saved.</string>
 </resources>
