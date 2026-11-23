@@ -32,6 +32,7 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
@@ -49,6 +50,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var classifier: DownloadedContentClassifier
+	@Inject lateinit var presence: ExhentaiPresenceDiscovery
 	@Inject lateinit var localRepository: LocalMangaRepository
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
@@ -467,6 +469,32 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		} finally {
 			database.getFavouriteDownloadIndexDao().delete(FavouriteSpace.NORMAL.dbValue, online.id)
 		}
+	}
+
+	@Test fun manualCorruptCbzPresenceAppearsInMainAndGekkoWithoutOwnership() = runBlocking {
+		val manual = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery/Chapter.cbz")
+		check(manual.parentFile!!.mkdirs() || manual.parentFile!!.isDirectory)
+		manual.writeText("not a readable CBZ")
+		val main = gallery(990060, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gekko = gallery(990061, GEKKO_SOURCE)
+		val unrelated = gallery(990062, "TSUKI:OTHER:other:EXHENTAI")
+		for (manga in listOf(main, gekko, unrelated)) {
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		}
+
+		presence.run(full = true)
+		val ids = classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(main.id, gekko.id, unrelated.id))
+		assertTrue(main.id in ids)
+		assertTrue(gekko.id in ids)
+		assertFalse(unrelated.id in ids)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, main.id))
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, gekko.id))
+		assertFalse(classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(main.id, gekko.id)).contains(main.id))
+
+		assertTrue(manual.delete())
+		presence.run(full = true)
+		assertFalse(main.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(main.id, gekko.id)))
+		assertFalse(gekko.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(main.id, gekko.id)))
 	}
 
 	@Test fun directActiveRootLegacyCbzUsesIndexOnlyDownloadedClassification() = runBlocking {
