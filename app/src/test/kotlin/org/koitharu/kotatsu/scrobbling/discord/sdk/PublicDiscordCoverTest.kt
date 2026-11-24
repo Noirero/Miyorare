@@ -49,7 +49,8 @@ class PublicDiscordCoverTest {
 			override fun contentLength() = 1L
 			override fun source() = source
 		}
-		Executors.newSingleThreadExecutor().use { worker ->
+		val worker = Executors.newSingleThreadExecutor()
+		try {
 			val client = Call.Factory { request ->
 				val response = Response.Builder()
 					.request(request)
@@ -78,6 +79,8 @@ class PublicDiscordCoverTest {
 			withTimeout(5_000) {
 				assertTrue(PublicDiscordCover(client).canLoad("https://cdn.example.com/cover.jpg".toHttpUrl()))
 			}
+		} finally {
+			worker.shutdownNow()
 		}
 		assertNotNull(readThread)
 		assertNotNull(closeThread)
