@@ -2,13 +2,14 @@ package org.koitharu.kotatsu.scrobbling.discord.sdk
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Call
 import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.koitharu.kotatsu.parsers.util.await
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.scrobbling.common.data.awaitTrackerDetails
 import java.net.InetAddress
 import java.net.Proxy
 import java.net.UnknownHostException
@@ -17,16 +18,19 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class PublicDiscordCover @Inject constructor() {
+class PublicDiscordCover internal constructor(private val client: Call.Factory) {
 
 	// A source's normal client may attach cookies or parser headers. Test the exact URL anonymously.
-	private val client = OkHttpClient.Builder()
-		.proxy(Proxy.NO_PROXY)
-		.followRedirects(false)
-		.followSslRedirects(false)
-		.callTimeout(5, TimeUnit.SECONDS)
-		.dns(::resolvePublicDiscordHost)
-		.build()
+	@Inject
+	constructor() : this(
+		OkHttpClient.Builder()
+			.proxy(Proxy.NO_PROXY)
+			.followRedirects(false)
+			.followSslRedirects(false)
+			.callTimeout(5, TimeUnit.SECONDS)
+			.dns(::resolvePublicDiscordHost)
+			.build(),
+	)
 
 	internal suspend fun resolvesPublicly(url: HttpUrl): Boolean = withContext(Dispatchers.IO) {
 		runCatchingCancellable { resolvePublicDiscordHost(url.host).isNotEmpty() }.getOrDefault(false)
@@ -34,7 +38,7 @@ class PublicDiscordCover @Inject constructor() {
 
 	internal suspend fun canLoad(url: HttpUrl): Boolean = runCatchingCancellable {
 		val request = Request.Builder().url(url).build()
-		client.newCall(request).await().use { response ->
+		client.newCall(request).awaitTrackerDetails { response ->
 			response.isSuccessful && response.body.contentType()?.type == "image" &&
 				response.body.source().request(1)
 		}
