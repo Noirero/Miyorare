@@ -126,6 +126,10 @@ class DownloadDestinationStore @Inject constructor(
 			.orEmpty()
 	}
 
+	/** Only non-suspending operations may run under this shared root-publication lock. */
+	internal fun <T> withDestinationMutationLock(block: () -> T): T =
+		synchronized(settings.downloadDestinationMutationLock, block)
+
 	fun setRoot(space: FavouriteSpace, root: File?) {
 		// Validate/create the new target first. If this fails, neither the active preference nor the
 		// legacy-root history is changed.
@@ -134,20 +138,22 @@ class DownloadDestinationStore @Inject constructor(
 			check(downloads.isDirectory || downloads.mkdirs()) { "Cannot create downloads directory under $root" }
 		}
 
-		val previousEffective = effectiveRoot(space)
-		if (previousEffective != null && !previousEffective.samePathAs(root)) {
-			rememberLegacyRoot(space, previousEffective)
-		}
-		if (root != null) {
-			// Keep custom roots in Local Storage's configured/readable set so downloads remain indexed
-			// after restart and legacy lookup can still find files without a special scanner.
-			settings.userSpecifiedMangaDirectories += root
-			forgetLegacyRoot(space, root)
-		}
-		when (space) {
-			FavouriteSpace.NORMAL -> settings.mangaStorageDir = root
-			FavouriteSpace.PRIVATE -> prefs.edit {
-				if (root == null) remove(KEY_PRIVATE_DOWNLOAD_ROOT) else putString(KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+		withDestinationMutationLock {
+			val previousEffective = effectiveRoot(space)
+			if (previousEffective != null && !previousEffective.samePathAs(root)) {
+				rememberLegacyRoot(space, previousEffective)
+			}
+			if (root != null) {
+				// Keep custom roots in Local Storage's configured/readable set so downloads remain indexed
+				// after restart and legacy lookup can still find files without a special scanner.
+				settings.userSpecifiedMangaDirectories += root
+				forgetLegacyRoot(space, root)
+			}
+			when (space) {
+				FavouriteSpace.NORMAL -> settings.mangaStorageDir = root
+				FavouriteSpace.PRIVATE -> prefs.edit {
+					if (root == null) remove(KEY_PRIVATE_DOWNLOAD_ROOT) else putString(KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+				}
 			}
 		}
 	}

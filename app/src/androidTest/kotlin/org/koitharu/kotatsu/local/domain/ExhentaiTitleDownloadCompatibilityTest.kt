@@ -1062,6 +1062,39 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue("Changed destination must be rejected", result.exceptionOrNull() is UnverifiedDownloadRemovalException)
 	}
 
+	@Test fun destinationPublicationSerializesWithRemovalCriticalSection() = runBlocking {
+		val space = FavouriteSpace.NORMAL
+		val oldRoot = destinationStore.effectiveRoot(space)?.canonicalFile
+		val nextRoot = File(root, "serialized-active")
+		val entered = java.util.concurrent.CountDownLatch(1)
+		val completed = java.util.concurrent.CountDownLatch(1)
+		val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+		val setter = Thread {
+			try {
+				entered.countDown()
+				destinationStore.setRoot(space, nextRoot)
+			} catch (error: Throwable) {
+				failure.set(error)
+			} finally {
+				completed.countDown()
+			}
+		}
+		try {
+			destinationStore.withDestinationMutationLock {
+				setter.start()
+				assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+				assertFalse("Root publication must wait for the removal lock",
+					completed.await(200, java.util.concurrent.TimeUnit.MILLISECONDS))
+				assertEquals(oldRoot, destinationStore.effectiveRoot(space)?.canonicalFile)
+			}
+			assertTrue(completed.await(5, java.util.concurrent.TimeUnit.SECONDS))
+			assertNull(failure.get())
+			assertEquals(nextRoot.canonicalFile, destinationStore.effectiveRoot(space)?.canonicalFile)
+		} finally {
+			setter.join(5000)
+		}
+	}
+
 	@Test fun confirmedSharedDeletePreservesMainAndGekkoPersonalState() = runBlocking {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		ZipOutputStream(chapter.outputStream()).use { zip ->

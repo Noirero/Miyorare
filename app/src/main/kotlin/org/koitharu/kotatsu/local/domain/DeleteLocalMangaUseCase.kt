@@ -306,7 +306,17 @@ class DeleteLocalMangaUseCase @Inject constructor(
 					file.lastModified() != approval.lastModified || !isEligibleExhentaiFile(remote, space, file)
 				) throw UnverifiedDownloadRemovalException("The selected ExHentai file changed. Files were kept.")
 				beforePhysicalRemoval()
-				Os.remove(file.path)
+				// Linearize destination publication and removal. The hash stays outside this
+				// critical section; a concurrent root setter either wins first (reject) or waits.
+				// This lock does not serialize external filesystem changes.
+				downloadDestinationStore.withDestinationMutationLock {
+					val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+					if (downloadDestinationStore.effectiveRoot(space)?.canonicalPath != approval.activeRoot ||
+						downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath != approval.otherRoot ||
+						!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)
+					) throw UnverifiedDownloadRemovalException("The selected ExHentai destination changed. Files were kept.")
+					Os.remove(file.path)
+				}
 				withContext(NonCancellable) {
 					val removedPaths = linkedSetOf(approval.canonicalPath)
 					// Clear the confirmed manga's legacy directory ownership, not other manga's rows.
