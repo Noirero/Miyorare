@@ -23,3 +23,15 @@ The build produces `tools/discord-presence-android/build/outputs/apk/debug/miyor
 5. Tap **Hapus kartu uji** and check that the second account no longer sees the test card. Publish once more, then switch away from the prototype and check that the card clears again.
 
 Discord controls card layout and shows activity buttons to other users. The test cover is a public image URL. Private covers and Reader events such as Incognito are outside this standalone smoke test. A successful SDK callback confirms submission. The second account verifies what Discord displays.
+
+## Build the Miyorare Reader integration for device testing
+
+With the same toolchain and official SDK AAR, build the main app instead of the prototype:
+
+```sh
+./gradlew :app:assembleDebug -PdiscordSocialSdkAar=/absolute/path/discord_partner_sdk.aar -PdiscordPresenceAppId=YOUR_APPLICATION_ID
+```
+
+Enable **Discord Rich Presence** and **Use the official Discord SDK** in the Discord settings. The official mode uses the signed-in Android Discord app. The token setting is available when official mode is off. Builds without the SDK properties continue to support the token mode.
+
+For acceptance, view the card from a second account. Open a public title with a public HTTPS image, change chapters, then leave the Reader. Repeat with a title whose image requires login or with Incognito or Peek enabled, and verify that no reading card is visible. URLs with credentials, query parameters, fragments, or redirects fail the public-cover check.
