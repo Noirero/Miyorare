@@ -1315,6 +1315,40 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun confirmedDeleteRejectsActiveRootReplacementWithSameParentAtRemovalBoundary() = runBlocking {
+		val destination = File(root, "namespace-root").apply { check(mkdir()) }
+		val movedRoot = File(root, "namespace-original-root")
+		val space = FavouriteSpace.NORMAL
+		destinationStore.setRoot(space, destination)
+		val chapter = archive("Legacy Gallery", "Chapter.cbz", destination = destination)
+		val parent = requireNotNull(chapter.parentFile)
+		val sourceFolder = requireNotNull(parent.parentFile)
+		val relativeParent = parent.relativeTo(destination)
+		val originalBytes = chapter.readBytes()
+		val sibling = File(parent, "Keep.cbz").apply { writeText("keep sibling") }
+		val manga = gallery(990106, GEKKO_SOURCE)
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		val parentBefore = android.system.Os.lstat(parent.path)
+		var reached = false
+		val outcome = runCatching {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+				check(destination.renameTo(movedRoot))
+				check(sourceFolder.mkdirs())
+				// Restore the very same title directory under a different root namespace.
+				check(File(movedRoot, relativeParent.path).renameTo(parent))
+				val parentAfter = android.system.Os.lstat(parent.path)
+				check(parentBefore.st_dev == parentAfter.st_dev && parentBefore.st_ino == parentAfter.st_ino)
+				reached = true
+			}
+		}
+		assertTrue("Active root replacement boundary was not reached: ${outcome.exceptionOrNull()}", reached)
+		assertTrue("The approved file must not be removed under a substituted active root", chapter.isFile)
+		assertArrayEquals(originalBytes, chapter.readBytes())
+		assertEquals("keep sibling", sibling.readText())
+		assertTrue(movedRoot.isDirectory)
+		assertTrue("Active root namespace substitution must be rejected", outcome.exceptionOrNull() is UnverifiedDownloadRemovalException)
+	}
+
 	@Test fun confirmedDeleteSupportsAppSpecificExternalDestination() = runBlocking {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val external = requireNotNull(context.getExternalFilesDir(null))

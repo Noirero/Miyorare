@@ -30,6 +30,7 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.SecureDirectoryStream
 import java.nio.file.attribute.BasicFileAttributeView
+import java.nio.file.attribute.BasicFileAttributes
 import android.util.Base64
 import android.system.Os
 import android.system.OsConstants
@@ -63,7 +64,10 @@ data class ExhentaiDeletionApproval(
 	val otherRoot: String?,
 	val device: Long,
 	val inode: Long,
-)
+	val directoryNamespace: List<DirectoryIdentity>,
+) {
+	data class DirectoryIdentity(val path: String, val fileKey: Any)
+}
 
 class DeleteLocalMangaUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
@@ -220,6 +224,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		val root = downloadDestinationStore.effectiveRoot(space)?.canonicalPath ?: return null
 		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
 		val otherRoot = downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath
+		val namespace = snapshotDirectoryNamespace(root, file) ?: return null
 		val initial = Os.lstat(file.path)
 		if (!OsConstants.S_ISREG(initial.st_mode)) return null
 		val modified = file.lastModified()
@@ -229,7 +234,8 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			initial.st_size != final.st_size || modified != file.lastModified() ||
 			!isEligibleExhentaiFile(remote, space, file) ||
 			root != downloadDestinationStore.effectiveRoot(space)?.canonicalPath ||
-			otherRoot != downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath
+			otherRoot != downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath ||
+			snapshotDirectoryNamespace(root, file) != namespace
 		) return null
 		return ExhentaiDeletionApproval(
 			sourceName = remote.source.name,
@@ -244,7 +250,32 @@ class DeleteLocalMangaUseCase @Inject constructor(
 			otherRoot = otherRoot,
 			device = initial.st_dev,
 			inode = initial.st_ino,
+			directoryNamespace = namespace,
 		)
+	}
+
+	/** Bind every directory from the active root through the target's parent.
+	 * File keys are compared with attributes of opened directory streams at removal time.
+	 * Directory timestamps are not identities: unrelated downloads may change them.
+	 */
+	private fun snapshotDirectoryNamespace(
+		activeRoot: String,
+		file: File,
+	): List<ExhentaiDeletionApproval.DirectoryIdentity>? {
+		val rootPath = File(activeRoot).toPath()
+		var directory = file.parentFile ?: return null
+		val namespace = ArrayList<ExhentaiDeletionApproval.DirectoryIdentity>()
+		while (directory.toPath().startsWith(rootPath)) {
+			val attributes = Files.readAttributes(
+				directory.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS,
+			)
+			if (!attributes.isDirectory) return null
+			val key = attributes.fileKey() ?: return null
+			namespace.add(ExhentaiDeletionApproval.DirectoryIdentity(directory.path, key))
+			if (directory.toPath() == rootPath) return namespace.asReversed().toList()
+			directory = directory.parentFile ?: return null
+		}
+		return null
 	}
 
 	private fun sha256Of(file: File): String {
@@ -320,7 +351,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 						downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath != approval.otherRoot ||
 						!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)
 					) throw UnverifiedDownloadRemovalException("The selected ExHentai destination changed. Files were kept.")
-					deleteFileOnly(file)
+					deleteFileOnly(file, approval)
 				}
 				withContext(NonCancellable) {
 					val removedPaths = linkedSetOf(approval.canonicalPath)
@@ -349,25 +380,57 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	 * uses file-only unlinkat instead. Never fall back to remove/deleteRecursively.
 	 * This does not make the approved content identity atomic against external writers.
 	 */
-	private fun deleteFileOnly(file: File) {
-		val path = file.toPath()
+	private fun deleteFileOnly(file: File, approval: ExhentaiDeletionApproval) {
 		try {
-			Files.newDirectoryStream(path.parent).use { stream ->
+			verifyDirectoryNamespace(file, approval)
+			Files.newDirectoryStream(File(approval.activeRoot).toPath()).use { stream ->
 				val secure = stream as? SecureDirectoryStream<Path>
 					?: throw UnverifiedDownloadRemovalException("File-only removal is not supported by this storage. Files were kept.")
-				val attributes = secure.getFileAttributeView(
-					path.fileName, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS,
-				)?.readAttributes()
-				if (attributes?.isRegularFile != true) {
-					throw UnverifiedDownloadRemovalException("The selected ExHentai target is not a regular file. Files were kept.")
-				}
-				secure.deleteFile(path.fileName)
+				deleteFileInApprovedDirectory(secure, file, approval, 0)
 			}
 		} catch (e: UnverifiedDownloadRemovalException) {
 			throw e
 		} catch (e: IOException) {
 			throw UnverifiedDownloadRemovalException("Cannot remove the selected ExHentai file.").apply { initCause(e) }
 		}
+	}
+
+	private fun verifyDirectoryNamespace(file: File, approval: ExhentaiDeletionApproval) {
+		if (snapshotDirectoryNamespace(approval.activeRoot, file) != approval.directoryNamespace) {
+			throw UnverifiedDownloadRemovalException("The selected ExHentai directory changed. Files were kept.")
+		}
+	}
+
+	private fun deleteFileInApprovedDirectory(
+		directory: SecureDirectoryStream<Path>,
+		file: File,
+		approval: ExhentaiDeletionApproval,
+		index: Int,
+	) {
+		val expected = approval.directoryNamespace[index]
+		val opened = directory.getFileAttributeView(BasicFileAttributeView::class.java)?.readAttributes()
+		if (opened?.isDirectory != true || opened.fileKey() != expected.fileKey) {
+			throw UnverifiedDownloadRemovalException("The selected ExHentai directory changed. Files were kept.")
+		}
+		if (index < approval.directoryNamespace.lastIndex) {
+			val childName = File(approval.directoryNamespace[index + 1].path).toPath().fileName
+			directory.newDirectoryStream(childName, LinkOption.NOFOLLOW_LINKS).use { child ->
+				deleteFileInApprovedDirectory(child, file, approval, index + 1)
+			}
+			return
+		}
+		val name = file.toPath().fileName
+		val attributes = directory.getFileAttributeView(
+			name, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS,
+		)?.readAttributes()
+		if (attributes?.isRegularFile != true) {
+			throw UnverifiedDownloadRemovalException("The selected ExHentai target is not a regular file. Files were kept.")
+		}
+		// Reject an observed namespace change during traversal, including a detached parent.
+		// The opened streams anchor traversal; they cannot prevent arbitrary external renames
+		// or make file content verification and unlink a single atomic operation.
+		verifyDirectoryNamespace(file, approval)
+		directory.deleteFile(name)
 	}
 
 	private companion object {
