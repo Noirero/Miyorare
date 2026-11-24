@@ -2,4 +2,5 @@
 <full-backup-content>
 	<exclude domain="file" path="logs" />
 	<exclude domain="sharedpref" path="miyorare_discord_credentials.xml" />
+	<exclude domain="sharedpref" path="miyorare_discord_credentials.xml.bak" />
 </full-backup-content>
