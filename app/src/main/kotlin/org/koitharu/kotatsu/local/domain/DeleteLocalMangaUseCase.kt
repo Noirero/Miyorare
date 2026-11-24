@@ -296,7 +296,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 					stat.st_ino != approval.inode || stat.st_size != approval.length ||
 					file.lastModified() != approval.lastModified || !isEligibleExhentaiFile(remote, space, file)
 				) throw UnverifiedDownloadRemovalException("The selected ExHentai file changed. Files were kept.")
-				Os.unlink(file.path)
+				Os.remove(file.path)
 				withContext(NonCancellable) {
 					val removedPaths = linkedSetOf(approval.canonicalPath)
 					// Keep parent-directory index rows if any sibling CBZ still exists or listing fails.
