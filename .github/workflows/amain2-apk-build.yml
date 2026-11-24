@@ -205,32 +205,53 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          build_tools=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
-          aapt2="$(dirname "$build_tools")/aapt2"
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
           expected_signer=$(keytool -exportcert -keystore release.keystore -storepass:env RELEASE_STORE_PASSWORD \
             -alias "$RELEASE_KEY_ALIAS" | sha256sum | cut -d ' ' -f 1)
 
           for apk in artifact/*.apk; do
-            badging=$("$aapt2" dump badging "$apk")
-            [[ "$badging" == "package: name='org.noirero.miyorare.amain2' "* ]]
-            signing=$("$build_tools" verify --print-certs "$apk")
-            grep -Fxq "Signer #1 certificate SHA-256 digest: $expected_signer" <<< "$signing"
-            python3 - "$apk" <<'PY'
+            package_name=$("$build_tools/aapt2" dump packagename "$apk")
+            if [[ "$package_name" != org.noirero.miyorare.amain2 ]]; then
+              echo '::error::The APK package name does not match the Amain2 staging identity.'
+              exit 1
+            fi
+            signer_report="$RUNNER_TEMP/amain2-apk-signers.txt"
+            if ! "$build_tools/apksigner" verify --print-certs-pem "$apk" > "$signer_report"; then
+              echo '::error::Android apksigner rejected the APK signature.'
+              exit 1
+            fi
+            python3 - "$apk" "$signer_report" "$expected_signer" <<'PY'
+          import base64
+          import hashlib
+          import re
           import sys
+          from pathlib import Path
           from zipfile import ZipFile
+
+          apk_path, signer_report, expected_signer = sys.argv[1:]
+          certificates = re.findall(
+              rb"-----BEGIN CERTIFICATE-----\s+(.*?)-----END CERTIFICATE-----",
+              Path(signer_report).read_bytes(),
+              flags=re.DOTALL,
+          )
+          signers = {hashlib.sha256(base64.b64decode(cert)).hexdigest() for cert in certificates}
+          if signers != {expected_signer}:
+              raise SystemExit("APK signer does not match the permanent Amain2 release certificate.")
 
           abis = ("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
           libraries = ("libdiscord_partner_sdk.so", "libmiyorare_discord_sdk.so")
-          with ZipFile(sys.argv[1]) as apk:
+          with ZipFile(apk_path) as apk:
+              entries = set(apk.namelist())
               for abi in abis:
                   for library in libraries:
                       entry = f"lib/{abi}/{library}"
-                      if entry not in apk.namelist():
+                      if entry not in entries:
                           raise SystemExit(f"Missing Discord native library: {entry}")
                       with apk.open(entry) as binary:
                           if binary.read(4) != b"\x7fELF":
                               raise SystemExit(f"Invalid Discord native library: {entry}")
           PY
+            echo "Verified staging package, permanent signer, and Discord SDK for all four ABIs."
           done
 
       - name: Encrypt staging APK for phone testing
