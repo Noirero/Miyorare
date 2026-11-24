@@ -1140,7 +1140,10 @@ internal suspend fun registerCommittedExhentaiArtifact(
 	localMangaRepository: LocalMangaRepository,
 	localStorageChanges: MutableSharedFlow<LocalManga?>,
 	beforeOwnershipRegistration: suspend () -> Unit = {},
-): LocalManga {
+): LocalManga = localMangaRepository.exhentaiRemovalMutex.withLock {
+	// Worker callers already hold MangaLock. Share the confirmed/local removal boundary
+	// from archive verification through durable ownership, alias and event publication.
+	// Page transfers and archive staging remain outside this critical section.
 	val local = checkNotNull(
 		ExhentaiDownloadedCopy.find(manga, file, withDetails = true, space = task.favouriteSpace, request = request)?.local,
 	) {
@@ -1151,7 +1154,7 @@ internal suspend fun registerCommittedExhentaiArtifact(
 	localMangaRepository.rememberDownloadedIdentity(manga, local)
 	localStorageChanges.emit(local)
 	localMangaRepository.publishExhentaiDownload(manga.id, task.favouriteSpace, local)
-	return local
+	local
 }
 
 private suspend fun recordArtifactOwnership(

@@ -1415,6 +1415,56 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun committedMainRegistrationRejectsWhenGekkoRemovalWins() = runBlocking {
+		val main = gallery(990102L, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gekko = gallery(990103L, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val request = UUID.randomUUID()
+		val task = DownloadTask(main.id, false, true, null, root, DownloadFormat.MULTIPLE_CBZ, true, space)
+		val committed = archive("Legacy Gallery", "Chapter.cbz",
+			comment = ExhentaiChapterOwnership.scopedComment(990102L, ExhentaiChapterOwnership.Receipt(space, request), false))
+		val dao = database.getFavouriteDownloadIndexDao()
+		data.storeManga(main, replaceExisting = true, detailsFetched = true)
+		data.storeManga(gekko, replaceExisting = true, detailsFetched = true)
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(gekko, space, committed))
+		val reached = java.util.concurrent.atomic.AtomicBoolean(false)
+		try {
+			withTimeout(15000) {
+				// Preserve the worker's MangaLock -> shared removal mutex order.
+				mangaLock.withLock(main) {
+					val (removal, registration) = localRepository.exhentaiRemovalMutex.withLock {
+						val first = async(start = CoroutineStart.UNDISPATCHED) {
+							deletion.deleteConfirmedExhentaiPhysicalFile(gekko, space, approval)
+						}
+						val second = async(start = CoroutineStart.UNDISPATCHED) {
+							runCatching {
+								registerCommittedExhentaiArtifact(main, task, committed, request, database, localRepository, storageChanges) {
+									reached.set(true)
+								}
+							}
+						}
+						assertFalse(first.isCompleted)
+						assertFalse(second.isCompleted)
+						assertTrue(committed.isFile)
+						first to second
+					}
+					assertTrue("Confirmed removal must win", removal.await())
+					val error = registration.await().exceptionOrNull()
+					assertTrue("Missing archive must reject registration", error is IllegalStateException)
+					assertEquals("Committed ExHentai archive cannot be read", error?.message)
+				}
+			}
+			assertFalse("Verification must reject before ownership registration", reached.get())
+			assertFalse(committed.exists())
+			assertNull(dao.findEntry(space.dbValue, main.id))
+			assertNull(dao.findEntry(space.dbValue, gekko.id))
+			assertTrue(classifier.getDownloadedIds(space, listOf(main.id, gekko.id)).isEmpty())
+		} finally {
+			dao.delete(space.dbValue, main.id)
+			dao.delete(space.dbValue, gekko.id)
+		}
+	}
+
 	@Test fun confirmedSharedDeletePreservesMainAndGekkoPersonalState() = runBlocking {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		ZipOutputStream(chapter.outputStream()).use { zip ->
