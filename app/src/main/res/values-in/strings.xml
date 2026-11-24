@@ -805,6 +805,8 @@
     <string name="reader_tools">Alat</string>
     <string name="reader_advanced_options">Opsi pembaca lanjutan</string>
     <string name="auto_double_foldable">Otomatis dua halaman di perangkat lipat</string>
+    <string name="exhentai_delete_shared_source_warning">ExHentai Main dan ExHentai Gekko dapat memakai CBZ yang sama. Menghapus file ini menghilangkan ketersediaan offline file tersebut pada kedua source. File CBZ lain dan riwayat baca tetap disimpan.</string>
+    <string name="exhentai_delete_choose_target">Pilih CBZ yang akan dihapus</string>
     <string name="exhentai_delete_physical_title">Hapus file ExHentai lokal?</string>
     <string name="exhentai_delete_target_description">Hapus file CBZ fisik ini?\n\nManga: %1$s\nFile: %2$s\nLokasi: %3$s\n\nTindakan ini tidak dapat dibatalkan. Manga tetap berada di Favorites dan dapat diunduh kembali.</string>
     <string name="exhentai_delete_shared_space_warning">Normal dan Private menggunakan file yang sama. Penghapusan akan membuat chapter tidak tersedia offline di kedua Favorites.</string>

@@ -569,6 +569,23 @@ class LocalMangaIndex @Inject constructor(
 		cachedList = null
 	}
 
+	/** Remove only aliases/index rows pointing at the confirmed deleted physical paths. */
+	internal suspend fun removeExactPaths(paths: Set<String>) {
+		val dao = db.getLocalMangaIndexDao()
+		for (path in paths) {
+			for (entry in dao.findEntriesUnderRoot(path, path + File.separator)) {
+				if (entry.path == path) dao.deleteIfPath(entry.mangaId, path)
+			}
+		}
+		val aliasKeys = prefs.all.asSequence()
+			.filter { (key, value) ->
+				key.startsWith(KEY_ALIAS_PREFIX) && DownloadPathAlias.parse(value as? String)?.path in paths
+			}.map { it.key }.toList()
+		if (aliasKeys.isNotEmpty()) prefs.edit { aliasKeys.forEach(::remove) }
+		cachedList = null
+		_rebuildEvents.tryEmit(Unit)
+	}
+
 	suspend fun getAvailableTags(skipNsfw: Boolean): List<String> {
 		updateIfRequired()
 		val dao = db.getLocalMangaIndexDao()

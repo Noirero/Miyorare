@@ -1610,6 +1610,8 @@
     <string name="icon_model_other">Other packs</string>
     <string name="reader_tools">Tools</string>
     <string name="reader_advanced_options">Advanced reader options</string>
+    <string name="exhentai_delete_shared_source_warning">ExHentai Main and ExHentai Gekko can share this CBZ. Deleting this file removes its offline availability for both sources. Other CBZ files and reading history are kept.</string>
+    <string name="exhentai_delete_choose_target">Choose the CBZ to delete</string>
     <string name="exhentai_delete_physical_title">Delete local ExHentai file?</string>
     <string name="exhentai_delete_target_description">Delete this physical CBZ file?\n\nManga: %1$s\nFile: %2$s\nLocation: %3$s\n\nThis cannot be undone. The manga remains in Favorites and may be downloaded again.</string>
     <string name="exhentai_delete_shared_space_warning">Normal and Private both use this file. Deleting it makes the chapter unavailable offline in both Favorites spaces.</string>

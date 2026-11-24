@@ -219,6 +219,7 @@ class DetailsExpressiveActivity :
 		val menuInvalidator = MenuInvalidator(this)
 		viewModel.isStatsAvailable.observe(this, menuInvalidator)
 		viewModel.remoteManga.observe(this, menuInvalidator)
+		viewModel.exhentaiDownloadedPresence.observe(this, menuInvalidator)
 		viewModel.mangaDetails.observe(this) {
 			it?.let { details -> title = details.toManga().title }
 			invalidateOptionsMenu()

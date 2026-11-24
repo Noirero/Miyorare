@@ -80,7 +80,7 @@ class DetailsMenuProvider(
 		menu.findItem(R.id.action_save).isVisible = manga?.source != null && manga.source != LocalMangaSource
 		val details = viewModel.mangaDetails.value
 		val sourceName = details?.sourceManga?.source?.name
-		val localExhentai = details?.local != null &&
+		val localExhentai = (details?.local != null || viewModel.exhentaiDownloadedPresence.value) &&
 			(sourceName == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
 				sourceName == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")
 		menu.findItem(R.id.action_delete).isVisible = manga?.source == LocalMangaSource || localExhentai

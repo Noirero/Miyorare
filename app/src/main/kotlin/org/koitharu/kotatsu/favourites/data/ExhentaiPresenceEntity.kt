@@ -28,6 +28,9 @@ interface ExhentaiPresenceDao {
     @Query("DELETE FROM exhentai_presence WHERE space = :space")
     suspend fun deleteSpace(space: Int)
 
+    @Query("DELETE FROM exhentai_presence WHERE path = :path")
+    suspend fun deleteByPath(path: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(rows: List<ExhentaiPresenceEntity>)
 

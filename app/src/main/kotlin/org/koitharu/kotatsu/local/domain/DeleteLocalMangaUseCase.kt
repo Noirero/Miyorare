@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
@@ -25,7 +26,12 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
 import java.io.IOException
 import android.util.Base64
+import android.system.Os
+import android.system.OsConstants
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -49,6 +55,10 @@ data class ExhentaiDeletionApproval(
 	val lastModified: Long,
 	val sha256: String,
 	val sharedWithOtherSpace: Boolean,
+	val activeRoot: String,
+	val otherRoot: String?,
+	val device: Long,
+	val inode: Long,
 )
 
 class DeleteLocalMangaUseCase @Inject constructor(
@@ -62,6 +72,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	private val downloadDestinationStore: DownloadDestinationStore,
 	private val favouritesRepository: FavouritesRepository,
 	private val mangaLock: MangaLock,
+	private val exhentaiPresenceDiscovery: ExhentaiPresenceDiscovery,
 ) {
 
 	suspend operator fun invoke(manga: Manga) {
@@ -161,44 +172,74 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	}
 
 	/**
-	 * Metadata for a user-facing confirmation dialog. No file or database mutation occurs.
-	 * This is restricted to a flat, readable legacy ExHentai CBZ in the active destination.
+	 * Deletion eligibility is independent of ZIP readability and historical ownership.
+	 * Only an exact, visible CBZ in a recognized, title-matched gallery layout is eligible.
 	 */
+	private fun isEligibleExhentaiFile(remote: Manga, space: FavouriteSpace, file: File): Boolean {
+		if (!isExhentaiConfirmationSource(remote) || !file.isFile || file.isHidden ||
+			!file.extension.equals("cbz", ignoreCase = true) ||
+			file.canonicalFile != file.absoluteFile.normalize() ||
+			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)
+		) return false
+		val parent = file.parentFile ?: return false
+		return (EhentaiLegacyDownloadResolver.titlesMatch(remote.title, parent.name) &&
+			isApprovedExhentaiSourceFolder(remote, space, parent.parentFile)) ||
+			(EhentaiLegacyDownloadResolver.titlesMatch(remote.title, file.nameWithoutExtension) &&
+				isApprovedExhentaiSourceFolder(remote, space, parent))
+	}
+
+	suspend fun listExhentaiPhysicalDeletionTargets(remote: Manga, space: FavouriteSpace): List<File> =
+		withContext(Dispatchers.IO) {
+			if (!isExhentaiConfirmationSource(remote)) return@withContext emptyList()
+			downloadDestinationStore.activeExhentaiRoots(space)
+				.flatMap { EhentaiLegacyDownloadResolver.findReadChoiceCandidates(it, remote.title) }
+				.distinct()
+				.filter { runCatching { isEligibleExhentaiFile(remote, space, it) }.getOrDefault(false) }
+		}
+
 	suspend fun previewExhentaiPhysicalDeletion(
 		remote: Manga,
 		space: FavouriteSpace,
 		local: LocalManga,
-	): ExhentaiDeletionApproval? {
-		if (!isExhentaiConfirmationSource(remote)) return null
-		val file = local.file.canonicalFile
-		val parent = file.parentFile ?: return null
-		// Historical MULTIPLE_CBZ uses <source>/<title>/Chapter.cbz, while SINGLE_CBZ
-		// publishes <source>/<title>.cbz. Both can be explicitly selected for deletion.
-		val legacyChapter = EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(file.name) &&
-			isApprovedExhentaiSourceFolder(remote, space, parent.parentFile)
-		val singleArchive = file.extension.equals("cbz", ignoreCase = true) &&
-			EhentaiLegacyDownloadResolver.titlesMatch(remote.title, file.nameWithoutExtension) &&
-			isApprovedExhentaiSourceFolder(remote, space, parent)
-		if (!file.isFile || !(legacyChapter || singleArchive) ||
-			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file) ||
-			ExhentaiDownloadedCopy.readTitleMatchedChapter(remote, file, allowIndexed = true) == null
-		) return null
-		// Snapshot the archive contents, not only size/mtime: a replaced same-size CBZ
-		// with restored timestamps must never inherit an earlier user confirmation.
-		val initialLength = file.length()
-		val initialModified = file.lastModified()
-		val hash = withContext(Dispatchers.IO) { runCatching { sha256Of(file) }.getOrNull() } ?: return null
-		if (!file.isFile || file.length() != initialLength || file.lastModified() != initialModified) return null
+	): ExhentaiDeletionApproval? = previewExhentaiPhysicalDeletion(remote, space, local.file)
+
+	suspend fun previewExhentaiPhysicalDeletion(
+		remote: Manga,
+		space: FavouriteSpace,
+		file: File,
+	): ExhentaiDeletionApproval? = withContext(Dispatchers.IO) {
+		runCatching { snapshotExhentaiDeletion(remote, space, file) }.getOrNull()
+	}
+
+	private fun snapshotExhentaiDeletion(remote: Manga, space: FavouriteSpace, file: File): ExhentaiDeletionApproval? {
+		if (!isEligibleExhentaiFile(remote, space, file)) return null
+		val root = downloadDestinationStore.effectiveRoot(space)?.canonicalPath ?: return null
 		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val otherRoot = downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath
+		val initial = Os.lstat(file.path)
+		if (!OsConstants.S_ISREG(initial.st_mode)) return null
+		val modified = file.lastModified()
+		val hash = sha256Of(file)
+		val final = Os.lstat(file.path)
+		if (initial.st_dev != final.st_dev || initial.st_ino != final.st_ino ||
+			initial.st_size != final.st_size || modified != file.lastModified() ||
+			!isEligibleExhentaiFile(remote, space, file) ||
+			root != downloadDestinationStore.effectiveRoot(space)?.canonicalPath ||
+			otherRoot != downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath
+		) return null
 		return ExhentaiDeletionApproval(
 			sourceName = remote.source.name,
 			mangaId = remote.id,
 			space = space,
 			canonicalPath = file.canonicalPath,
-			length = file.length(),
-			lastModified = initialModified,
+			length = initial.st_size,
+			lastModified = modified,
 			sha256 = hash,
 			sharedWithOtherSpace = downloadDestinationStore.isVisibleInActiveExhentaiDestination(otherSpace, file),
+			activeRoot = root,
+			otherRoot = otherRoot,
+			device = initial.st_dev,
+			inode = initial.st_ino,
 		)
 	}
 
@@ -225,25 +266,55 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		space: FavouriteSpace,
 		local: LocalManga,
 		approval: ExhentaiDeletionApproval,
-	): Boolean = mangaLock.withLock(remote) {
-		val file = local.file.canonicalFile
-		val fresh = previewExhentaiPhysicalDeletion(remote, space, local)
-		if (fresh == null || fresh != approval || approval.sourceName != remote.source.name ||
-			approval.mangaId != remote.id || approval.space != space ||
-			approval.canonicalPath != file.canonicalPath
-		) {
-			throw UnverifiedDownloadRemovalException(
-				"The selected ExHentai file or destination changed after confirmation. Files were kept.",
-			)
+	): Boolean {
+		if (local.file.absoluteFile.normalize().path != approval.canonicalPath) {
+			throw UnverifiedDownloadRemovalException("The selected ExHentai file changed. Files were kept.")
 		}
-		localMangaRepository.deleteExhentaiDestinationCopy(
-			local,
-			cleanupEmptyLegacyParent = true,
-			confirmedRemoteMangaId = remote.id,
-		)
+		return deleteConfirmedExhentaiPhysicalFile(remote, space, approval)
+	}
+
+	suspend fun deleteConfirmedExhentaiPhysicalFile(
+		remote: Manga,
+		space: FavouriteSpace,
+		approval: ExhentaiDeletionApproval,
+	): Boolean = confirmedFileMutex.withLock {
+		mangaLock.withLock(remote) {
+			withContext(Dispatchers.IO) {
+				val file = File(approval.canonicalPath)
+				val fresh = runCatching { snapshotExhentaiDeletion(remote, space, file) }.getOrNull()
+				if (fresh == null || fresh != approval) {
+					throw UnverifiedDownloadRemovalException(
+						"The selected ExHentai file or destination changed after confirmation. Files were kept.",
+					)
+				}
+				val parent = file.parentFile
+				val titleFolder = parent != null && EhentaiLegacyDownloadResolver.titlesMatch(remote.title, parent.name) &&
+					isApprovedExhentaiSourceFolder(remote, space, parent.parentFile)
+				// Do not use a recursive deletion utility. Unlink only the approved regular file.
+				val stat = Os.lstat(file.path)
+				if (!OsConstants.S_ISREG(stat.st_mode) || stat.st_dev != approval.device ||
+					stat.st_ino != approval.inode || stat.st_size != approval.length ||
+					file.lastModified() != approval.lastModified || !isEligibleExhentaiFile(remote, space, file)
+				) throw UnverifiedDownloadRemovalException("The selected ExHentai file changed. Files were kept.")
+				Os.unlink(file.path)
+				withContext(NonCancellable) {
+					val removedPaths = linkedSetOf(approval.canonicalPath)
+					// Keep parent-directory index rows if any sibling CBZ still exists or listing fails.
+					if (titleFolder && parent != null && parent.listFiles()?.none {
+							it.isFile && it.extension.equals("cbz", ignoreCase = true)
+						} == true) removedPaths.add(parent.path)
+					for (path in removedPaths) database.getFavouriteDownloadIndexDao().deleteByPath(path)
+					localMangaIndex.removeExactPaths(removedPaths)
+					exhentaiPresenceDiscovery.forgetConfirmedDeletedPath(approval.canonicalPath)
+				}
+				true
+			}
+		}
 	}
 
 	private companion object {
+		// Serialize explicit shared-file removals across Main and Gekko, not just manga IDs.
+		val confirmedFileMutex = Mutex()
 		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 	}
 

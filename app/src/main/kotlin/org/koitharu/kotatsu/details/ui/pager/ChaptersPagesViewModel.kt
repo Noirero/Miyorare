@@ -815,11 +815,17 @@ abstract class ChaptersPagesViewModel(
 		}
 	}
 
-	/** Read-only preparation: the user must explicitly accept the displayed physical target. */
-	suspend fun previewExhentaiPhysicalDeletion(): ExhentaiDeletionApproval? {
+	/** Read-only target list; corrupt/manual files do not need a LocalManga mapping. */
+	suspend fun listExhentaiPhysicalDeletionTargets(): List<File> {
+		val details = mangaDetails.value ?: return emptyList()
+		if (this is ReaderViewModel) return listOfNotNull(details.local?.file)
+		val files = deleteLocalMangaUseCase.listExhentaiPhysicalDeletionTargets(details.sourceManga, favouriteSpace)
+		return (files + listOfNotNull(details.local?.file)).distinct()
+	}
+
+	suspend fun previewExhentaiPhysicalDeletion(file: File): ExhentaiDeletionApproval? {
 		val details = mangaDetails.value ?: return null
-		val local = details.local ?: return null
-		return deleteLocalMangaUseCase.previewExhentaiPhysicalDeletion(details.sourceManga, favouriteSpace, local)
+		return deleteLocalMangaUseCase.previewExhentaiPhysicalDeletion(details.sourceManga, favouriteSpace, file)
 	}
 
 	fun deleteLocal() = deleteLocal(approvedExhentaiFile = null)
@@ -834,6 +840,26 @@ abstract class ChaptersPagesViewModel(
 			return
 		}
 		val details = mangaDetails.value
+		val remote = details?.sourceManga
+		if (approvedExhentaiFile != null) {
+			if (remote == null) {
+				errorEvent.call(FileNotFoundException())
+				return
+			}
+			launchLoadingJob(Dispatchers.IO) {
+				check(deleteLocalMangaUseCase.deleteConfirmedExhentaiPhysicalFile(
+					remote, favouriteSpace, approvedExhentaiFile,
+				)) { "Confirmed ExHentai file could not be removed" }
+				onMangaRemoved.call(remote)
+			}
+			return
+		}
+		// Scoped ExHentai UI deletes must never fall back to a generic unconfirmed removal.
+		if (remote != null && (remote.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+				remote.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) {
+			errorEvent.call(FileNotFoundException("Explicit CBZ confirmation is required"))
+			return
+		}
 		val local = details?.local
 		val m = local?.manga
 		if (m == null) {
@@ -842,11 +868,7 @@ abstract class ChaptersPagesViewModel(
 		}
 		launchLoadingJob(Dispatchers.Default) {
 			val remote = details?.sourceManga
-			if (remote != null && approvedExhentaiFile != null) {
-				check(deleteLocalMangaUseCase.deleteConfirmedExhentaiPhysicalFile(
-					remote, favouriteSpace, local, approvedExhentaiFile,
-				)) { "Confirmed ExHentai file could not be removed" }
-			} else if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
+			if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
 				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {
 					"Downloaded ExHentai gallery is unavailable"
 				}

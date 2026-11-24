@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -94,6 +95,15 @@ class ExhentaiPresenceDiscovery @Inject constructor(
             )
             mutex.unlock()
         }
+    }
+
+    /** Serialize with discovery so an older scan cannot republish the unlinked path. */
+    internal suspend fun forgetConfirmedDeletedPath(path: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            db.getExhentaiPresenceDao().deleteByPath(path)
+            snapshots.clear()
+        }
+        changes.emit(null)
     }
 
     // Canonical filesystem path resolution is not permitted on interactive Favorites reads.

@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.widget.Toast
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,39 +30,72 @@ internal fun showExhentaiPhysicalDeleteConfirmation(
 ): Boolean {
 	val details = viewModel.mangaDetails.value ?: return false
 	val source = details.sourceManga.source.name
-	if (details.local == null || (source != EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
-		source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) return false
-	// This call must never fall back to legacy unconfirmed deletion for a locked vault.
-	val host = context.findExhentaiDeleteHost()
-	if (host == null || !host.canShowExhentaiFileDetails(viewModel.favouriteSpace)) return true
-	scope.launch {
-		val approval = withContext(Dispatchers.IO) { viewModel.previewExhentaiPhysicalDeletion() }
-		if (!host.canShowExhentaiFileDetails(viewModel.favouriteSpace)) return@launch
-		if (approval == null || viewModel.mangaDetails.value?.id != details.id) {
-			Toast.makeText(context, R.string.exhentai_delete_target_unavailable, Toast.LENGTH_LONG).show()
-			return@launch
-		}
-		val path = approval.canonicalPath
-		val message = buildString {
-			append(context.getString(
-				R.string.exhentai_delete_target_description,
-				details.sourceManga.title, File(path).name, path,
-			))
-			if (approval.sharedWithOtherSpace) {
+	if (source != EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
+		source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI") return false
+	// Never fall back to legacy unconfirmed deletion for an ambiguous or locked title.
+	val host = context.findExhentaiDeleteHost() ?: return true
+	fun canShow(): Boolean =
+		!host.isFinishing && !host.isDestroyed &&
+			(host as? LifecycleOwner)?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) == true &&
+			host.canShowExhentaiFileDetails(viewModel.favouriteSpace) &&
+			viewModel.mangaDetails.value?.sourceManga?.let { it.id == details.id && it.source.name == source } == true
+	if (!canShow()) return true
+
+	fun unavailable() {
+		Toast.makeText(context, R.string.exhentai_delete_target_unavailable, Toast.LENGTH_LONG).show()
+	}
+	fun confirm(file: File) {
+		scope.launch {
+			if (!canShow()) return@launch
+			val approval = withContext(Dispatchers.IO) { viewModel.previewExhentaiPhysicalDeletion(file) }
+			if (!canShow()) return@launch
+			if (approval == null) {
+				unavailable()
+				return@launch
+			}
+			val path = approval.canonicalPath
+			val message = buildString {
+				append(context.getString(
+					R.string.exhentai_delete_target_description,
+					details.sourceManga.title, File(path).name, path,
+				))
 				append("\n\n")
-				append(context.getString(R.string.exhentai_delete_shared_space_warning))
+				append(context.getString(R.string.exhentai_delete_shared_source_warning))
+				if (approval.sharedWithOtherSpace) {
+					append("\n\n")
+					append(context.getString(R.string.exhentai_delete_shared_space_warning))
+				}
+			}
+			val confirmationDialog = buildAlertDialog(context) {
+				setTitle(R.string.exhentai_delete_physical_title)
+				setMessage(message)
+				setPositiveButton(R.string.delete) { _, _ ->
+					if (canShow()) viewModel.deleteLocal(approval)
+				}
+				setNegativeButton(android.R.string.cancel, null)
+			}
+			confirmationDialog.show()
+			host.trackSensitiveExhentaiDeleteDialog(confirmationDialog)
+		}
+	}
+	scope.launch {
+		val targets = withContext(Dispatchers.IO) { viewModel.listExhentaiPhysicalDeletionTargets() }
+		if (!canShow()) return@launch
+		when (targets.size) {
+			0 -> unavailable()
+			1 -> confirm(targets.single())
+			else -> {
+				val picker = buildAlertDialog(context) {
+					setTitle(R.string.exhentai_delete_choose_target)
+					setItems(targets.map { it.path }.toTypedArray()) { _, index ->
+						if (canShow()) confirm(targets[index])
+					}
+					setNegativeButton(android.R.string.cancel, null)
+				}
+				picker.show()
+				host.trackSensitiveExhentaiDeleteDialog(picker)
 			}
 		}
-		val confirmationDialog = buildAlertDialog(context) {
-			setTitle(R.string.exhentai_delete_physical_title)
-			setMessage(message)
-			setPositiveButton(R.string.delete) { _, _ ->
-				if (host.canShowExhentaiFileDetails(viewModel.favouriteSpace)) viewModel.deleteLocal(approval)
-			}
-			setNegativeButton(android.R.string.cancel, null)
-		}
-		confirmationDialog.show()
-		host.trackSensitiveExhentaiDeleteDialog(confirmationDialog)
 	}
 	return true
 }

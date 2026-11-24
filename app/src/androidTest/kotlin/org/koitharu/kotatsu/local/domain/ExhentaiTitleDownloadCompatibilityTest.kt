@@ -898,6 +898,59 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun confirmedManualCorruptDeleteClearsBothSourcesAndKeepsSibling() = runBlocking {
+		val folder = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery")
+		check(folder.mkdirs())
+		val bad = File(folder, "Chapter.cbz").apply { writeText("not a ZIP") }
+		val sibling = File(folder, "Chapter_1234abcd.cbz").apply { writeText("another CBZ") }
+		val main = gallery(990083, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gekko = gallery(990084, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		for (manga in listOf(main, gekko)) data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+		presence.run(full = true)
+		val ids = listOf(main.id, gekko.id)
+		assertEquals(ids.toSet(), classifier.getDownloadedIds(space, ids))
+		assertEquals(setOf(bad, sibling), deletion.listExhentaiPhysicalDeletionTargets(main, space).toSet())
+		assertNull(resolver.findSavedManga(main, space, forExhentaiDetails = true))
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(main, space, bad))
+		assertTrue(bad.exists()) // preview alone/cancellation never removes a file
+		assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(main, space, approval))
+		assertFalse(bad.exists())
+		assertTrue(folder.isDirectory)
+		assertEquals("another CBZ", sibling.readText())
+		assertEquals(ids.toSet(), classifier.getDownloadedIds(space, ids))
+		val last = requireNotNull(deletion.previewExhentaiPhysicalDeletion(gekko, space, sibling))
+		assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(gekko, space, last))
+		assertFalse(sibling.exists())
+		assertTrue(folder.isDirectory)
+		assertTrue(classifier.getDownloadedIds(space, ids).isEmpty())
+		for (manga in listOf(main, gekko)) {
+			assertNotNull(database.getMangaDao().find(manga.id))
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
+		}
+	}
+
+	@Test fun manualDeleteRejectsWrongTitleOtherSourceAndPrivatePath() = runBlocking {
+		val main = gallery(990085, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val unrelated = gallery(990086, "TSUKI:OTHER:other:EXHENTAI")
+		val other = archive("Other Gallery", "Chapter.cbz")
+		val privateFile = archive("Legacy Gallery", "Chapter.cbz", private = true)
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val space = FavouriteSpace.NORMAL
+		assertNull(deletion.previewExhentaiPhysicalDeletion(main, space, other))
+		assertNull(deletion.previewExhentaiPhysicalDeletion(main, space, privateFile))
+		assertNull(deletion.previewExhentaiPhysicalDeletion(unrelated, space, file))
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(main, space, file))
+		val stamp = file.lastModified()
+		val bytes = file.readBytes()
+		file.writeBytes(bytes.copyOf().also { it[it.lastIndex] = (it.last() + 1).toByte() })
+		assertTrue(file.setLastModified(stamp))
+		assertTrue(runCatching { deletion.deleteConfirmedExhentaiPhysicalFile(main, space, approval) }.isFailure)
+		assertTrue(file.exists())
+		assertTrue(other.exists())
+		assertTrue(privateFile.exists())
+	}
+
 	@Test fun confirmedLegacyDeleteRemovesExactlyTheSharedFileAndLeavesNoFakeOwnership() = runBlocking {
 		prefs.edit(commit = true) {
 			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
