@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.reader.ui
 
+import android.app.Activity
 import android.net.Uri
+import android.os.SystemClock
 import androidx.annotation.AnyThread
 import androidx.annotation.MainThread
 import androidx.annotation.WorkerThread
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -31,12 +34,14 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import org.koitharu.kotatsu.core.exceptions.EmptyMangaException
 import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -93,6 +98,10 @@ import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
+import org.koitharu.kotatsu.scrobbling.discord.sdk.DiscordReading
+import org.koitharu.kotatsu.scrobbling.discord.sdk.OfficialDiscordPresence
+import org.koitharu.kotatsu.scrobbling.discord.sdk.PublicDiscordCover
+import org.koitharu.kotatsu.scrobbling.discord.sdk.discordPublicUrl
 import org.koitharu.kotatsu.stats.domain.StatsCollector
 import java.time.Instant
 import java.util.UUID
@@ -124,6 +133,8 @@ class ReaderViewModel @Inject constructor(
     private val statsCollector: StatsCollector,
     private val readerJourneyCollector: ReaderJourneyCollector,
     private val discordRpc: DiscordRpc,
+    private val officialDiscordPresence: OfficialDiscordPresence,
+    private val publicDiscordCover: PublicDiscordCover,
     @LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
     interactor: DetailsInteractor,
     deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
@@ -155,6 +166,7 @@ class ReaderViewModel @Inject constructor(
     localContentReader = localContentReader,
 ) {
     override fun onCleared() {
+        officialDiscordPresence.close(this)
         // Let the process-scoped consumer drain the last position during reader teardown.
         chapterProgressWrites.close()
         pageLoader.diagnostics = null
@@ -269,6 +281,8 @@ class ReaderViewModel @Inject constructor(
     val onReaderJourneyProgressed = readerJourneyCollector.onJourneyProgressed
     val onAskNsfwIncognito = MutableEventFlow<Unit>()
     val uiState = MutableStateFlow<ReaderUiState?>(null)
+    private val readerStarted = MutableStateFlow(false)
+    private val discordReading = MutableStateFlow<DiscordReading?>(null)
 
     val isIncognitoMode = MutableStateFlow(savedStateHandle.get<Boolean>(ReaderIntent.EXTRA_INCOGNITO))
 
@@ -352,6 +366,9 @@ class ReaderViewModel @Inject constructor(
 
     init {
         initIncognitoMode()
+        if (BuildConfig.DISCORD_SOCIAL_SDK_INCLUDED && favouriteSpace == FavouriteSpace.NORMAL) {
+            observeOfficialDiscordPresence(database)
+        }
         if (favouriteSpace == FavouriteSpace.NORMAL) {
             val publicManga = MutableStateFlow<Long?>(null)
             val diagnostics = ReaderDiagnostics {
@@ -392,6 +409,13 @@ class ReaderViewModel @Inject constructor(
         loadImpl()
     }
 
+    fun onStart(activity: Activity) {
+        if (BuildConfig.DISCORD_SOCIAL_SDK_INCLUDED) {
+            officialDiscordPresence.open(this, activity)
+            readerStarted.value = true
+        }
+    }
+
     fun onPause() {
         getMangaOrNull()?.let { manga ->
             if (isIncognitoMode.value == false && !isPeekMode.value) {
@@ -405,12 +429,77 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun onStop() {
+        readerStarted.value = false
+        officialDiscordPresence.close(this)
         discordRpc.clearRpc()
     }
 
     fun onIdle() {
         discordRpc.setIdle()
     }
+
+    private fun observeOfficialDiscordPresence(database: MangaDatabase) {
+        val prefs = settings.observe(
+            AppSettings.KEY_DISCORD_RPC, AppSettings.KEY_DISCORD_SOCIAL_SDK, AppSettings.KEY_DISCORD_RPC_SKIP_NSFW,
+        )
+        val privacy = combine(isIncognitoMode, isPeekMode, ReaderDiagnostics::isPublicMode)
+        val privateFavourites = database.getPrivateFavouritesDao()
+        viewModelScope.launch {
+            var checkedCover: String? = null
+            var checkedSource: String? = null
+            var verifiedUntil = 0L
+            combine(readerStarted, privacy, discordReading, prefs) { started, isPublic, reading, _ ->
+                reading?.takeIf { started && isPublic && allowsOfficialDiscordPresence(it) }
+            }.distinctUntilChanged().flatMapLatest { reading ->
+                if (reading == null) {
+                    flowOf(null)
+                } else {
+                    privateFavourites.observePrivateOnly(reading.mangaId)
+                        .catch { emit(true) }
+                        .map { privateOnly -> reading.takeUnless { privateOnly } }
+                }
+            }.collectLatest { reading ->
+                val cover = discordPublicUrl(reading?.coverUrl)
+                val source = discordPublicUrl(reading?.sourceUrl)
+                if (reading == null || cover == null || source == null) {
+                    checkedCover = null
+                    checkedSource = null
+                    officialDiscordPresence.clear(this@ReaderViewModel)
+                    return@collectLatest
+                }
+                val changedUrl = checkedCover != cover.toString() || checkedSource != source.toString()
+                if (changedUrl || SystemClock.elapsedRealtime() >= verifiedUntil) {
+                    if (changedUrl) officialDiscordPresence.clear(this@ReaderViewModel)
+                    checkedCover = null
+                    checkedSource = null
+                    if (!publicDiscordCover.resolvesPublicly(source) || !publicDiscordCover.canLoad(cover)) {
+                        officialDiscordPresence.clear(this@ReaderViewModel)
+                        return@collectLatest
+                    }
+                    checkedCover = cover.toString()
+                    checkedSource = source.toString()
+                    verifiedUntil = SystemClock.elapsedRealtime() + 120_000L
+                }
+                // Recheck after external I/O. A newer chapter, settings change or private title wins.
+                val privateOnly = runCatchingCancellable { privateFavourites.isPrivateOnly(reading.mangaId) }
+                    .getOrDefault(true)
+                if (privateOnly || !readerStarted.value || discordReading.value != reading ||
+                    !ReaderDiagnostics.isPublicMode(isIncognitoMode.value, isPeekMode.value) ||
+                    !allowsOfficialDiscordPresence(reading)
+                ) {
+                    officialDiscordPresence.clear(this@ReaderViewModel)
+                    return@collectLatest
+                }
+                officialDiscordPresence.show(
+                    this@ReaderViewModel, reading, cover.toString(), source.toString(),
+                )
+            }
+        }
+    }
+
+    private fun allowsOfficialDiscordPresence(reading: DiscordReading): Boolean =
+        settings.isDiscordRpcEnabled && settings.isDiscordSocialSdkEnabled &&
+            (!settings.isDiscordRpcSkipNsfw || !reading.nsfw)
 
     fun switchMode(newMode: ReaderMode) {
         readerMode.value = newMode
@@ -909,6 +998,18 @@ class ReaderViewModel @Inject constructor(
             isEpubPaged = isEpubPaged,
         )
         uiState.value = newState
+        if (BuildConfig.DISCORD_SOCIAL_SDK_INCLUDED && favouriteSpace == FavouriteSpace.NORMAL) {
+            val currentManga = m.toManga()
+            discordReading.value = DiscordReading(
+                mangaId = currentManga.id,
+                title = newState.mangaName ?: currentManga.title,
+                chapter = newState.chapterNumber,
+                chapterCount = newState.chaptersTotal,
+                coverUrl = currentManga.coverUrl,
+                sourceUrl = currentManga.publicUrl,
+                nsfw = currentManga.isNsfw(),
+            )
+        }
         if (isIncognitoMode.value == false) {
             val currentManga = m.toManga()
             if (!isPeekMode.value) {
@@ -924,8 +1025,10 @@ class ReaderViewModel @Inject constructor(
             }
             // Only http(s) covers work on Discord (URL override or source default); a local custom
             // image can't be reached by Discord's servers, so fall back to the source cover.
-            val discordCover = m.toManga().coverUrl?.takeIf { it.isHttpUrl() } ?: m.sourceManga.coverUrl
-            discordRpc.updateRpc(m.toManga(), newState, discordCover)
+            if (!settings.isDiscordSocialSdkEnabled) {
+                val discordCover = currentManga.coverUrl?.takeIf { it.isHttpUrl() } ?: m.sourceManga.coverUrl
+                discordRpc.updateRpc(currentManga, newState, discordCover)
+            }
         }
     }
 
