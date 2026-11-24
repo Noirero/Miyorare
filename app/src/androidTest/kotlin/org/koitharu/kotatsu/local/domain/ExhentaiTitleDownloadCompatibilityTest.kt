@@ -65,6 +65,22 @@ import java.io.File
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.MutableSharedFlow
+import org.koitharu.kotatsu.core.prefs.DownloadFormat
+import org.koitharu.kotatsu.core.util.ext.MimeType
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
+import org.koitharu.kotatsu.download.ui.worker.registerCommittedExhentaiArtifact
+import org.koitharu.kotatsu.local.data.LocalStorageChanges
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.local.domain.model.LocalManga
+import java.util.zip.ZipFile
+import org.koitharu.kotatsu.tsuki.model.TsukiCompatibilityStatus
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
 import javax.inject.Inject
 
 /** Real Android Details lookup using flat CBZs from both ExHentai download paths. */
@@ -82,6 +98,8 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var settings: AppSettings
+	@Inject lateinit var mangaLock: MangaLock
+	@Inject @LocalStorageChanges lateinit var storageChanges: MutableSharedFlow<LocalManga?>
 
 	private lateinit var root: File
 	private lateinit var prefs: SharedPreferences
@@ -1274,6 +1292,127 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue(first.parentFile!!.isDirectory)
 		assertTrue(second.parentFile!!.isDirectory)
 		assertEquals("keep", keep.readText())
+	}
+
+	@Test fun downloadMainStagingSurvivesConfirmedDeleteInSharedTitleFolder() = runBlocking {
+		verifyStagedDownloadSurvivesConfirmedDelete(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, 990098L)
+	}
+
+	@Test fun downloadGekkoGenericStagingSurvivesConfirmedDeleteInSharedTitleFolder() = runBlocking {
+		verifyStagedDownloadSurvivesConfirmedDelete(GEKKO_SOURCE, 990099L)
+	}
+
+	private suspend fun verifyStagedDownloadSurvivesConfirmedDelete(source: String, id: Long) {
+		val victim = archive("Legacy Gallery", "Chapter.cbz")
+		val sibling = File(victim.parentFile, "Keep.cbz").apply { writeText("keep") }
+		val seed = gallery(id, source)
+		// Use real Tsuki metadata objects, not MissingMangaSource when CI lacks the plugin.
+		// Both test descriptors intentionally model the recognized shared OTHER folder.
+		val identity = requireNotNull(TsukiSourceIdentity.parse(source))
+		val descriptor = TsukiSourceDescriptor(identity.sourceName, "ExHentai", "", "HENTAI")
+		val liveShape = TsukiMangaSource(
+			TsukiPluginDescriptor(
+				pluginId = identity.pluginId, displayName = "Synthetic download fixture",
+				provider = identity.provider, version = "test", origin = "", sha256 = "",
+				fileSize = 0L, lastModified = 0L, requiredApi = null,
+				compatibility = TsukiCompatibilityStatus.COMPATIBLE, state = TsukiPluginState.ENABLED,
+				sources = listOf(descriptor),
+			), descriptor,
+		)
+		assertEquals(source, liveShape.name)
+		val downloader = seed.copy(source = liveShape,
+			chapters = requireNotNull(seed.chapters).map { it.copy(source = liveShape) })
+		val deleteSource = if (source == GEKKO_SOURCE) EhentaiSourceFamily.OFFICIAL_SOURCE_NAME else GEKKO_SOURCE
+		val remote = gallery(id + 1000L, deleteSource)
+		val space = FavouriteSpace.NORMAL
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(remote, space, victim))
+		val page = File(root, "download-page.png").apply {
+			writeBytes(android.util.Base64.decode(
+				"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+				android.util.Base64.DEFAULT,
+			))
+		}
+		val chapter = requireNotNull(downloader.chapters).single()
+		val output = if (source == GEKKO_SOURCE) {
+			LocalMangaOutput.getOrCreate(root, downloader, DownloadFormat.MULTIPLE_CBZ)
+		} else {
+			LocalMangaOutput.createExhentaiArchive(root, downloader, DownloadFormat.MULTIPLE_CBZ, true,
+				ExhentaiChapterOwnership.Receipt(space, UUID.randomUUID()))
+		}
+		try {
+			assertEquals("Both writers must use the same physical title folder",
+				victim.parentFile!!.canonicalFile, output.rootFile.canonicalFile)
+			output.addPage(IndexedValue(0, chapter), page, 0, MimeType("image/png"))
+			val staging = requireNotNull(output.rootFile.listFiles()).single { it.name.endsWith(".tmp") }
+			assertTrue(staging.isFile)
+			// Actual output remains open while the other source confirms removal of a sibling.
+			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(remote, space, approval))
+			assertFalse(victim.exists())
+			assertTrue(staging.isFile)
+			assertEquals("keep", sibling.readText())
+			output.addPage(IndexedValue(0, chapter), page, 1, MimeType("image/png"))
+			assertTrue(output.flushChapter(chapter))
+			output.mergeWithExisting()
+			output.finish()
+			val committed = requireNotNull(output.rootFile.listFiles()).single {
+				it.isFile && it.extension.equals("cbz", true) && it != sibling
+			}
+			assertFalse("Download must not recreate the deleted sibling", victim.exists())
+			ZipFile(committed).use { zip ->
+				for (name in listOf("1.png", "2.png")) {
+					assertArrayEquals(page.readBytes(), zip.getInputStream(requireNotNull(zip.getEntry(name))).use { it.readBytes() })
+				}
+			}
+			assertEquals("keep", sibling.readText())
+		} finally {
+			try { output.cleanup() } finally { output.close() }
+		}
+		assertTrue(victim.parentFile!!.isDirectory)
+		assertEquals("keep", sibling.readText())
+	}
+
+	@Test fun committedMainRegistrationCannotRestoreOwnershipAfterGekkoRemoval() = runBlocking {
+		val main = gallery(990100L, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gekko = gallery(990101L, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val request = UUID.randomUUID()
+		val task = DownloadTask(main.id, false, true, null, root, DownloadFormat.MULTIPLE_CBZ, true, space)
+		val committed = archive("Legacy Gallery", "Chapter.cbz",
+			comment = ExhentaiChapterOwnership.scopedComment(990100L, ExhentaiChapterOwnership.Receipt(space, request), false))
+		val dao = database.getFavouriteDownloadIndexDao()
+		data.storeManga(main, replaceExisting = true, detailsFetched = true)
+		data.storeManga(gekko, replaceExisting = true, detailsFetched = true)
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(gekko, space, committed))
+		var reached = false
+		try {
+			withTimeout(15000) {
+				val scope = this
+				var competing: kotlinx.coroutines.Deferred<Boolean>? = null
+				// Mirror the worker's manga lock, but use Gekko's different identity for Delete.
+				mangaLock.withLock(main) {
+					registerCommittedExhentaiArtifact(main, task, committed, request, database, localRepository, storageChanges) {
+						reached = true
+						val removal = scope.async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+							deletion.deleteConfirmedExhentaiPhysicalFile(gekko, space, approval)
+						}
+						competing = removal
+						// Without a common publication/removal boundary, actual Delete can finish
+						// here before the worker writes ownership. A serialized writer may wait.
+						withTimeoutOrNull(3000) { removal.await() }
+					}
+				}
+				assertTrue("Registration seam must be reached after real verification", reached)
+				assertTrue("Confirmed removal must succeed", requireNotNull(competing).await())
+			}
+			assertFalse(committed.exists())
+			assertNull("Registration must not resurrect ownership of a physically deleted CBZ",
+				dao.findEntry(space.dbValue, main.id))
+			assertNull(dao.findEntry(space.dbValue, gekko.id))
+			assertTrue(classifier.getDownloadedIds(space, listOf(main.id, gekko.id)).isEmpty())
+		} finally {
+			dao.delete(space.dbValue, main.id)
+			dao.delete(space.dbValue, gekko.id)
+		}
 	}
 
 	@Test fun confirmedSharedDeletePreservesMainAndGekkoPersonalState() = runBlocking {

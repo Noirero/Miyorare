@@ -677,18 +677,10 @@ class DownloadWorker @AssistedInject constructor(
 		}
 	}
 
-	private suspend fun registerExhentaiArtifact(manga: Manga, task: DownloadTask, file: File): LocalManga {
-		val local = checkNotNull(
-			ExhentaiDownloadedCopy.find(manga, file, withDetails = true, space = task.favouriteSpace, request = id)?.local,
-		) {
-			"Committed ExHentai archive cannot be read"
-		}
-		recordDownloadOwnership(manga.id, task, file, strict = true)
-		localMangaRepository.rememberDownloadedIdentity(manga, local)
-		localStorageChanges.emit(local)
-		localMangaRepository.publishExhentaiDownload(manga.id, task.favouriteSpace, local)
-		return local
-	}
+	private suspend fun registerExhentaiArtifact(manga: Manga, task: DownloadTask, file: File): LocalManga =
+		registerCommittedExhentaiArtifact(
+			manga, task, file, id, database, localMangaRepository, localStorageChanges,
+		)
 
 	private suspend fun publishExistingExhentaiCopy(manga: Manga, destination: File, task: DownloadTask): Boolean {
 		val saved = findCompletedExhentaiCopy(manga, destination, task.favouriteSpace) ?: return false
@@ -724,23 +716,8 @@ class DownloadWorker @AssistedInject constructor(
 		)?.takeIf { it.verified }?.local
 	}
 
-	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File, strict: Boolean = false) {
-		val result = runCatchingCancellable {
-			val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
-			val dao = database.getFavouriteDownloadIndexDao()
-			val current = dao.findEntry(task.favouriteSpace.dbValue, mangaId)
-			if (current?.path != path) {
-				dao.upsert(
-					FavouriteDownloadIndexEntity(
-						mangaId = mangaId,
-						space = task.favouriteSpace.dbValue,
-						path = path,
-					),
-				)
-			}
-		}.onFailure(Throwable::printStackTraceDebug)
-		if (strict) result.getOrThrow()
-	}
+	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File, strict: Boolean = false) =
+		recordArtifactOwnership(database, mangaId, task, file, strict)
 
 	private suspend fun <R> runFailsafe(block: suspend () -> R): R? {
 		checkIsPaused()
@@ -1151,3 +1128,52 @@ class DownloadWorker @AssistedInject constructor(
 }
 
 internal const val EXHENTAI_COMMITTED_PATH = "exhentai_committed_path"
+
+// Keep the real worker registration path testable without starting network work or a foreground
+// service. The no-op production seam preserves the original verification/publication ordering.
+internal suspend fun registerCommittedExhentaiArtifact(
+	manga: Manga,
+	task: DownloadTask,
+	file: File,
+	request: UUID,
+	database: MangaDatabase,
+	localMangaRepository: LocalMangaRepository,
+	localStorageChanges: MutableSharedFlow<LocalManga?>,
+	beforeOwnershipRegistration: suspend () -> Unit = {},
+): LocalManga {
+	val local = checkNotNull(
+		ExhentaiDownloadedCopy.find(manga, file, withDetails = true, space = task.favouriteSpace, request = request)?.local,
+	) {
+		"Committed ExHentai archive cannot be read"
+	}
+	beforeOwnershipRegistration()
+	recordArtifactOwnership(database, manga.id, task, file, strict = true)
+	localMangaRepository.rememberDownloadedIdentity(manga, local)
+	localStorageChanges.emit(local)
+	localMangaRepository.publishExhentaiDownload(manga.id, task.favouriteSpace, local)
+	return local
+}
+
+private suspend fun recordArtifactOwnership(
+	database: MangaDatabase,
+	mangaId: Long,
+	task: DownloadTask,
+	file: File,
+	strict: Boolean,
+) {
+	val result = runCatchingCancellable {
+		val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+		val dao = database.getFavouriteDownloadIndexDao()
+		val current = dao.findEntry(task.favouriteSpace.dbValue, mangaId)
+		if (current?.path != path) {
+			dao.upsert(
+				FavouriteDownloadIndexEntity(
+					mangaId = mangaId,
+					space = task.favouriteSpace.dbValue,
+					path = path,
+				),
+			)
+		}
+	}.onFailure(Throwable::printStackTraceDebug)
+	if (strict) result.getOrThrow()
+}
