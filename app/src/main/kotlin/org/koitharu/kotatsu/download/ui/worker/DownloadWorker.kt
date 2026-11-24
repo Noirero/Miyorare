@@ -1161,7 +1161,7 @@ private suspend fun recordArtifactOwnership(
 	file: File,
 	strict: Boolean,
 ) {
-	val result = runCatchingCancellable {
+	val result = runCatching {
 		val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
 		val dao = database.getFavouriteDownloadIndexDao()
 		val current = dao.findEntry(task.favouriteSpace.dbValue, mangaId)
@@ -1174,6 +1174,10 @@ private suspend fun recordArtifactOwnership(
 				),
 			)
 		}
-	}.onFailure(Throwable::printStackTraceDebug)
+	}.onFailure { error ->
+		// Preserve cancellation propagation for the extracted registration helper.
+		if (error is CancellationException) throw error
+		error.printStackTraceDebug()
+	}
 	if (strict) result.getOrThrow()
 }
