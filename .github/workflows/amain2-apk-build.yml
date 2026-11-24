@@ -3,14 +3,25 @@ run-name: Amain2 Staging APK · ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
+    inputs:
+      include_discord_sdk:
+        description: Build a password-protected staging APK with the official Discord SDK
+        type: boolean
+        default: false
+      discord_application_id:
+        description: Discord Application ID for the SDK-enabled staging build
+        type: string
+        required: false
 
 concurrency:
-  group: amain2-staging-build
+  group: amain2-staging-build${{ inputs.include_discord_sdk && '-discord-sdk' || '' }}
   cancel-in-progress: true
 
 jobs:
   build:
-    if: github.ref_name == 'Amain2'
+    if: >-
+      github.ref == 'refs/heads/Amain2' ||
+      (inputs.include_discord_sdk && github.ref == 'refs/heads/fix/amain2-discord-sdk-staging')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -30,6 +41,38 @@ jobs:
 
       - name: Grant execute permission
         run: chmod +x gradlew
+
+      - name: Provision the pinned Android Discord SDK
+        if: inputs.include_discord_sdk
+        shell: bash
+        env:
+          DISCORD_SDK_AAR_URL: ${{ secrets.AMAIN2_DISCORD_SDK_AAR_URL }}
+          DISCORD_APPLICATION_ID: ${{ inputs.discord_application_id }}
+          APK_TEST_PASSWORD: ${{ secrets.AMAIN2_DISCORD_APK_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ "$DISCORD_SDK_AAR_URL" != https://* ]]; then
+            echo '::error::Set AMAIN2_DISCORD_SDK_AAR_URL to an authorized HTTPS download of the Android AAR.'
+            exit 1
+          fi
+          if [[ ! "$DISCORD_APPLICATION_ID" =~ ^[1-9][0-9]{16,18}$ ]]; then
+            echo '::error::Enter the Discord Application ID for the staging build.'
+            exit 1
+          fi
+          if [[ ${#APK_TEST_PASSWORD} -lt 20 ]]; then
+            echo '::error::Set AMAIN2_DISCORD_APK_PASSWORD to a strong random password of at least 20 characters.'
+            exit 1
+          fi
+
+          aar="$RUNNER_TEMP/discord_partner_sdk.aar"
+          umask 077
+          if ! curl --silent --fail --location --proto '=https' --proto-redir '=https' \
+            --connect-timeout 15 --max-time 120 --max-filesize 40000000 --output "$aar" -- "$DISCORD_SDK_AAR_URL"; then
+            echo '::error::Could not download the Android Discord AAR. Check the authorized URL and its expiry.'
+            exit 1
+          fi
+          # Discord Social SDK C++ 1.11.24259, Android AAR used for the phone acceptance test.
+          printf '%s  %s\n' ea4c080cc7c5ddeccab58f3bdf5682a3e18a7a84a815bb0f33609bfcafba3f99 "$aar" | sha256sum --check --status
 
       - name: Require permanent signing key
         env:
@@ -109,17 +152,26 @@ jobs:
           grep -F "applicationId = 'org.noirero.miyorare.amain2'" app/build.gradle
 
       - name: Build permanently signed Amain2 APK
+        shell: bash
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          INCLUDE_DISCORD_SDK: ${{ inputs.include_discord_sdk }}
+          DISCORD_APPLICATION_ID: ${{ inputs.discord_application_id }}
         run: |
           set -euo pipefail
+          discord_args=()
+          if [[ "$INCLUDE_DISCORD_SDK" == true ]]; then
+            discord_args+=("-PdiscordSocialSdkAar=$RUNNER_TEMP/discord_partner_sdk.aar")
+            discord_args+=("-PdiscordPresenceAppId=$DISCORD_APPLICATION_ID")
+          fi
           ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace \
             -PRELEASE_STORE_FILE=../release.keystore \
             -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
-            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD" \
+            "${discord_args[@]}"
 
       - name: Collect APK
         shell: bash
@@ -137,9 +189,66 @@ jobs:
           done
 
       - name: Upload Amain2 staging APK
+        if: ${{ !inputs.include_discord_sdk }}
         uses: actions/upload-artifact@v4
         with:
           name: Miyorare-Amain2-APK
           path: artifact/*.apk
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Verify Discord SDK, staging identity, and permanent APK signature
+        if: inputs.include_discord_sdk
+        shell: bash
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          build_tools=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
+          aapt2="$(dirname "$build_tools")/aapt2"
+          expected_signer=$(keytool -exportcert -keystore release.keystore -storepass:env RELEASE_STORE_PASSWORD \
+            -alias "$RELEASE_KEY_ALIAS" | sha256sum | cut -d ' ' -f 1)
+
+          for apk in artifact/*.apk; do
+            badging=$("$aapt2" dump badging "$apk")
+            [[ "$badging" == "package: name='org.noirero.miyorare.amain2' "* ]]
+            signing=$("$build_tools" verify --print-certs "$apk")
+            grep -Fxq "Signer #1 certificate SHA-256 digest: $expected_signer" <<< "$signing"
+            python3 - "$apk" <<'PY'
+          import sys
+          from zipfile import ZipFile
+
+          abis = ("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+          libraries = ("libdiscord_partner_sdk.so", "libmiyorare_discord_sdk.so")
+          with ZipFile(sys.argv[1]) as apk:
+              for abi in abis:
+                  for library in libraries:
+                      entry = f"lib/{abi}/{library}"
+                      if entry not in apk.namelist():
+                          raise SystemExit(f"Missing Discord native library: {entry}")
+                      with apk.open(entry) as binary:
+                          if binary.read(4) != b"\x7fELF":
+                              raise SystemExit(f"Invalid Discord native library: {entry}")
+          PY
+          done
+
+      - name: Encrypt staging APK for phone testing
+        if: inputs.include_discord_sdk
+        shell: bash
+        env:
+          APK_TEST_PASSWORD: ${{ secrets.AMAIN2_DISCORD_APK_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd artifact
+          7z a -tzip -mem=AES256 "-p$APK_TEST_PASSWORD" Miyorare-Amain2-Discord-test.zip ./*.apk
+          7z t "-p$APK_TEST_PASSWORD" Miyorare-Amain2-Discord-test.zip
+
+      - name: Upload protected Discord staging APK
+        if: inputs.include_discord_sdk
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miyorare-Amain2-Discord-test
+          path: artifact/Miyorare-Amain2-Discord-test.zip
           if-no-files-found: error
           retention-days: 3
