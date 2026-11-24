@@ -128,6 +128,7 @@ fun StatsScreen(
 	onCosmeticsUpdate: (ReaderJourneyCosmeticLoadout) -> Unit,
 	onShareYearInReview: (YearInReview) -> Unit,
 	onMangaClick: (Manga) -> Unit,
+	footerContent: (@Composable () -> Unit)? = null,
 ) {
 	val visibleRevisited = remember(stats.revisited, matureMode) {
 		stats.revisited.filter { record -> record.manga != null }
@@ -274,6 +275,11 @@ fun StatsScreen(
 					) { progress ->
 						AchievementCard(progress)
 					}
+				}
+			}
+			if (footerContent != null) {
+				item("panel-footer") {
+					footerContent()
 				}
 			}
 		}
