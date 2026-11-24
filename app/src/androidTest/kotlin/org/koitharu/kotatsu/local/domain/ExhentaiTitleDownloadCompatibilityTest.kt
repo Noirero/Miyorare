@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -52,6 +55,9 @@ import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.LocalRoutingMangaRepository
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.library.SmartLocalLibrary
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -94,6 +100,8 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@Inject lateinit var classifier: DownloadedContentClassifier
 	@Inject lateinit var presence: ExhentaiPresenceDiscovery
 	@Inject lateinit var localRepository: LocalMangaRepository
+	@Inject lateinit var localRouting: LocalRoutingMangaRepository
+	@Inject lateinit var smartLocal: SmartLocalLibrary
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
 	@Inject lateinit var data: MangaDataRepository
@@ -1228,6 +1236,154 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val error = competingResult.get()!!.exceptionOrNull()
 		assertTrue("Unexpected competing removal failure: $error",
 			error == null || error is UnverifiedDownloadRemovalException)
+	}
+
+	@Test fun confirmedDeleteSerializesWithLegacyLocalChapterRemoval() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val parent = requireNotNull(chapter.parentFile)
+		val sibling = chapter.copyTo(File(parent, "Keep.cbz"))
+		val local = LocalMangaParser(parent).getManga(withDetails = true).manga
+		val selected = requireNotNull(local.chapters).single {
+			android.net.Uri.parse(it.url).fragment == chapter.name
+		}
+		assertEquals(2, local.chapters!!.size)
+		verifyConfirmedRemovalExcludesChapterMutation(chapter, sibling, gallery(990107, GEKKO_SOURCE)) {
+			// Actual LocalChaptersRemoveService/DeleteReadChaptersUseCase mutation owner.
+			localRepository.deleteChapters(local, setOf(selected.id))
+		}
+	}
+
+	@Test fun confirmedDeleteSerializesWithSmartLocalChapterRemoval() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val sibling = chapter.copyTo(File(chapter.parentFile, "Keep.cbz"))
+		val uri = android.net.Uri.fromFile(requireNotNull(chapter.parentFile))
+		val fixtureIds = ArrayList<Long>()
+		try {
+			// Index the real shared download folder as a selected Smart Local root.
+			smartLocal.addRoot(uri)
+			val books = smartLocal.state.value.books.filter { it.rootUri == uri.toString() }
+			fixtureIds.addAll(books.map { it.id })
+			val book = books.single { item -> item.chapters.any { it.node.key == chapter.canonicalPath } }
+			val selected = book.chapters.single { it.node.key == chapter.canonicalPath }
+			verifyConfirmedRemovalExcludesChapterMutation(chapter, sibling, gallery(990108, GEKKO_SOURCE)) {
+				// Real routed Smart Local operation, not a manual filesystem delete.
+				localRouting.deleteIndexedChapters(book.id, setOf(selected.id))
+			}
+		} finally {
+			smartLocal.removeRoot(uri.toString())
+			database.getMangaDao().delete(fixtureIds.mapNotNull { database.getMangaDao().find(it)?.manga })
+		}
+	}
+
+	private suspend fun verifyConfirmedRemovalExcludesChapterMutation(
+		chapter: File,
+		sibling: File,
+		manga: Manga,
+		mutate: suspend () -> Unit,
+	) {
+		val space = FavouriteSpace.NORMAL
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		val bytes = chapter.readBytes()
+		val siblingBytes = sibling.readBytes()
+		val entered = java.util.concurrent.CountDownLatch(1)
+		val completed = java.util.concurrent.CountDownLatch(1)
+		val result = java.util.concurrent.atomic.AtomicReference<Result<Unit>?>()
+		val competitor = Thread {
+			try {
+				result.set(runCatching {
+					runBlocking {
+						val mutation = async(start = CoroutineStart.UNDISPATCHED) {
+							withTimeout(10000) { mutate() }
+						}
+						entered.countDown()
+						mutation.await()
+					}
+				})
+			} finally {
+				completed.countDown()
+			}
+		}
+		try {
+			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+				competitor.start()
+				assertTrue("Local chapter mutation was not started", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+				completed.await(2, java.util.concurrent.TimeUnit.SECONDS)
+				assertTrue("Local chapter mutation must not consume the confirmed CBZ before commit", chapter.isFile)
+				assertArrayEquals(bytes, chapter.readBytes())
+			})
+			assertFalse(chapter.exists())
+		} finally {
+			competitor.join(12000)
+			assertFalse("Competing chapter mutation did not terminate", competitor.isAlive)
+		}
+		assertNotNull("Competing chapter mutation did not report an outcome", result.get())
+		assertArrayEquals(siblingBytes, sibling.readBytes())
+		assertTrue(chapter.parentFile!!.isDirectory)
+	}
+
+	@Test fun confirmedDeleteReconcilesCancelledRemovalAndRescan() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val bytes = chapter.readBytes()
+		val main = gallery(990109, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gekko = gallery(990110, GEKKO_SOURCE)
+		val ids = listOf(main.id, gekko.id)
+		val space = FavouriteSpace.NORMAL
+		val dao = database.getFavouriteDownloadIndexDao()
+		try {
+			// Both sources and spaces intentionally share this synthetic destination.
+			prefs.edit(commit = true) {
+				putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+			}
+			for (manga in listOf(main, gekko)) {
+				data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+				for (targetSpace in FavouriteSpace.entries) {
+					dao.upsert(FavouriteDownloadIndexEntity(manga.id, targetSpace.dbValue, chapter.canonicalPath))
+				}
+			}
+			presence.run(full = true)
+			for (targetSpace in FavouriteSpace.entries) {
+				assertEquals(ids.toSet(), classifier.getDownloadedIds(targetSpace, ids))
+			}
+			val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(main, space, chapter))
+			val reached = java.util.concurrent.atomic.AtomicBoolean(false)
+			val worker = launch(Dispatchers.Default) {
+				val job = requireNotNull(currentCoroutineContext()[Job])
+				deletion.deleteConfirmedExhentaiPhysicalFile(main, space, approval) {
+					reached.set(true)
+					job.cancel()
+				}
+			}
+			withTimeout(15000) { worker.join() }
+			assertTrue("Cancellation must reach the actual removal boundary", reached.get())
+			assertTrue(worker.isCancelled)
+			// The current non-suspending unlink commits even if cancellation is requested
+			// at this seam. NonCancellable cleanup must reconcile both sources and spaces.
+			assertFalse("The in-flight removal must complete its physical commit", chapter.exists())
+			for (targetSpace in FavouriteSpace.entries) {
+				assertTrue("Cancelled removal left a stale Downloaded badge",
+					classifier.getDownloadedIds(targetSpace, ids).isEmpty())
+				for (id in ids) assertNull(dao.findEntry(targetSpace.dbValue, id))
+			}
+			presence.run(full = true)
+			for (targetSpace in FavouriteSpace.entries) {
+				assertTrue(classifier.getDownloadedIds(targetSpace, ids).isEmpty())
+			}
+			// An independent new manual CBZ at the same path must be discoverable,
+			// without resurrecting the removed ownership records.
+			val replacement = bytes.copyOf().also { it[it.lastIndex] = (it.last() + 1).toByte() }
+			chapter.writeBytes(replacement)
+			presence.run(full = true)
+			assertArrayEquals(replacement, chapter.readBytes())
+			for (targetSpace in FavouriteSpace.entries) {
+				assertEquals(ids.toSet(), classifier.getDownloadedIds(targetSpace, ids))
+				for (id in ids) assertNull(dao.findEntry(targetSpace.dbValue, id))
+			}
+		} finally {
+			for (targetSpace in FavouriteSpace.entries) {
+				for (id in ids) dao.delete(targetSpace.dbValue, id)
+			}
+			database.getMangaDao().delete(ids.mapNotNull { database.getMangaDao().find(it)?.manga })
+		}
 	}
 
 	@Test fun confirmedDeleteNeverRemovesReplacementDirectoryAtRemovalBoundary() = runBlocking {
