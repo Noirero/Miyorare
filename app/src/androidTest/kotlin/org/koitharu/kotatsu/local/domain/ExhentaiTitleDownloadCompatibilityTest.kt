@@ -333,6 +333,38 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue(exact.isFile)
 	}
 
+	@Test fun readerRechecksAmbiguityBeforePublishingAnOnlineChapter() = runBlocking {
+		val first = archive("Legacy Gallery", "Chapter.cbz")
+		val online = gallery(990082, GEKKO_SOURCE)
+		data.storeManga(online, replaceExisting = true, detailsFetched = true)
+		val intent = MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_MANGA to ParcelableManga(online))))
+		val space = FavouriteSpace.NORMAL
+		var requests = 0
+		var added: File? = null
+		val details = detailsLoader(
+			intent = intent, force = false, favouriteSpace = space,
+			preferLocalBeforeInitialSnapshot = true,
+			chooseExhentaiFile = { manga, requestedSpace, choices ->
+				requests++
+				if (requests == 1) {
+					assertTrue(choices.isEmpty())
+					added = archive("Legacy Gallery_1", "Chapter.cbz")
+					null
+				} else {
+					val second = requireNotNull(added)
+					assertEquals(setOf(first.canonicalPath, second.canonicalPath), choices.map { it.path }.toSet())
+					resolver.selectExhentaiReadChoice(manga, requestedSpace,
+						choices.single { it.path == second.canonicalPath })
+				}
+			},
+		).first()
+		assertEquals(2, requests)
+		assertEquals(requireNotNull(added).canonicalFile, details.local?.file?.canonicalFile)
+		assertEquals(online.id, details.sourceManga.id)
+		assertEquals(online.source.name, details.sourceManga.source.name)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, online.id))
+	}
+
 	@Test fun readerLocalFirstSnapshotUsesOnlyTheChosenCbzAndNewSessionsChooseAgain() = runBlocking {
 		val first = archive("Legacy Gallery", "Chapter.cbz")
 		val second = archive("Legacy Gallery_1", "Chapter.cbz")

@@ -121,6 +121,21 @@ class DetailsLoadUseCase @Inject constructor(
 								?: throw java.io.IOException("Selected CBZ changed or is unreadable")
 						}
 						if (choices.isNotEmpty()) throw kotlinx.coroutines.CancellationException("CBZ choice cancelled")
+
+						val local = downloadedMangaResolver.findSavedManga(target, space, forExhentaiDetails = true)
+						// The first list and the fallback lookup are separate filesystem reads. If a
+						// duplicate appeared between them, do not mistake unresolved ambiguity for
+						// a missing download and publish an online chapter without asking.
+						if (local == null) {
+							val updatedChoices = downloadedMangaResolver.getExhentaiReadChoices(target, space)
+							if (updatedChoices.isNotEmpty()) {
+								val updatedSelection = chooseExhentaiFile(target, space, updatedChoices)
+									?: throw kotlinx.coroutines.CancellationException("CBZ choice cancelled")
+								return@measure downloadedMangaResolver.resolveExhentaiSessionChoice(target, space, updatedSelection)
+									?: throw java.io.IOException("Selected CBZ changed or is unreadable")
+							}
+						}
+						return@measure local
 					}
 					downloadedMangaResolver.findSavedManga(target, favouriteSpace, forExhentaiDetails = true)
 				}
