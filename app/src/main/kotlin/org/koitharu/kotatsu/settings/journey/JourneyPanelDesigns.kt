@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.R
@@ -405,6 +406,9 @@ fun SettingsJourneyPanelScreen(
 	onModelChange: (JourneyPanelModel) -> Unit,
 	weeklyGoal: WeeklyGoalState,
 	onWeeklyGoalChange: (Int) -> Unit,
+	showModelPicker: Boolean = true,
+	bottomInset: Dp = 0.dp,
+	overviewFooter: (@Composable () -> Unit)? = null,
 ) {
 	val data = rememberJourneyPanelData(stats, profile)
 	val numberFormat = remember { NumberFormat.getNumberInstance() }
@@ -417,7 +421,16 @@ fun SettingsJourneyPanelScreen(
 			.fillMaxSize()
 			.background(MaterialTheme.colorScheme.background),
 	) {
-		JourneyPanelModelPicker(selected = model, onSelect = onModelChange)
+		if (showModelPicker) {
+			JourneyPanelModelPicker(selected = model, onSelect = onModelChange)
+		}
+		Box(
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 16.dp, vertical = 8.dp),
+		) {
+			JourneyPanelTabs(selected = tab, onSelect = { tab = it }, style = style)
+		}
 		Column(
 			modifier = Modifier
 				.fillMaxWidth()
@@ -435,17 +448,19 @@ fun SettingsJourneyPanelScreen(
 					.fillMaxWidth()
 					.padding(horizontal = 16.dp),
 			) {
-				Spacer(Modifier.height(16.dp))
-				JourneyPanelTabs(selected = tab, onSelect = { tab = it }, style = style)
+				Spacer(Modifier.height(8.dp))
 				when (tab) {
-					JourneyPanelTab.OVERVIEW -> JourneyOverviewTab(
-						data = data,
-						style = style,
-						numberFormat = numberFormat,
-						durationText = { formatDurationShort(resources, it) },
-						weeklyGoal = weeklyGoal,
-						onGoalClick = { goalEditorOpen = true },
-					)
+					JourneyPanelTab.OVERVIEW -> {
+						JourneyOverviewTab(
+							data = data,
+							style = style,
+							numberFormat = numberFormat,
+							durationText = { formatDurationShort(resources, it) },
+							weeklyGoal = weeklyGoal,
+							onGoalClick = { goalEditorOpen = true },
+						)
+						overviewFooter?.invoke()
+					}
 
 					JourneyPanelTab.STATISTICS -> JourneyStatisticsTab(
 						data = data,
@@ -461,7 +476,7 @@ fun SettingsJourneyPanelScreen(
 					)
 				}
 			}
-			Spacer(Modifier.height(28.dp))
+			Spacer(Modifier.height(28.dp + bottomInset))
 		}
 	}
 	if (goalEditorOpen) {

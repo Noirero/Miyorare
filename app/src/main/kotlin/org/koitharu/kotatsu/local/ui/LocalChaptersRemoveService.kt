@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
 
@@ -73,9 +74,13 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 					}
 					return@withPartialWakeLock
 				}
-				checkNotNull(downloadedMangaResolver.findSavedManga(remote, favouriteSpace)) {
+				val saved = checkNotNull(downloadedMangaResolver.findSavedManga(remote, favouriteSpace)) {
 					"Downloaded manga not found in ${favouriteSpace.name.lowercase()} storage"
-				}.manga
+				}
+				if (EhentaiSourceFamily.supportsTitleMatchedDownloads(remote.source.name)) {
+					deleteLocalManga.requireSourceOwnedExhentaiDeletion(remote, favouriteSpace, saved.file)
+				}
+				saved.manga
 			}
 			localMangaRepository.deleteChapters(mangaWithChapters, chaptersIds)
 		}

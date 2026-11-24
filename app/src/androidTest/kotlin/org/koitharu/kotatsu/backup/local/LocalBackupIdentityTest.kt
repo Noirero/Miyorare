@@ -8,12 +8,14 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.backup.local.data.LocalBackupRepository
+import org.koitharu.kotatsu.backup.local.data.MiyorareAutoBackupAgent
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
@@ -111,6 +113,46 @@ class LocalBackupIdentityTest {
 			val editor = prefs.edit()
 			if (previousSkipNsfw == null) editor.remove(AppSettings.KEY_DISCORD_RPC_SKIP_NSFW)
 			else editor.putBoolean(AppSettings.KEY_DISCORD_RPC_SKIP_NSFW, previousSkipNsfw)
+			editor.apply()
+		}
+	}
+
+	@Test
+	fun androidRestoreDiscardsLegacyDiscordTokenBeforeSettingsMigration() {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val key = AppSettings.KEY_DISCORD_TOKEN
+		val otherKey = AppSettings.KEY_DISCORD_RPC_SKIP_NSFW
+		val settings = AppSettings(context)
+		val previousToken = settings.discordToken
+		val previousOtherValue = prefs.all[otherKey] as? Boolean
+		val agent = object : MiyorareAutoBackupAgent() {
+			init {
+				attachBaseContext(context)
+			}
+		}
+		assertEquals(MiyorareAutoBackupAgent::class.java.name, context.applicationInfo.backupAgentName)
+
+		try {
+			settings.discordToken = null
+			assertTrue(prefs.edit().putString(key, "fixture-restored-token").putBoolean(otherKey, true).commit())
+
+			agent.onRestoreFinished()
+
+			assertFalse(prefs.contains(key))
+			assertNull(AppSettings(context).discordToken)
+			assertTrue(prefs.getBoolean(otherKey, false))
+
+			settings.discordToken = "fixture-device-only-token"
+			assertTrue(prefs.edit().putString(key, "fixture-restored-token").commit())
+			agent.onRestoreFinished()
+			assertFalse(prefs.contains(key))
+			assertEquals("fixture-device-only-token", AppSettings(context).discordToken)
+		} finally {
+			settings.discordToken = previousToken
+			val editor = prefs.edit()
+			if (previousOtherValue == null) editor.remove(otherKey)
+			else editor.putBoolean(otherKey, previousOtherValue)
 			editor.apply()
 		}
 	}

@@ -73,6 +73,7 @@ import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -833,7 +834,12 @@ abstract class ChaptersPagesViewModel(
 				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {
 					"Downloaded ExHentai gallery is unavailable"
 				}
-			} else deleteLocalMangaUseCase(m)
+			} else {
+				if (remote != null && EhentaiSourceFamily.supportsTitleMatchedDownloads(remote.source.name)) {
+					deleteLocalMangaUseCase.requireSourceOwnedExhentaiDeletion(remote, favouriteSpace, local.file)
+				}
+				deleteLocalMangaUseCase(m)
+			}
 			onMangaRemoved.call(m)
 		}
 	}

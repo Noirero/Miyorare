@@ -69,6 +69,17 @@ internal object EhentaiSourceFamily {
 
 	fun isOfficialSource(storedName: String): Boolean = storedName == OFFICIAL_SOURCE_NAME
 
+	/**
+	 * Compatibility is deliberately limited to ExHentai Tsuki identities. A source display title
+	 * alone is not enough to opt another catalogue into permissive local-file discovery.
+	 */
+	fun supportsTitleMatchedDownloads(storedName: String): Boolean {
+		if (isOfficialSource(storedName)) return true
+		val parts = storedName.split(':', limit = 4)
+		return parts.size == 4 && parts[0] == "TSUKI" &&
+			parts[1].isNotBlank() && parts[2].isNotBlank() && parts[3] == "EXHENTAI"
+	}
+
 	fun isKnownStoredSource(storedName: String): Boolean =
 		canonicalize(StoredSourceIdentity.direct(storedName)) != null
 

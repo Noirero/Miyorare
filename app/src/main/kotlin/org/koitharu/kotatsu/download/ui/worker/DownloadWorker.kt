@@ -712,10 +712,16 @@ class DownloadWorker @AssistedInject constructor(
 		val owned = dao.findEntry(space.dbValue, manga.id)?.path?.let(::File)
 		if (owned != null && owned.canonicalFile.toPath().startsWith(rootPath)) {
 			localMangaRepository.findExhentaiAtPath(manga, owned, withDetails = true, space = space)?.let { match ->
-				if (match.verified || match.local.file.canonicalFile == owned.canonicalFile) return match.local
+				if (match.verified) return match.local
 			}
 		}
-		return localMangaRepository.findExhentaiInRoots(manga, listOf(root), withDetails = true, space = space)
+		val candidate = localMangaRepository.findExhentaiInRoots(manga, listOf(root), withDetails = true, space = space)
+			?: return null
+		// Imported ComicInfo proves which gallery can be read, not that its image set is
+		// complete. Only a receipt/index-verified copy may satisfy a new download task.
+		return localMangaRepository.findExhentaiAtPath(
+			manga, candidate.file, withDetails = true, space = space,
+		)?.takeIf { it.verified }?.local
 	}
 
 	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File, strict: Boolean = false) {

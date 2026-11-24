@@ -50,8 +50,10 @@
 	<application
 		android:name="org.koitharu.kotatsu.KotatsuApp"
 		android:allowBackup="true"
+		android:backupAgent="org.koitharu.kotatsu.backup.local.data.MiyorareAutoBackupAgent"
 		android:dataExtractionRules="@xml/diagnostic_backup_rules"
 		android:fullBackupContent="@xml/diagnostic_legacy_backup_rules"
+		android:fullBackupOnly="true"
 		android:enableOnBackInvokedCallback="@bool/is_predictive_back_enabled"
 		android:hasFragileUserData="true"
 		android:restoreAnyVersion="true"
