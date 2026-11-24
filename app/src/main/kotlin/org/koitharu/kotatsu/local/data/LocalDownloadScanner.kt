@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.local.data
 import org.koitharu.kotatsu.core.util.ext.withChildren
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import java.io.File
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.util.Locale
 
 /** Canonical, read-only current/legacy container discovery. Used only at explicit scan boundaries. */
@@ -61,6 +62,11 @@ internal object LocalDownloadScanner {
 	}
 
 	private fun File.isDownloadSourceDirectory(): Boolean {
+		// Known E-Hentai/ExHentai buckets are source containers even if early title folders
+		// are empty or contain unsupported files. Do not rely on the eight-title probe.
+		if (name.equals("ExHentai (OTHER)", ignoreCase = true) ||
+			EhentaiSourceFamily.legacySourceDirectoryNames.any { it.equals(name, ignoreCase = true) }
+		) return true
 		if (File(this, LocalMangaOutput.SOURCE_DIR_MARKER).isFile) return true
 		// Structural fallback keeps downloads from older Miyorare builds readable after marker renames.
 		return withChildren { titles ->

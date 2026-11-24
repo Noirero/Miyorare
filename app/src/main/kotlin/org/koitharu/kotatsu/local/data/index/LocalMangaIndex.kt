@@ -67,7 +67,7 @@ class LocalMangaIndex @Inject constructor(
 
 	/**
 	 * Rebuild a stale persisted index explicitly. Local UI calls this in background so an existing
-	 * v2 index can be shown immediately while v3 discovers standalone PDFs.
+	 * older Local entries can remain visible while v4 discovers known E-Hentai buckets.
 	 *
 	 * @return true when a rebuild was actually performed.
 	 */
@@ -87,7 +87,7 @@ class LocalMangaIndex @Inject constructor(
 		if (!isUpdateRequired()) return
 		// An older persisted index is still valid for the formats it already knows. Keep it readable
 		// instead of blocking the first Local list behind a full filesystem rebuild. The Local hub
-		// schedules [rebuildIfRequired] and reloads after the v3 swap completes.
+		// schedules [rebuildIfRequired] and reloads after the v4 swap completes.
 		if (db.getLocalMangaIndexDao().findAllEntries().isNotEmpty()) return
 		rebuildIfRequired()
 	}
@@ -662,9 +662,9 @@ class LocalMangaIndex @Inject constructor(
 		private const val KEY_VERSION = "ver"
 		private const val KEY_ALIAS_PREFIX = "download_alias_"
 		private const val INDEX_QUERY_CHUNK_SIZE = 500
-		// Scanner semantics changed to recognize standalone PDF files as local manga.
-		// Bump the persisted index version so existing installs rebuild once and pick them up.
-		private const val VERSION = 3
+		// v4 recognizes markerless E-Hentai source buckets regardless of the first sampled
+		// titles. Rebuild once after upgrading so persisted Local entries use the new boundaries.
+		private const val VERSION = 4
 	}
 }
 
