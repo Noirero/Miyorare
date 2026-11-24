@@ -30,6 +30,12 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
+import org.koitharu.kotatsu.details.data.ChapterProgressEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.model.MangaSource
@@ -71,6 +77,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var deletion: DeleteLocalMangaUseCase
 	@Inject lateinit var data: MangaDataRepository
+	@Inject lateinit var settings: AppSettings
 
 	private lateinit var root: File
 	private lateinit var prefs: SharedPreferences
@@ -1009,6 +1016,134 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 		assertTrue(rejected)
 		assertTrue(chapter.exists())
+	}
+
+	@Test fun confirmedDeleteRejectsReplacementAtRemovalBoundary() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990087, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		val original = File(chapter.parentFile, "Original.cbz")
+		val bytes = chapter.readBytes()
+		val replacement = bytes.copyOf().also { it[it.lastIndex] = (it.last() + 1).toByte() }
+		var reached = false
+		val result = runCatching {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+				// Interleave a real rename and same-size/same-mtime replacement after the last check.
+				check(chapter.renameTo(original))
+				chapter.writeBytes(replacement)
+				check(chapter.setLastModified(approval.lastModified))
+				reached = true
+			}
+		}
+		assertTrue("Removal boundary was not reached", reached)
+		assertArrayEquals(bytes, original.readBytes())
+		assertTrue("An unapproved replacement must not be removed", chapter.isFile)
+		assertArrayEquals(replacement, chapter.readBytes())
+		assertTrue("Changed target must be rejected", result.exceptionOrNull() is UnverifiedDownloadRemovalException)
+	}
+
+	@Test fun confirmedDeleteRejectsDestinationChangeAtRemovalBoundary() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990088, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val space = FavouriteSpace.NORMAL
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		val bytes = chapter.readBytes()
+		var reached = false
+		val result = runCatching {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+				destinationStore.setRoot(space, File(root, "new-active"))
+				reached = true
+			}
+		}
+		assertTrue("Removal boundary was not reached", reached)
+		assertTrue("Old destination file must not be removed", chapter.isFile)
+		assertArrayEquals(bytes, chapter.readBytes())
+		assertTrue("Changed destination must be rejected", result.exceptionOrNull() is UnverifiedDownloadRemovalException)
+	}
+
+	@Test fun confirmedSharedDeletePreservesMainAndGekkoPersonalState() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		ZipOutputStream(chapter.outputStream()).use { zip ->
+			for (page in 1..8) {
+				zip.putNextEntry(ZipEntry("$page.webp"))
+				zip.write(byteArrayOf(1, 2, 3))
+				zip.closeEntry()
+			}
+		}
+		val main = gallery(990089, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gekko = gallery(990090, GEKKO_SOURCE)
+		val mangaList = listOf(main, gekko)
+		val ids = mangaList.map { it.id }
+		val space = FavouriteSpace.NORMAL
+		val categoryDao = database.getFavouriteCategoriesDao()
+		val categoryIds = ArrayList<Long>()
+		try {
+			for ((index, manga) in mangaList.withIndex()) {
+				data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+				val onlineChapter = checkNotNull(manga.chapters).single()
+				val page = if (index == 0) 7 else 2
+				val percent = if (index == 0) 1f else 2f / 7f
+				val history = HistoryEntity(
+					mangaId = manga.id, createdAt = 100L + index, updatedAt = 200L + index,
+					chapterId = onlineChapter.id, page = page, scroll = index.toFloat(),
+					percent = percent, deletedAt = 0L, chaptersCount = 1, space = space.dbValue,
+				)
+				database.getHistoryDao().upsert(history)
+				database.getChapterProgressDao().upsert(ChapterProgressEntity(
+					mangaId = manga.id, source = manga.source.name, url = onlineChapter.url,
+					space = space.dbValue, page = page, scroll = index, totalPages = 8,
+				))
+				database.getBookmarksDao().insert(BookmarkEntity(
+					mangaId = manga.id, pageId = manga.id + 1000000L,
+					chapterId = onlineChapter.id, page = page, scroll = index,
+					imageUrl = manga.url, createdAt = 300L + index, percent = percent,
+					note = "source-specific bookmark $index",
+				))
+				settings.setChapterReadOverride(manga.id, onlineChapter.id, index == 0)
+				val categoryId = categoryDao.insert(FavouriteCategoryEntity(
+					categoryId = 0, createdAt = 400L + index, sortKey = index,
+					title = "Shared-delete regression $index", order = ListSortOrder.NEWEST.name,
+					track = false, downloadNewChapters = false, isVisibleInLibrary = true,
+					deletedAt = 0L, space = space.dbValue,
+				))
+				categoryIds.add(categoryId)
+				database.getFavouritesDao().insert(FavouriteEntity(
+					mangaId = manga.id, categoryId = categoryId, sortKey = index,
+					isPinned = index == 0, createdAt = 500L + index, deletedAt = 0L,
+				))
+			}
+			val historyBefore = ids.map { requireNotNull(database.getHistoryDao().find(it)) }
+			val progressBefore = ids.map { id ->
+				database.getChapterProgressDao().findAll(listOf(id), space.dbValue).single()
+			}
+			val bookmarksBefore = ids.map { database.getBookmarksDao().findAll(it).single() }
+			val overridesBefore = ids.map { settings.getChapterReadOverrides(it) }
+			val favouritesBefore = ids.map { database.getFavouritesDao().findAllRaw(it).single() }
+			val categoriesBefore = categoryIds.map { requireNotNull(categoryDao.findOrNull(it.toInt())) }
+			val metadataBefore = ids.map { requireNotNull(database.getMangaDao().find(it)).manga }
+			assertEquals(listOf(7, 2), historyBefore.map { it.page })
+			assertEquals(listOf(1f, 2f / 7f), historyBefore.map { it.percent })
+			assertEquals(listOf(true, false), overridesBefore.map { it.values.single() })
+			presence.run(full = true)
+			assertEquals(ids.toSet(), classifier.getDownloadedIds(space, ids))
+			val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(main, space, chapter))
+			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(main, space, approval))
+			assertFalse(chapter.exists())
+			assertTrue(classifier.getDownloadedIds(space, ids).isEmpty())
+			assertEquals(historyBefore, ids.map { database.getHistoryDao().find(it) })
+			assertEquals(progressBefore, ids.map { id ->
+				database.getChapterProgressDao().findAll(listOf(id), space.dbValue).single()
+			})
+			assertEquals(bookmarksBefore, ids.map { database.getBookmarksDao().findAll(it).single() })
+			assertEquals(overridesBefore, ids.map { settings.getChapterReadOverrides(it) })
+			assertEquals(favouritesBefore, ids.map { database.getFavouritesDao().findAllRaw(it).single() })
+			assertEquals(categoriesBefore, categoryIds.map { categoryDao.findOrNull(it.toInt()) })
+			assertEquals(metadataBefore, ids.map { database.getMangaDao().find(it)?.manga })
+		} finally {
+			database.getMangaDao().delete(ids.mapNotNull { database.getMangaDao().find(it)?.manga })
+			for (id in categoryIds) categoryDao.delete(id)
+		}
 	}
 
 	@Test fun permissiveDetailsReadIsLimitedToMainAndGekkoSources() = runBlocking {

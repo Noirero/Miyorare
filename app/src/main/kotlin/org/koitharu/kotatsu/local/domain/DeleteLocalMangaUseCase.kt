@@ -277,6 +277,15 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		remote: Manga,
 		space: FavouriteSpace,
 		approval: ExhentaiDeletionApproval,
+	): Boolean = deleteConfirmedExhentaiPhysicalFile(remote, space, approval) {}
+
+	// Deterministic instrumentation seam: production uses the same path with a no-op callback.
+	@androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.PRIVATE)
+	internal suspend fun deleteConfirmedExhentaiPhysicalFile(
+		remote: Manga,
+		space: FavouriteSpace,
+		approval: ExhentaiDeletionApproval,
+		beforePhysicalRemoval: () -> Unit,
 	): Boolean = confirmedFileMutex.withLock {
 		mangaLock.withLock(remote) {
 			withContext(Dispatchers.IO) {
@@ -296,6 +305,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 					stat.st_ino != approval.inode || stat.st_size != approval.length ||
 					file.lastModified() != approval.lastModified || !isEligibleExhentaiFile(remote, space, file)
 				) throw UnverifiedDownloadRemovalException("The selected ExHentai file changed. Files were kept.")
+				beforePhysicalRemoval()
 				Os.remove(file.path)
 				withContext(NonCancellable) {
 					val removedPaths = linkedSetOf(approval.canonicalPath)
