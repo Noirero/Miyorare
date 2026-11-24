@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.local.domain
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
@@ -111,6 +110,11 @@ class DownloadedMangaResolver @Inject constructor(
 		val roots = if (activeExhentaiScope) downloadDestinationStore.activeExhentaiRoots(space)
 			else downloadDestinationStore.readableRoots(space)
 
+		// An exact receipt/ownership row is not permission to bypass a multi-file read choice.
+		// Keep non-Details callers (completion/automatic removal) on their original strict path.
+		if (detailsTitleRead && supportsActiveExhentaiChoice(manga) &&
+			loadActiveExhentaiTitleCandidates(manga, space).size > 1) return null
+
 		// Space ownership is stronger than the global Local index for sidecar-free downloads.
 		val ownership = database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id)
 		if (ownership != null) {
@@ -186,17 +190,10 @@ class DownloadedMangaResolver @Inject constructor(
 	): LocalManga? {
 		if (manga.chapters?.size != 1) return null
 		if (detailsTitleRead) {
-			val readable = loadActiveExhentaiTitleCandidates(manga, space)
-			if (readable.isEmpty()) return null
+			val candidate = loadActiveExhentaiTitleCandidates(manga, space).singleOrNull() ?: return null
 			val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
-			val exact = readable.filter { it.first.galleryId != null && it.first.galleryId == galleryId }
-			// A unique exact gallery match needs no persisted-choice fingerprint read.
-			if (exact.size == 1) return exact.single().second
-			val knownChoice = readStoredExhentaiChoice(manga, space, readable)
-			return when {
-				knownChoice != null -> knownChoice
-				readable.size == 1 && readable.single().first.galleryId == null -> readable.single().second
-				else -> null // Ambiguous or explicitly foreign gallery ID: ask in Details.
+			return candidate.second.takeIf {
+				candidate.first.galleryId == null || candidate.first.galleryId == galleryId
 			}
 		}
 		val candidates = LinkedHashSet<File>()
@@ -238,76 +235,55 @@ class DownloadedMangaResolver @Inject constructor(
 		val galleryId: Long?,
 		val length: Long,
 		val lastModified: Long,
+		val readable: Boolean = true,
 	)
 
-	/**
-	 * A choice is needed for multiple readable candidates without a unique matching gallery ID,
-	 * or for a single file containing an explicitly different gallery ID. This never writes
-	 * ownership or changes any archive.
-	 */
+	/** A selected file is bound to this Reader session, not stored as a gallery preference. */
+	data class ExhentaiSessionChoice(
+		val mangaId: Long,
+		val sourceName: String,
+		val space: FavouriteSpace,
+		val candidate: ExhentaiReadChoice,
+		val sha256: String,
+	)
+
 	suspend fun getExhentaiReadChoices(manga: Manga, space: FavouriteSpace): List<ExhentaiReadChoice> {
 		if (!supportsActiveExhentaiChoice(manga)) return emptyList()
-		val readable = loadActiveExhentaiTitleCandidates(manga, space)
+		val candidates = loadActiveExhentaiTitleCandidates(manga, space).map { it.first }
+		if (candidates.size >= 2) return candidates
+		val single = candidates.singleOrNull() ?: return emptyList()
 		val galleryId = EhentaiSourceFamily.galleryId(manga.publicUrl, manga.url)
-		if (readable.count { it.first.galleryId != null && it.first.galleryId == galleryId } == 1 ||
-			(readable.size == 1 && readable.single().first.galleryId == null)
-		) return emptyList()
-		return readable.map { it.first }
+		return if (single.readable && single.galleryId != null && single.galleryId != galleryId)
+			candidates else emptyList()
 	}
 
 	suspend fun selectExhentaiReadChoice(
 		manga: Manga,
 		space: FavouriteSpace,
 		choice: ExhentaiReadChoice,
-	): Boolean {
-		if (getExhentaiReadChoices(manga, space).none { it == choice }) return false
-		val fingerprint = fingerprintOfChoice(choice) ?: return false
-		val value = JSONObject()
-			.put("path", choice.path)
-			.put("length", choice.length)
-			.put("modified", choice.lastModified)
-			.put("sha256", fingerprint)
-			.toString()
-		readChoicePreferences().edit()
-			.putString(exhentaiChoiceKey(manga, space), value)
-			.apply()
-		return true
+	): ExhentaiSessionChoice? {
+		if (!choice.readable || getExhentaiReadChoices(manga, space).none { it == choice }) return null
+		val fingerprint = fingerprintOfChoice(choice) ?: return null
+		return ExhentaiSessionChoice(manga.id, manga.source.name, space, choice, fingerprint)
+	}
+
+	suspend fun resolveExhentaiSessionChoice(
+		manga: Manga,
+		space: FavouriteSpace,
+		selection: ExhentaiSessionChoice,
+	): LocalManga? {
+		if (!supportsActiveExhentaiChoice(manga) || selection.mangaId != manga.id ||
+			selection.sourceName != manga.source.name || selection.space != space) return null
+		val candidate = loadActiveExhentaiTitleCandidates(manga, space)
+			.firstOrNull { it.first == selection.candidate } ?: return null
+		if (candidate.second == null || fingerprintOfChoice(candidate.first) != selection.sha256) return null
+		return candidate.second
 	}
 
 	private fun supportsActiveExhentaiChoice(manga: Manga) =
 		manga.chapters?.size == 1 &&
 			(manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
 				manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME)
-
-	/**
-	 * Keep all gallery-to-file read choices outside general settings backup. Private-only manga
-	 * can be reached through a Normal deep link, so FavouriteSpace alone is not a privacy label.
-	 * The dedicated preferences are excluded from every Android backup/transfer transport.
-	 */
-	private fun readChoicePreferences(): SharedPreferences =
-		context.getSharedPreferences(EXHENTAI_READ_CHOICES_PREFS, Context.MODE_PRIVATE)
-
-	private fun exhentaiChoiceKey(manga: Manga, space: FavouriteSpace): String =
-		"exhentai_read_choice_${space.dbValue}_${manga.source.name}_${manga.id}"
-
-	private suspend fun readStoredExhentaiChoice(
-		manga: Manga,
-		space: FavouriteSpace,
-		readable: List<Pair<ExhentaiReadChoice, LocalManga>>,
-	): LocalManga? {
-		val raw = readChoicePreferences()
-			.getString(exhentaiChoiceKey(manga, space), null) ?: return null
-		val saved = runCatching { JSONObject(raw) }.getOrNull() ?: return null
-		// Old metadata-only choices have no fingerprint: require explicit re-selection.
-		val savedHash = saved.optString("sha256").takeIf(String::isNotEmpty) ?: return null
-		val selected = readable.firstOrNull { (candidate, _) ->
-			candidate.path == saved.optString("path") &&
-				candidate.length == saved.optLong("length", -1L) &&
-				candidate.lastModified == saved.optLong("modified", -1L)
-		} ?: return null
-		val actualHash = fingerprintOfChoice(selected.first) ?: return null
-		return if (actualHash == savedHash) selected.second else null
-	}
 
 	/** A read association is not ownership; still invalidate it on same-size/mtime replacement. */
 	private suspend fun fingerprintOfChoice(choice: ExhentaiReadChoice): String? = withContext(Dispatchers.IO) {
@@ -334,25 +310,23 @@ class DownloadedMangaResolver @Inject constructor(
 	private suspend fun loadActiveExhentaiTitleCandidates(
 		manga: Manga,
 		space: FavouriteSpace,
-	): List<Pair<ExhentaiReadChoice, LocalManga>> {
-		if (!supportsActiveExhentaiChoice(manga)) return emptyList()
+	): List<Pair<ExhentaiReadChoice, LocalManga?>> = withContext(Dispatchers.IO) {
+		if (!supportsActiveExhentaiChoice(manga)) return@withContext emptyList()
 		val candidates = LinkedHashSet<File>()
 		for (root in downloadDestinationStore.activeExhentaiRoots(space)) {
-			for (path in EhentaiLegacyDownloadResolver.findTitleMatchedChapters(root, manga.title)) {
+			for (path in EhentaiLegacyDownloadResolver.findReadChoiceCandidates(root, manga.title)) {
 				if (!path.isInside(root) ||
 					!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, path)) continue
 				candidates += path.canonicalFile
-				if (candidates.size > MAX_DETAILS_TITLE_CANDIDATES) return emptyList()
 			}
 		}
-		return candidates.mapNotNull { file ->
+		candidates.map { file ->
 			val local = ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file, allowIndexed = true)
-				?: return@mapNotNull null
 			val evidence = ExhentaiChapterOwnership.inspectDestination(file)
 			val id = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.galleryId
 				?: readGalleryIdFromOptionalArchiveIndex(file)
 				?: (EhentaiComicInfo.inspect(file) as? EhentaiComicInfo.Evidence.Gallery)?.id
-			val choice = ExhentaiReadChoice(file.canonicalPath, id, file.length(), file.lastModified())
+			val choice = ExhentaiReadChoice(file.canonicalPath, id, file.length(), file.lastModified(), local != null)
 			choice to local
 		}
 	}
@@ -370,7 +344,6 @@ class DownloadedMangaResolver @Inject constructor(
 	private companion object {
 		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 		const val MAX_DETAILS_TITLE_CANDIDATES = 32
-		private const val EXHENTAI_READ_CHOICES_PREFS = "exhentai_read_choices"
 	}
 
 	private fun canInferSpaceFromPath(): Boolean =

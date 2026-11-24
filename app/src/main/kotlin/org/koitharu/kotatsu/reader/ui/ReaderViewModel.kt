@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -75,6 +76,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -135,7 +137,7 @@ class ReaderViewModel @Inject constructor(
     chapterProgressRepository: ChapterProgressRepository,
     localContentReader: LocalContentReader,
     appLogger: AppLogger,
-    database: MangaDatabase,
+    private val database: MangaDatabase,
 ) : ChaptersPagesViewModel(
     settings = settings,
     interactor = interactor,
@@ -167,6 +169,39 @@ class ReaderViewModel @Inject constructor(
 
     private val titleSettings = settings
     private val intent = MangaIntent(savedStateHandle)
+    internal class ExhentaiChoiceRequest(
+        val choices: List<DownloadedMangaResolver.ExhentaiReadChoice>,
+        val privateOnly: Boolean,
+        val answer: CompletableDeferred<DownloadedMangaResolver.ExhentaiReadChoice?> = CompletableDeferred(),
+    )
+
+    private val mutableExhentaiChoiceRequest = MutableStateFlow<ExhentaiChoiceRequest?>(null)
+    internal val exhentaiChoiceRequest = mutableExhentaiChoiceRequest
+    // Owned by this Reader ViewModel only; a new Reader never inherits it.
+    private var exhentaiSessionChoice: DownloadedMangaResolver.ExhentaiSessionChoice? = null
+
+    private suspend fun chooseExhentaiFile(
+        manga: Manga,
+        space: FavouriteSpace,
+        choices: List<DownloadedMangaResolver.ExhentaiReadChoice>,
+    ): DownloadedMangaResolver.ExhentaiSessionChoice? {
+        exhentaiSessionChoice?.let { return it }
+        if (choices.isEmpty()) return null
+        // Determine Private-only content from Room before exposing any filesystem path.
+        val privateOnly = space == FavouriteSpace.PRIVATE ||
+            database.getPrivateFavouritesDao().observePrivateOnly(manga.id).first()
+        val request = ExhentaiChoiceRequest(choices, privateOnly)
+        mutableExhentaiChoiceRequest.value = request
+        try {
+            val selected = request.answer.await() ?: throw CancellationException("CBZ choice cancelled")
+            val approved = detailsLoadUseCase.approveExhentaiReadChoice(manga, space, selected)
+                ?: throw java.io.IOException("Selected CBZ changed or is unreadable")
+            exhentaiSessionChoice = approved
+            return approved
+        } finally {
+            if (mutableExhentaiChoiceRequest.value === request) mutableExhentaiChoiceRequest.value = null
+        }
+    }
     private val pageMetadataRecoverySession = PageMetadataRecoverySession()
 
     private var loadingJob: Job? = null
@@ -687,6 +722,7 @@ class ReaderViewModel @Inject constructor(
                     force = false,
                     favouriteSpace = favouriteSpace,
                     preferLocalBeforeInitialSnapshot = true,
+                    chooseExhentaiFile = ::chooseExhentaiFile,
                 ).collect { details ->
                         loadedDetails = details
                         if (mangaDetails.value == null) {

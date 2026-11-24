@@ -125,8 +125,6 @@ class DetailsExpressiveActivity :
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
-	private val promptedExhentaiReadChoices = HashSet<String>()
-	private var exhentaiChoiceDialog: androidx.appcompat.app.AlertDialog? = null
 	private var exhentaiDeleteDialog: androidx.appcompat.app.AlertDialog? = null
 
 	internal fun trackExhentaiDeleteDialog(dialog: androidx.appcompat.app.AlertDialog) {
@@ -224,23 +222,6 @@ class DetailsExpressiveActivity :
 		viewModel.mangaDetails.observe(this) {
 			it?.let { details -> title = details.toManga().title }
 			invalidateOptionsMenu()
-			maybePromptExhentaiReadChoice(it)
-		}
-		// The picker is outside Compose. Keep it behind the same Private vault guard
-		// as the Details content; unlock/state changes re-evaluate a pending choice.
-		lifecycleScope.launch {
-			repeatOnLifecycle(Lifecycle.State.STARTED) {
-				combine(privateContentStateFlow, privateFavouritesSession.isUnlocked) { _, _ -> Unit }
-					.collect {
-						if (!canShowExhentaiFileDetails()) {
-							if (exhentaiChoiceDialog != null) {
-								exhentaiChoiceDialog?.dismiss()
-								// A transient vault reclassification must not permanently suppress the picker.
-								promptedExhentaiReadChoices.clear()
-							}
-						} else maybePromptExhentaiReadChoice(viewModel.mangaDetails.value)
-					}
-			}
 		}
 		viewModel.onChapterDownloadRenameMessage.observeEvent(this) { message ->
 			Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
@@ -330,9 +311,7 @@ class DetailsExpressiveActivity :
 
 	override fun onStop() {
 		// A suspended/locked Private session must not leave a physical CBZ path in a dialog.
-		exhentaiChoiceDialog?.dismiss()
 		exhentaiDeleteDialog?.dismiss()
-		promptedExhentaiReadChoices.clear()
 		viewModel.pauseExpandedRelated()
 		viewModel.pauseGenreRecommendations()
 		viewModel.pauseTrackerPeople()
@@ -612,52 +591,6 @@ class DetailsExpressiveActivity :
 		return !protected || privateFavouritesSession.isUnlocked.value
 	}
 
-	private fun maybePromptExhentaiReadChoice(details: org.koitharu.kotatsu.details.data.MangaDetails?) {
-		if (details == null || details.local != null || !details.isLoaded ||
-			!canShowExhentaiFileDetails() || isFinishing || isDestroyed
-		) return
-		val remote = details.sourceManga
-		if (remote.chapters?.size != 1) return
-		val source = remote.source.name
-		if (source != org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
-			source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI") return
-		val key = "${remote.id}:${source}:${viewModel.favouriteSpace}"
-		if (!promptedExhentaiReadChoices.add(key)) return
-		lifecycleScope.launch {
-			val choices = withContext(Dispatchers.IO) { viewModel.getExhentaiReadChoices() }
-			if (choices.isEmpty()) return@launch
-			if (!canShowExhentaiFileDetails() || isFinishing || isDestroyed ||
-				viewModel.mangaDetails.value?.sourceManga?.id != remote.id ||
-				viewModel.mangaDetails.value?.local != null) {
-				promptedExhentaiReadChoices.remove(key)
-				return@launch
-			}
-			val dialog = buildAlertDialog(this@DetailsExpressiveActivity) {
-				setTitle(R.string.exhentai_choose_local_title)
-				setMessage(R.string.exhentai_choose_local_description)
-				setItems(choices.map { candidate ->
-					val id = candidate.galleryId?.let { getString(R.string.exhentai_choose_local_known_id, it) }
-						?: getString(R.string.exhentai_choose_local_unknown_id)
-					"${java.io.File(candidate.path).name} · $id\n${candidate.path}"
-				}.toTypedArray()) { _, index ->
-					lifecycleScope.launch {
-						if (!canShowExhentaiFileDetails() ||
-							!viewModel.selectExhentaiReadChoice(choices[index])) {
-							Toast.makeText(this@DetailsExpressiveActivity,
-								R.string.exhentai_choose_local_changed, Toast.LENGTH_LONG).show()
-						}
-					}
-				}
-				setNegativeButton(android.R.string.cancel, null)
-			}
-			dialog.show()
-			exhentaiChoiceDialog = dialog
-			dialog.setOnDismissListener {
-				if (exhentaiChoiceDialog === dialog) exhentaiChoiceDialog = null
-			}
-		}
-	}
-
 	private fun openPrivateFavourite(manga: Manga) {
 		if (privateFavouritesSession.isUnlocked.value) {
 			showPrivateFavouriteDialog(manga)
@@ -699,7 +632,7 @@ class DetailsExpressiveActivity :
 			return
 		}
 		val intentBuilder = ReaderIntent.Builder(this)
-			.manga(manga)
+			.mangaForRead(manga, viewModel.mangaDetails.value?.sourceManga ?: manga)
 			.favouriteSpace(viewModel.favouriteSpace.dbValue)
 			.branch(viewModel.selectedBranchValue)
 		if (isIncognitoMode) intentBuilder.incognito()
@@ -715,7 +648,7 @@ class DetailsExpressiveActivity :
 			val state = viewModel.getChapterResumeState(item)
 			val openReader = { peek: Boolean ->
 				val builder = ReaderIntent.Builder(this@DetailsExpressiveActivity)
-					.manga(manga)
+					.mangaForRead(manga, viewModel.mangaDetails.value?.sourceManga ?: manga)
 					.favouriteSpace(viewModel.favouriteSpace.dbValue)
 					.branch(viewModel.selectedBranchValue)
 					.state(state)

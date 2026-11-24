@@ -261,8 +261,8 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			val choices = resolver.getExhentaiReadChoices(online, FavouriteSpace.NORMAL)
 			assertEquals(1, choices.size)
 			assertEquals(888100L, choices.single().galleryId)
-			assertTrue(resolver.selectExhentaiReadChoice(online, FavouriteSpace.NORMAL, choices.single()))
-			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
+			val selected = requireNotNull(resolver.selectExhentaiReadChoice(online, FavouriteSpace.NORMAL, choices.single()))
+			val found = resolver.resolveExhentaiSessionChoice(online, FavouriteSpace.NORMAL, selected)
 			assertNotNull(found)
 			assertEquals(chapter.canonicalFile, found!!.file.canonicalFile)
 			// A foreign optional index must not become the identity of this read-only local copy.
@@ -301,28 +301,28 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertArrayEquals(before, chapter.readBytes())
 	}
 
-	@Test fun detailsPrefersExactReceiptButCanChooseStableLegacyDuplicate() = runBlocking {
+	@Test fun exactGalleryIdStillRequiresChoiceOnEveryRead() = runBlocking {
 		val legacy = archive("Legacy Gallery", "Chapter.cbz")
 		val receipt = ExhentaiChapterOwnership.scopedComment(
 			990017, ExhentaiChapterOwnership.Receipt(FavouriteSpace.NORMAL, UUID.randomUUID()), false,
 		)
 		val exact = archive("Legacy Gallery_2", "Chapter.cbz", comment = receipt)
-		val online = gallery(990017, GEKKO_SOURCE)
-		assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL))
-		assertEquals(exact.canonicalFile,
-			resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
-		val otherGallery = gallery(990018, GEKKO_SOURCE)
-		assertNull(resolver.findSavedManga(otherGallery, FavouriteSpace.NORMAL, forExhentaiDetails = true))
-		val ambiguous = resolver.getExhentaiReadChoices(otherGallery, FavouriteSpace.NORMAL)
-		assertEquals(2, ambiguous.size)
-		val chosenLegacy = ambiguous.single { it.path == legacy.canonicalPath }
-		assertTrue(resolver.selectExhentaiReadChoice(otherGallery, FavouriteSpace.NORMAL, chosenLegacy))
-		assertEquals(legacy.canonicalFile, resolver.findSavedManga(
-			otherGallery, FavouriteSpace.NORMAL, forExhentaiDetails = true,
-		)?.file?.canonicalFile)
+		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
+			val online = gallery(990017, source)
+			val space = FavouriteSpace.NORMAL
+			assertNull(resolver.findSavedManga(online, space, forExhentaiDetails = true))
+			val options = resolver.getExhentaiReadChoices(online, space)
+			assertEquals(setOf(legacy.canonicalPath, exact.canonicalPath), options.map { it.path }.toSet())
+			val session = requireNotNull(resolver.selectExhentaiReadChoice(online, space, options.single { it.path == legacy.canonicalPath }))
+			assertEquals(legacy.canonicalFile, resolver.resolveExhentaiSessionChoice(online, space, session)?.file?.canonicalFile)
+			assertNull(resolver.findSavedManga(online, space, forExhentaiDetails = true))
+			assertEquals(options, resolver.getExhentaiReadChoices(online, space))
+			assertNull(resolver.resolveExhentaiSessionChoice(online.copy(id = online.id + 1), space, session))
+			assertNull(resolver.resolveExhentaiSessionChoice(online, FavouriteSpace.PRIVATE, session))
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, online.id))
+		}
 		assertTrue(legacy.isFile)
 		assertTrue(exact.isFile)
-		assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, online.id))
 	}
 
 	@Test fun detailsReadsUnmarkedLegacyCbzWithInvalidOptionalXmlInBothSources() = runBlocking {
@@ -430,8 +430,9 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val legacyBytes = legacy.readBytes()
 		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
 			val online = gallery(3480905, source).copy(title = title)
-			assertEquals(newer.canonicalFile,
-				resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+			assertNull(resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+			assertEquals(setOf(newer.canonicalPath, legacy.canonicalPath),
+				resolver.getExhentaiReadChoices(online, FavouriteSpace.NORMAL).map { it.path }.toSet())
 		}
 		assertTrue(newer.delete())
 		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
@@ -445,16 +446,24 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertArrayEquals(legacyBytes, legacy.readBytes())
 	}
 
-	@Test fun detailsSkipsUnreadableDuplicateAndUsesValidLegacyCbz() = runBlocking {
+	@Test fun unreadableDuplicateStillRequiresExplicitChoiceAndCannotBeOpened() = runBlocking {
 		val badDir = File(root, "downloads/ExHentai (OTHER)/Legacy Gallery")
 		check(badDir.mkdirs())
 		val bad = File(badDir, "Chapter.cbz").apply { writeBytes(byteArrayOf(1, 2, 3)) }
 		val good = archive("Legacy Gallery_1", "Chapter.cbz")
 		for (source in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE)) {
 			val online = gallery(990024, source)
-			val found = resolver.findSavedManga(online, FavouriteSpace.NORMAL, forExhentaiDetails = true)
-			assertEquals(good.canonicalFile, found?.file?.canonicalFile)
-			assertEquals(1, localRepository.getPages(found!!.manga.chapters!!.single()).size)
+			val space = FavouriteSpace.NORMAL
+			assertNull(resolver.findSavedManga(online, space, forExhentaiDetails = true))
+			val choices = resolver.getExhentaiReadChoices(online, space)
+			assertEquals(2, choices.size)
+			val invalid = choices.single { it.path == bad.canonicalPath }
+			assertFalse(invalid.readable)
+			assertNull(resolver.selectExhentaiReadChoice(online, space, invalid))
+			val selected = requireNotNull(resolver.selectExhentaiReadChoice(online, space, choices.single { it.path == good.canonicalPath }))
+			val found = requireNotNull(resolver.resolveExhentaiSessionChoice(online, space, selected))
+			assertEquals(good.canonicalFile, found.file.canonicalFile)
+			assertEquals(1, localRepository.getPages(found.manga.chapters!!.single()).size)
 		}
 		assertEquals(3L, bad.length())
 	}
@@ -723,26 +732,23 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
-	@Test fun privateAmbiguitySelectionIsNotBackedUpThroughGeneralPreferences() = runBlocking {
+	@Test fun privateReadChoiceIsSessionOnlyAndIsolated() = runBlocking {
 		val first = archive("Legacy Gallery", "Chapter.cbz", private = true)
 		archive("Legacy Gallery_1", "Chapter.cbz", private = true)
 		val manga = gallery(990055, GEKKO_SOURCE)
 		val options = resolver.getExhentaiReadChoices(manga, FavouriteSpace.PRIVATE)
 		assertEquals(2, options.size)
-		val selected = options.single { it.path == first.canonicalPath }
 		val key = "exhentai_read_choice_${FavouriteSpace.PRIVATE.dbValue}_${manga.source.name}_${manga.id}"
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val privatePrefs = context.getSharedPreferences("exhentai_read_choices", android.content.Context.MODE_PRIVATE)
-		try {
-			assertTrue(resolver.selectExhentaiReadChoice(manga, FavouriteSpace.PRIVATE, selected))
-			assertNull(prefs.getString(key, null))
-			assertTrue(privatePrefs.contains(key))
-			assertEquals(first.canonicalFile,
-				resolver.findSavedManga(manga, FavouriteSpace.PRIVATE, forExhentaiDetails = true)?.file?.canonicalFile)
-			assertNull(database.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.PRIVATE.dbValue, manga.id))
-		} finally {
-			privatePrefs.edit(commit = true) { remove(key) }
-		}
+		privatePrefs.edit(commit = true) { remove(key) }
+		val session = requireNotNull(resolver.selectExhentaiReadChoice(manga, FavouriteSpace.PRIVATE, options.single { it.path == first.canonicalPath }))
+		assertNull(prefs.getString(key, null))
+		assertFalse(privatePrefs.contains(key))
+		assertEquals(first.canonicalFile, resolver.resolveExhentaiSessionChoice(manga, FavouriteSpace.PRIVATE, session)?.file?.canonicalFile)
+		assertNull(resolver.resolveExhentaiSessionChoice(manga, FavouriteSpace.NORMAL, session))
+		assertNull(resolver.findSavedManga(manga, FavouriteSpace.PRIVATE, forExhentaiDetails = true))
+		assertEquals(options, resolver.getExhentaiReadChoices(manga, FavouriteSpace.PRIVATE))
 	}
 
 	@Test fun selectedGalleryChoiceRejectsSameSizeSameMtimeCbzReplacement() = runBlocking {
@@ -757,9 +763,9 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val savedChoices = context.getSharedPreferences("exhentai_read_choices", android.content.Context.MODE_PRIVATE)
 		try {
-			assertTrue(resolver.selectExhentaiReadChoice(online, space, selected))
+			val session = requireNotNull(resolver.selectExhentaiReadChoice(online, space, selected))
 			assertEquals(chapter.canonicalFile,
-				resolver.findSavedManga(online, space, forExhentaiDetails = true)?.file?.canonicalFile)
+				resolver.resolveExhentaiSessionChoice(online, space, session)?.file?.canonicalFile)
 			val original = chapter.readBytes()
 			val originalLength = chapter.length()
 			val originalModified = chapter.lastModified()
@@ -771,6 +777,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertEquals(originalLength, chapter.length())
 			assertEquals(originalModified, chapter.lastModified())
 			// An unchanged candidate path/size/mtime is not the same physical content.
+			assertNull(resolver.resolveExhentaiSessionChoice(online, space, session))
 			assertNull(resolver.findSavedManga(online, space, forExhentaiDetails = true))
 			assertEquals(2, resolver.getExhentaiReadChoices(online, space).size)
 			assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, online.id))
@@ -779,7 +786,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
-	@Test fun normalContextAlsoKeepsGalleryFileChoicesOutsideBackedUpSettings() = runBlocking {
+	@Test fun oldPersistedChoiceIsIgnoredAndNewReadRequiresChoice() = runBlocking {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		archive("Legacy Gallery_1", "Chapter.cbz")
 		val manga = gallery(990056, GEKKO_SOURCE)
@@ -791,11 +798,15 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val choices = context.getSharedPreferences("exhentai_read_choices", android.content.Context.MODE_PRIVATE)
 		try {
-			assertTrue(resolver.selectExhentaiReadChoice(manga, space, selected))
+			choices.edit(commit = true) { putString(key, "old choice must be ignored") }
+			val session = requireNotNull(resolver.selectExhentaiReadChoice(manga, space, selected))
+			assertEquals("old choice must be ignored", choices.getString(key, null))
 			assertNull(prefs.getString(key, null))
-			assertTrue(choices.contains(key))
-			assertEquals(chapter.canonicalFile,
-				resolver.findSavedManga(manga, space, forExhentaiDetails = true)?.file?.canonicalFile)
+			assertEquals(chapter.canonicalFile, resolver.resolveExhentaiSessionChoice(manga, space, session)?.file?.canonicalFile)
+			assertNull(resolver.findSavedManga(manga, space, forExhentaiDetails = true))
+			assertEquals(options, resolver.getExhentaiReadChoices(manga, space))
+			destinationStore.setRoot(space, File(root, "new-normal"))
+			assertNull(resolver.resolveExhentaiSessionChoice(manga, space, session))
 		} finally {
 			choices.edit(commit = true) { remove(key) }
 		}
