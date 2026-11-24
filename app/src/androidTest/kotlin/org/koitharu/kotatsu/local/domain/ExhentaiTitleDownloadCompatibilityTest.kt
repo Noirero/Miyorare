@@ -17,6 +17,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -1085,11 +1089,16 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			try {
 				competingResult.set(runCatching {
 					runBlocking {
-						entered.countDown()
-						kotlinx.coroutines.withTimeout(10000) {
-							// Actual repository removal used by the source-owned delete path.
-							localRepository.deleteExhentaiDestinationCopy(local)
+						// Enter the real repository method before signaling; at this HEAD its
+						// first suspension is acquisition of the held removal mutex.
+						val removal = async(start = CoroutineStart.UNDISPATCHED) {
+							withTimeout(10000) {
+								// Actual repository removal used by the source-owned delete path.
+								localRepository.deleteExhentaiDestinationCopy(local)
+							}
 						}
+						entered.countDown()
+						removal.await()
 					}
 				})
 			} finally {
@@ -1117,6 +1126,111 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		val error = competingResult.get()!!.exceptionOrNull()
 		assertTrue("Unexpected competing removal failure: $error",
 			error == null || error is UnverifiedDownloadRemovalException)
+	}
+
+	@Test fun confirmedDeleteRejectsWhenInternalDestinationRemovalWins() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990092, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val local = requireNotNull(resolver.findSavedManga(manga, space, forExhentaiDetails = true))
+		assertEquals(chapter.canonicalFile, local.file.canonicalFile)
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		val sibling = File(chapter.parentFile, "Unrelated.cbz").apply { writeText("keep") }
+		withTimeout(10000) {
+			// Queue both actual removal entry points in order while holding the common mutex.
+			val (first, second) = localRepository.exhentaiRemovalMutex.withLock {
+				val removal = async(start = CoroutineStart.UNDISPATCHED) {
+					localRepository.deleteExhentaiDestinationCopy(local)
+				}
+				val confirmed = async(start = CoroutineStart.UNDISPATCHED) {
+					runCatching { deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) }
+				}
+				assertFalse(removal.isCompleted)
+				assertFalse(confirmed.isCompleted)
+				assertTrue(chapter.isFile)
+				removal to confirmed
+			}
+			assertTrue("Repository removal must win", first.await())
+			assertTrue("Stale approval must reject", second.await().exceptionOrNull() is UnverifiedDownloadRemovalException)
+		}
+		assertFalse(chapter.exists())
+		assertEquals("keep", sibling.readText())
+	}
+
+	@Test fun confirmedDeleteSerializesWithGenericLocalRemoval() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990093, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val local = requireNotNull(resolver.findSavedManga(manga, space, forExhentaiDetails = true))
+		assertEquals(chapter.canonicalFile, local.file.canonicalFile)
+		assertEquals(chapter.canonicalFile, File(requireNotNull(android.net.Uri.parse(local.manga.url).path)).canonicalFile)
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		val bytes = chapter.readBytes()
+		val entered = java.util.concurrent.CountDownLatch(1)
+		val completed = java.util.concurrent.CountDownLatch(1)
+		val competingResult = java.util.concurrent.atomic.AtomicReference<Result<Boolean>?>()
+		val competitor = Thread {
+			try {
+				competingResult.set(runCatching {
+					runBlocking {
+						// Enter the actual generic removal before signaling. It may suspend
+						// for IO, so use the real file state and bounded completion window.
+						val removal = async(start = CoroutineStart.UNDISPATCHED) {
+							withTimeout(10000) {
+								// Actual generic Local Library physical deletion entry point.
+								localRepository.delete(local.manga)
+							}
+						}
+						entered.countDown()
+						removal.await()
+					}
+				})
+			} finally {
+				completed.countDown()
+			}
+		}
+		try {
+			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+				competitor.start()
+				assertTrue("Generic removal was not started", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+				// Give the competing entry point an opportunity to finish. The assertion is
+				// about actual file state, not a timing-only assertion about a mutex.
+				completed.await(2, java.util.concurrent.TimeUnit.SECONDS)
+				assertTrue("Generic local removal must not consume the confirmed target before commit", chapter.isFile)
+				assertArrayEquals(bytes, chapter.readBytes())
+			})
+			assertFalse(chapter.exists())
+		} finally {
+			competitor.join(12000)
+			assertFalse("Competing internal removal did not terminate", competitor.isAlive)
+		}
+		assertNotNull("Competing internal removal did not report an outcome", competingResult.get())
+		assertFalse("Competing removal must not report a second successful deletion",
+			competingResult.get()!!.getOrNull() == true)
+		val error = competingResult.get()!!.exceptionOrNull()
+		assertTrue("Unexpected competing removal failure: $error",
+			error == null || error is UnverifiedDownloadRemovalException)
+	}
+
+	@Test fun confirmedDeleteNeverRemovesReplacementDirectoryAtRemovalBoundary() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990094, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		val original = File(chapter.parentFile, "Original.cbz")
+		val bytes = chapter.readBytes()
+		var reached = false
+		val outcome = runCatching {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+				check(chapter.renameTo(original))
+				check(chapter.mkdir())
+				reached = true
+			}
+		}
+		assertTrue("Removal boundary was not reached", reached)
+		assertArrayEquals(bytes, original.readBytes())
+		assertTrue("A replacement directory must never be removed by file-only delete", chapter.isDirectory)
+		assertTrue("Directory substitution must be rejected", outcome.exceptionOrNull() is UnverifiedDownloadRemovalException)
 	}
 
 	@Test fun confirmedSharedDeletePreservesMainAndGekkoPersonalState() = runBlocking {
