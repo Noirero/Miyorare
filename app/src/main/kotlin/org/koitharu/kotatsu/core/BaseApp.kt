@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
 import org.acra.ACRA
 import org.acra.config.dialog
@@ -150,7 +151,10 @@ open class BaseApp : Application(), Configuration.Provider {
 			ExhentaiPresenceLifecycleObserver(
 				scope = processLifecycleScope,
 				prefs = PreferenceManager.getDefaultSharedPreferences(this),
-				scan = { full -> exhentaiPresenceDiscoveryProvider.get().run(full) },
+				scan = { full ->
+					// Resolve the lazy scanner and Room dependencies off the main thread as before.
+					withContext(Dispatchers.IO) { exhentaiPresenceDiscoveryProvider.get().run(full) }
+				},
 			),
 		)
 		workScheduleManager.init()
