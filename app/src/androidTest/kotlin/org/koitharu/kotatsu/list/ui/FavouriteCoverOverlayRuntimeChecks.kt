@@ -2,7 +2,9 @@ package org.koitharu.kotatsu.list.ui
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.Rect
+import android.widget.ImageView
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +16,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
+import org.koitharu.kotatsu.list.ui.model.ModernCoverReadingState
 import org.koitharu.kotatsu.list.ui.model.ModernCoverState
 import kotlin.math.roundToInt
 
@@ -70,6 +73,26 @@ internal object FavouriteCoverOverlayRuntimeChecks {
 				assertTrue(number.paint.measureText(label) <= number.width)
 			}
 			assertTrue(action.measuredWidth >= (48 * density).roundToInt())
+			val status = ModernCoverState.from(model(), ModernCoverContext.COLLECTION)
+				.copy(useDarkReadingBadgeForeground = true, showContinueReading = true)
+			val expected = Color.rgb(16, 21, 33)
+			val caughtUp = cover.findViewById<ImageView>(R.id.cover_caught_up)
+			cover.bind(status.copy(readingState = ModernCoverReadingState.IN_PROGRESS)) {}
+			layout(cover, 194, 344)
+			assertEquals(expected, number.currentTextColor)
+			assertEquals(Color.WHITE, (action as ImageView).imageTintList?.defaultColor)
+			cover.bind(status.copy(readingState = ModernCoverReadingState.CAUGHT_UP)) {}
+			layout(cover, 194, 344)
+			assertTrue(caughtUp.isVisible)
+			assertEquals(expected, caughtUp.imageTintList?.defaultColor)
+			for (readingState in listOf(ModernCoverReadingState.UNREAD, ModernCoverReadingState.PENDING)) {
+				cover.bind(status.copy(readingState = readingState)) {}
+				layout(cover, 194, 344)
+				assertEquals(Color.WHITE, number.currentTextColor)
+			}
+			cover.bind(status.copy(readingState = ModernCoverReadingState.CAUGHT_UP, useDarkReadingBadgeForeground = false)) {}
+			layout(cover, 194, 344)
+			assertEquals(Color.WHITE, caughtUp.imageTintList?.defaultColor)
 			progressBoundsStayLocked(themed)
 		}
 	}

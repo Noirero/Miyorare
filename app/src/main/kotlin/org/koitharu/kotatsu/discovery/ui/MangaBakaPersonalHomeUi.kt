@@ -122,7 +122,7 @@ internal fun MangaBakaPersonalHomeContent(
 
 		if (state.partial) {
 			Text(
-				stringResource(R.string.hub_mangabaka_personal_partial),
+				stringResource(if (state.libraryTruncated) R.string.hub_mangabaka_library_truncated else R.string.hub_mangabaka_personal_partial),
 				style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)

@@ -17,6 +17,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -98,29 +100,48 @@ class DetailsLoadUseCase @Inject constructor(
 			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
 			// stale Local index rebuild. Only titles without any initialized persistent details snapshot keep
 			// local-first behaviour, so a valid zero-chapter snapshot is not mistaken for "never loaded".
-			val savedManga = emitRemoteInitialSnapshot(
-				manga = manga,
-				override = override,
-				description = fastDescription,
-				cachedInitialized = cachedState.initialized,
-				cachedIsFresh = cachedState.fresh,
-				preferLocalBeforeCached = preferLocalBeforeInitialSnapshot,
-				deferLocalLookup = !preferLocalBeforeInitialSnapshot,
-			) {
-				PerformanceDiagnostics.measure("repository", "details_download_local", trace) { downloadedMangaResolver.findSavedManga(manga, favouriteSpace) }
+			suspend fun findLocal() = PerformanceDiagnostics.measure("repository", "details_download_local", trace) {
+				downloadedMangaResolver.findSavedManga(manga, favouriteSpace, forExhentaiDetails = true)
 			}
-			loadRemote(
-				manga = manga,
-				override = override,
-				force = force,
-				initialSavedManga = savedManga,
-				favouriteSpace = favouriteSpace,
-				cachedIsFresh = cachedState.fresh,
-				trace = trace,
-				findSavedManga = {
-					PerformanceDiagnostics.measure("repository", "details_download_local", trace) { downloadedMangaResolver.findSavedManga(manga, favouriteSpace) }
-				},
-			)
+			fun detailsSnapshots(lookup: suspend () -> LocalManga?) = flow {
+				val savedManga = emitRemoteInitialSnapshot(
+					manga = manga,
+					override = override,
+					description = fastDescription,
+					cachedInitialized = cachedState.initialized,
+					cachedIsFresh = cachedState.fresh,
+					preferLocalBeforeCached = preferLocalBeforeInitialSnapshot,
+					deferLocalLookup = !preferLocalBeforeInitialSnapshot,
+				) {
+					lookup()
+				}
+				loadRemote(
+					manga = manga,
+					override = override,
+					force = force,
+					initialSavedManga = savedManga,
+					favouriteSpace = favouriteSpace,
+					cachedIsFresh = cachedState.fresh,
+					trace = trace,
+					findSavedManga = lookup,
+				)
+			}
+			if (!preferLocalBeforeInitialSnapshot && !cachedState.fresh &&
+				org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.isOfficialSource(manga.source.name)
+			) {
+				coroutineScope {
+					val local = async {
+						runCatchingCancellable { findLocal() }.onFailure(Throwable::printStackTraceDebug).getOrNull()
+					}
+					val localSnapshots = flow {
+						emit(null)
+						emit(local.await())
+					}
+					emitAll(detailsSnapshots { local.await() }.withEarlyLocalCopy(localSnapshots))
+				}
+			} else {
+				emitAll(detailsSnapshots { findLocal() })
+			}
 		}
 	}.map { details ->
 		if (mangaDataRepository.isScanlatorsMerged(details.id)) {
@@ -315,7 +336,7 @@ class DetailsLoadUseCase @Inject constructor(
 		emit(visibleDetails)
 
 		val discoveredLocal = localLookup.await()
-			?: PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace) }
+			?: PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, forExhentaiDetails = true) }
 		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(
 				manga = remoteDetails,
@@ -535,3 +556,9 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 	return savedManga
 }
 
+
+/** Keep the local snapshot available while source metadata is still loading. */
+internal fun Flow<MangaDetails>.withEarlyLocalCopy(local: Flow<LocalManga?>): Flow<MangaDetails> =
+	combine(local) { details, saved ->
+		if (details.local != null || saved == null) details else details.copy(localManga = saved)
+	}

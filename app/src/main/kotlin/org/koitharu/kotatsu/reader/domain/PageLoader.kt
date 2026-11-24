@@ -42,6 +42,7 @@ import okio.source
 import okio.use
 import org.jetbrains.annotations.Blocking
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.diagnostics.PageRoute
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.network.CommonHeaders
@@ -102,6 +103,8 @@ class PageLoader @Inject constructor(
 	private val imageProxyInterceptor: ImageProxyInterceptor,
 	private val downloadSlowdownDispatcher: DownloadSlowdownDispatcher,
 ) {
+
+	@Volatile internal var diagnostics: ReaderDiagnostics? = null
 
 	val loaderScope = lifecycle.lifecycleScope + InternalErrorHandler() + Dispatchers.Default
 
@@ -396,34 +399,43 @@ class PageLoader @Inject constructor(
 		isPrefetch: Boolean,
 		skipCache: Boolean,
 	): Uri = semaphore.withPermit {
+		val diagnostic = if (!isPrefetch) diagnostics?.begin() else null
 		val pageUrl = getReaderPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
 		val uri = pageUrl.toUri()
 		if (!skipCache && !uri.isZipUri() &&
 			!(page.source == LocalMangaSource && uri.scheme == ContentResolver.SCHEME_CONTENT)
 		) {
-			cache.get(pageUrl)?.let { return it.toUri() }
+			cache.get(pageUrl)?.let {
+				diagnostic?.route(PageRoute.CACHE)
+				return it.toUri()
+			}
 		}
 		return when {
 			// Seekable On-device folder images are decoded from their original SAF descriptor.
-			uri.scheme == ContentResolver.SCHEME_CONTENT && page.source == LocalMangaSource -> uri
+			uri.scheme == ContentResolver.SCHEME_CONTENT && page.source == LocalMangaSource -> {
+				diagnostic?.route(PageRoute.SAF)
+				uri
+			}
 
             uri.scheme == SmartLocalArchivePageUri.SCHEME && page.source == LocalMangaSource ->
                 materializeSeekableArchivePage(uri, pageUrl, reuseCache = !skipCache)
+					.also { diagnostic?.route(PageRoute.SAF) }
 
 			uri.isZipUri() -> materializeCbzPage(
 				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
 				pageUrl,
 				reuseCache = !skipCache,
-			)
+			).also { diagnostic?.route(PageRoute.CBZ) }
 
 			uri.isFileUri() -> {
 				val file = uri.toFile()
 				if (LocalPdfCache.isPdfPage(file)) {
 					runInterruptible(Dispatchers.IO) {
 						LocalPdfCache.materializePage(file).toUri()
-					}
+					}.also { diagnostic?.route(PageRoute.PDF) }
 				} else {
+					diagnostic?.route(PageRoute.FILE)
 					uri
 				}
 			}
@@ -432,6 +444,7 @@ class PageLoader @Inject constructor(
 				if (isPrefetch) {
 					downloadSlowdownDispatcher.delay(page.source)
 				}
+				diagnostic?.route(PageRoute.NETWORK)
 				val repo = getRepository(page.source)
 				// Use extension's getImage() when available — handles decryption/unscrambling.
 				// Falls back to direct OkHttp fetch for non-Mihon sources (getImageStream returns null).

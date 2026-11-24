@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,19 +71,6 @@ class FavouriteDisplayPreferences @Inject constructor(
 	fun observe(type: FavouriteContentType) = state
 		.map { it.getValue(type) }
 		.distinctUntilChanged()
-
-	/**
-	 * The container already observes the selected content type separately. Keep both Manga and Novel
-	 * hidden sets in this snapshot so that, when the type changes, membership checks immediately read
-	 * the matching set instead of briefly combining the new type with the previous type's visibility.
-	 */
-	fun observeHiddenVirtualCategoryIds(space: FavouriteSpace): Flow<Set<Long>> = hiddenVirtualCategoryIds
-		.map { hiddenBySpace ->
-			SelectedTypeHiddenVirtualCategorySet(
-				contentTypeStore = contentTypeStore,
-				hiddenByType = hiddenBySpace[space].orEmpty(),
-			)
-		}
 
 	fun current(type: FavouriteContentType): Options = state.value.getValue(type)
 
@@ -297,22 +283,6 @@ class FavouriteDisplayPreferences @Inject constructor(
 
 	private fun hiddenVirtualCategoryKey(space: FavouriteSpace, type: FavouriteContentType): String =
 		"${KEY_HIDDEN_VIRTUAL_CATEGORY_IDS}_${space.name.lowercase()}_${type.name.lowercase()}"
-
-	private class SelectedTypeHiddenVirtualCategorySet(
-		private val contentTypeStore: FavouriteContentTypeStore,
-		private val hiddenByType: Map<FavouriteContentType, Set<Long>>,
-	) : AbstractSet<Long>() {
-
-		private val current: Set<Long>
-			get() = hiddenByType[contentTypeStore.selectedType.value].orEmpty()
-
-		override val size: Int
-			get() = current.size
-
-		override fun iterator(): Iterator<Long> = current.iterator()
-
-		override fun contains(element: Long): Boolean = element in current
-	}
 
 	private data class ImplicitVirtualCategoryKey(
 		val space: FavouriteSpace,

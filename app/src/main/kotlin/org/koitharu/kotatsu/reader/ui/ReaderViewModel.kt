@@ -97,6 +97,12 @@ import org.koitharu.kotatsu.stats.domain.StatsCollector
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.transformLatest
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.logs.AppLogger
+import org.koitharu.kotatsu.reader.domain.ReaderDiagnostics
 
 private const val BOUNDS_PAGE_OFFSET = 2
 private const val PREFETCH_LIMIT = 10
@@ -128,6 +134,8 @@ class ReaderViewModel @Inject constructor(
     chapterPersonalRepository: ChapterPersonalRepository,
     chapterProgressRepository: ChapterProgressRepository,
     localContentReader: LocalContentReader,
+    appLogger: AppLogger,
+    database: MangaDatabase,
 ) : ChaptersPagesViewModel(
     settings = settings,
     interactor = interactor,
@@ -149,6 +157,8 @@ class ReaderViewModel @Inject constructor(
     override fun onCleared() {
         // Let the process-scoped consumer drain the last position during reader teardown.
         chapterProgressWrites.close()
+        pageLoader.diagnostics = null
+        chaptersLoader.diagnostics = null
         // The ViewModel scope is cancelled during teardown; use an independent IO job to release
         // Reader-owned backing without blocking the main thread.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { chaptersLoader.close() }
@@ -342,6 +352,31 @@ class ReaderViewModel @Inject constructor(
 
     init {
         initIncognitoMode()
+        if (favouriteSpace == FavouriteSpace.NORMAL) {
+            val publicManga = MutableStateFlow<Long?>(null)
+            val diagnostics = ReaderDiagnostics {
+                val approved = publicManga.value
+                approved != null && getMangaOrNull()?.id == approved &&
+                    ReaderDiagnostics.isPublicMode(isIncognitoMode.value, isPeekMode.value)
+            }
+            pageLoader.diagnostics = diagnostics
+            chaptersLoader.diagnostics = diagnostics
+            launchJob(Dispatchers.Default) {
+                combine(
+                    appLogger.state.map { it.phase == AppLogger.Phase.RECORDING }.distinctUntilChanged(),
+                    manga,
+                ) { recording, title -> title?.id?.takeIf { recording } }
+                    .distinctUntilChanged()
+                    .transformLatest { id ->
+                        emit(null as Long?)
+                        if (id != null) {
+                            database.getPrivateFavouritesDao().observePrivateOnly(id)
+                                .catch { emit(true) }
+                                .collect { privateOnly -> emit(id.takeUnless { privateOnly }) }
+                        }
+                    }.collect { publicManga.value = it }
+            }
+        }
         observePageMetadataFailures()
         loadImpl()
         launchJob(Dispatchers.Default) {
@@ -582,6 +617,10 @@ class ReaderViewModel @Inject constructor(
             onShowToast.call(R.string.peek_mode_hint)
         }
     }
+
+    override fun allowsDownloadDiagnosticExport(): Boolean =
+        super.allowsDownloadDiagnosticExport() &&
+            ReaderDiagnostics.isPublicMode(isIncognitoMode.value, isPeekMode.value)
 
     fun setIncognitoMode(value: Boolean, dontAskAgain: Boolean) {
         isIncognitoMode.value = value

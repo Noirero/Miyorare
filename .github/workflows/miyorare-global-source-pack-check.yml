@@ -12,6 +12,8 @@ on:
       - Amain2
     paths:
       - 'extensions/miyorare-sources/**'
+      - 'app/src/debug/kotlin/org/koitharu/kotatsu/tsuki/GlobalValidationActivity.kt'
+      - '.github/scripts/verify-global-validation-apk.sh'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
   workflow_dispatch:
 
@@ -32,6 +34,24 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Select paired APK and Global validation
+        if: github.event_name == 'pull_request'
+        id: paired_validation
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          changes=$(git diff --name-only "$BASE_SHA" HEAD -- \
+            extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
+            app/src/debug/kotlin/org/koitharu/kotatsu/tsuki/GlobalValidationActivity.kt \
+            .github/scripts/verify-global-validation-apk.sh \
+            .github/workflows/miyorare-global-source-pack-check.yml)
+          if [[ -n "$changes" ]]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Checkout pinned Gekkoushi source
         uses: actions/checkout@v5
@@ -174,8 +194,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Build isolated owner-validation APK
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+      - name: Build isolated validation APK
+        if: steps.paired_validation.outputs.run == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -192,11 +212,11 @@ jobs:
           cp "$assets/revision" "$assets/sha256" build/global-validation/
 
       - name: Enable KVM for Global validation
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        if: steps.paired_validation.outputs.run == 'true'
         run: sudo chmod 666 /dev/kvm
 
       - name: Verify bundled official Global on Android 15
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+        if: steps.paired_validation.outputs.run == 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 35
@@ -205,8 +225,8 @@ jobs:
           profile: pixel_2
           script: bash .github/scripts/verify-global-validation-apk.sh
 
-      - name: Upload verified owner-validation APK
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:owner-request')
+      - name: Upload verified validation APK
+        if: steps.paired_validation.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: miyorare-global-validation-apk

@@ -38,6 +38,9 @@ import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityStatsBinding
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.journey.JourneyDisplayMode
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelScreen
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelViewModel
 import org.koitharu.kotatsu.stats.domain.YearInReview
 import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
 import javax.inject.Inject
@@ -61,6 +64,8 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 
 	private val viewModel: StatsViewModel by viewModels()
 
+	private val panelViewModel: SettingsJourneyPanelViewModel by viewModels()
+
 	private val bottomInset = mutableIntStateOf(0)
 
 	override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,39 +81,58 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 		)
 		viewBinding.composeView.setContent {
 			MiyorareTheme {
-				val density = LocalDensity.current
-				val stats by viewModel.stats.collectAsState()
-				val isLoading by viewModel.isLoading.collectAsState()
-				val period by viewModel.period.collectAsState()
-				val scope by viewModel.scope.collectAsState()
-				val matureMode by viewModel.matureMode.collectAsState()
-				val selectedCategories by viewModel.selectedCategories.collectAsState()
-				val categories by viewModel.favoriteCategories.collectAsState(emptyList())
-				val readerProfile by viewModel.readerProfile.collectAsState()
-				val yearInReview by viewModel.yearInReview.collectAsState()
+				val displayMode by viewModel.displayMode.collectAsState()
+				if (displayMode == JourneyDisplayMode.KARTU) {
+					// Kartu: the card presentation built for the Settings panel,
+					// shown full-screen in place of the statistics content. The
+					// overflow menu above stays the same, so Utama is one tap away.
+					val panelStats by panelViewModel.stats.collectAsState()
+					val panelProfile by panelViewModel.profile.collectAsState()
+					val panelModel by panelViewModel.model.collectAsState()
+					val panelGoal by panelViewModel.weeklyGoal.collectAsState()
+					SettingsJourneyPanelScreen(
+						stats = panelStats,
+						profile = panelProfile,
+						model = panelModel,
+						onModelChange = panelViewModel::setModel,
+						weeklyGoal = panelGoal,
+						onWeeklyGoalChange = panelViewModel::setWeeklyGoal,
+					)
+				} else {
+					val density = LocalDensity.current
+					val stats by viewModel.stats.collectAsState()
+					val isLoading by viewModel.isLoading.collectAsState()
+					val period by viewModel.period.collectAsState()
+					val scope by viewModel.scope.collectAsState()
+					val matureMode by viewModel.matureMode.collectAsState()
+					val selectedCategories by viewModel.selectedCategories.collectAsState()
+					val categories by viewModel.favoriteCategories.collectAsState(emptyList())
+					val readerProfile by viewModel.readerProfile.collectAsState()
+					val yearInReview by viewModel.yearInReview.collectAsState()
 
-				StatsScreen(
-					stats = stats,
-					isLoading = isLoading,
-					period = period,
-					scope = scope,
-					matureMode = matureMode,
-					categories = categories,
-					selectedCategories = selectedCategories,
-					imageLoader = coil,
-					profile = readerProfile,
-					yearInReview = yearInReview,
-					bottomInset = with(density) { bottomInset.intValue.toDp() },
-					onPeriodChange = { viewModel.period.value = it },
-					onScopeChange = { viewModel.scope.value = it },
-					onMatureModeChange = viewModel::setMatureMode,
-					onCategoryToggle = viewModel::toggleCategory,
-					onCategoriesClear = viewModel::clearCategories,
-					onProfileUpdate = viewModel::updateReaderProfile,
-					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
-					onShareYearInReview = ::shareYearInReview,
-					onMangaClick = { router.openDetails(it) },
-				)
+					StatsScreen(
+						stats = stats,
+						isLoading = isLoading,
+						period = period,
+						scope = scope,
+						matureMode = matureMode,
+						categories = categories,
+						selectedCategories = selectedCategories,
+						imageLoader = coil,
+						profile = readerProfile,
+						yearInReview = yearInReview,
+						bottomInset = with(density) { bottomInset.intValue.toDp() },
+						onPeriodChange = { viewModel.period.value = it },
+						onScopeChange = { viewModel.scope.value = it },
+						onMatureModeChange = viewModel::setMatureMode,
+						onCategoryToggle = viewModel::toggleCategory,
+						onCategoriesClear = viewModel::clearCategories,
+						onProfileUpdate = viewModel::updateReaderProfile,
+						onCosmeticsUpdate = viewModel::updateReaderCosmetics,
+						onShareYearInReview = ::shareYearInReview,
+						onMangaClick = { router.openDetails(it) },
+					)
+				}
 			}
 		}
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.composeView))
@@ -159,7 +183,26 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 		return super.onCreateOptionsMenu(menu)
 	}
 
+	override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
+		val mode = viewModel.displayMode.value
+		menu?.findItem(R.id.action_journey_mode_utama)?.isChecked =
+			mode == JourneyDisplayMode.UTAMA
+		menu?.findItem(R.id.action_journey_mode_kartu)?.isChecked =
+			mode == JourneyDisplayMode.KARTU
+		return super.onPrepareOptionsMenu(menu)
+	}
+
 	override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+		R.id.action_journey_mode_utama -> {
+			viewModel.setDisplayMode(JourneyDisplayMode.UTAMA)
+			true
+		}
+
+		R.id.action_journey_mode_kartu -> {
+			viewModel.setDisplayMode(JourneyDisplayMode.KARTU)
+			true
+		}
+
 		R.id.action_clear -> {
 			showClearConfirmDialog()
 			true

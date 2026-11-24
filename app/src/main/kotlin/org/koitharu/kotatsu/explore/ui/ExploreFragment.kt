@@ -116,6 +116,11 @@ class ExploreFragment :
 	private var sourceSearchField: AppCompatEditText? = null
 	private var sourceSearchBackCallback: OnBackPressedCallback? = null
 
+	/** Query of the live source-search session, or null when no session is active. The session
+	 * survives leaving Explore (e.g. opening a source's list) and ends only when the user closes
+	 * the search; [sourceSearchField] is merely its currently installed input row. */
+	private var sourceSearchSessionQuery: String? = null
+
 	/** Page lists, indexed by page position. Both are created up-front by the pager. */
 	private val pages = arrayOfNulls<RecyclerView>(2)
 	private var barsInsets: Insets = Insets.NONE
@@ -339,17 +344,21 @@ class ExploreFragment :
 				}
 			}
 		}
-		adapter.setSourceQuery(sourceSearchField?.text?.toString().orEmpty())
+		adapter.setSourceQuery(sourceSearchSessionQuery.orEmpty())
 		viewModel.sources.observe(viewLifecycleOwner) { content ->
 			adapter.submitSourceItems(content[isNovel])
 		}
 	}
 
-	private fun toggleSourceSearch() {
-		if (sourceSearchField != null) {
+	internal fun toggleSourceSearch() {
+		if (sourceSearchSessionQuery != null) {
 			closeSourceSearch()
 			return
 		}
+		openSourceSearch(initialQuery = "", showKeyboard = true)
+	}
+
+	private fun openSourceSearch(initialQuery: String, showKeyboard: Boolean) {
 		val host = activity as? MainActivity ?: return
 		if (isHidden || !isResumed) return
 		val bar = host.findViewById<SearchBar>(R.id.search_bar) ?: return
@@ -389,18 +398,26 @@ class ExploreFragment :
 		field.doAfterTextChanged { text ->
 			if (sourceSearchField === field) {
 				clearButton.isVisible = !text.isNullOrEmpty()
+				if (sourceSearchSessionQuery != null) {
+					sourceSearchSessionQuery = text?.toString().orEmpty()
+				}
 				applySourceQuery(text?.toString().orEmpty())
 			}
 		}
 		host.installSharedSearchBarOwner(this, getString(R.string.explore_search_sources)) { focusSourceSearch() }
 		sourceSearchField = field
+		sourceSearchSessionQuery = initialQuery
+		if (initialQuery.isNotEmpty()) {
+			field.setText(initialQuery)
+			field.setSelection(initialQuery.length)
+		}
 		parent.addView(searchRow, parent.indexOfChild(bar) + 1)
 		bar.isVisible = false
 		sourceSearchBackCallback?.isEnabled = true
 		host.findViewById<AppBarLayout>(R.id.appbar)?.setExpanded(true, false)
 		viewBinding?.exploreAppBar?.setExpanded(true, false)
 		resetSourcePageScrollPositions()
-		focusSourceSearch()
+		if (showKeyboard) focusSourceSearch()
 	}
 
 	internal fun focusSourceSearch(): Boolean {
@@ -415,7 +432,18 @@ class ExploreFragment :
 		return true
 	}
 
+	/** Ends the search session: the input row is removed and the source filter is cleared. */
 	private fun closeSourceSearch() {
+		if (sourceSearchSessionQuery == null) return
+		sourceSearchSessionQuery = null
+		suspendSourceSearch()
+		applySourceQuery("")
+	}
+
+	/** Removes the input row without ending the session; the row is reinstalled with its
+	 * query when Explore becomes visible again, so the search survives trips into a
+	 * source's list or another tab. */
+	private fun suspendSourceSearch() {
 		val field = sourceSearchField ?: return
 		sourceSearchField = null
 		sourceSearchBackCallback?.isEnabled = false
@@ -428,7 +456,16 @@ class ExploreFragment :
 			host.findViewById<SearchBar>(R.id.search_bar)?.isVisible = true
 			host.releaseSharedSearchBarOwner(this)
 		}
-		applySourceQuery("")
+	}
+
+	private fun restoreSourceSearch() {
+		val query = sourceSearchSessionQuery ?: return
+		if (sourceSearchField != null) return
+		view?.post {
+			if (sourceSearchSessionQuery == query && sourceSearchField == null && !isHidden && isResumed) {
+				openSourceSearch(initialQuery = query, showKeyboard = false)
+			}
+		}
 	}
 
 	private fun applySourceQuery(query: String) {
@@ -439,13 +476,22 @@ class ExploreFragment :
 	}
 
 	override fun onPause() {
-		closeSourceSearch()
+		suspendSourceSearch()
 		super.onPause()
+	}
+
+	override fun onResume() {
+		super.onResume()
+		restoreSourceSearch()
 	}
 
 	override fun onHiddenChanged(hidden: Boolean) {
 		super.onHiddenChanged(hidden)
-		if (hidden) closeSourceSearch()
+		if (hidden) {
+			suspendSourceSearch()
+		} else {
+			restoreSourceSearch()
+		}
 	}
 
 	private fun resetSourcePageScrollPositions() {

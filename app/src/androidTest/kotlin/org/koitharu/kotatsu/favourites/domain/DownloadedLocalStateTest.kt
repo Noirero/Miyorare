@@ -51,8 +51,10 @@ import org.koitharu.kotatsu.core.util.ext.MimeType
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
+import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListViewModel
 import org.koitharu.kotatsu.history.domain.MarkAsReadUseCase
 import org.koitharu.kotatsu.list.domain.ListFilterOption
@@ -395,6 +397,142 @@ class DownloadedLocalStateTest {
 		}
 	}
 
+	@Test fun downloadedShelfUsesOwnedTitlesBeforePagingAndSelection() = runBlocking {
+		val neverFavourited = remote(810_024L)
+		val keptFile = remote(810_025L)
+		val hidden = remote(810_026L)
+		val active = remote(810_027L)
+		val privateTitle = remote(810_028L)
+		favourite(keptFile)
+		favourite(active)
+		favourite(privateTitle, FavouriteSpace.PRIVATE)
+		favourite(remote(810_029L))
+		val hiddenCategory = repository.createCategory("Hidden", ListSortOrder.NEWEST, false, false, false)
+		repository.updateCategoryMemberships(listOf(hidden), mapOf(hiddenCategory.id to true), FavouriteSpace.NORMAL)
+		data.storeManga(neverFavourited, replaceExisting = true)
+
+		val owned = listOf(neverFavourited, keptFile, hidden, active)
+		val copies = owned.associate { it.id to download(root, it) }
+		db.getFavouriteDownloadIndexDao().upsert(copies.map { (id, copy) ->
+			FavouriteDownloadIndexEntity(id, FavouriteSpace.NORMAL.dbValue, copy.file.canonicalPath)
+		} + FavouriteDownloadIndexEntity(
+			privateTitle.id, FavouriteSpace.PRIVATE.dbValue, download(privateRoot, privateTitle).file.canonicalPath,
+		))
+		repository.removeFromFavourites(setOf(keptFile.id))
+		assertTrue(copies.getValue(keptFile.id).file.exists())
+		assertTrue(repository.getCategoriesIds(keptFile.id).isEmpty())
+
+		val expected = owned.map { it.id }.toSet()
+		assertEquals(expected, repository.getDownloadedEntries().map { it.mangaId }.toSet())
+		assertEquals(
+			listOf(neverFavourited.id, keptFile.id),
+			repository.observeDownloaded(ListSortOrder.ALPHABETIC, emptySet(), limit = 2).first().map { it.id },
+		)
+		assertEquals(listOf(privateTitle.id), repository.getDownloadedEntries(FavouriteSpace.PRIVATE).map { it.mangaId })
+		val vm = favouritesViewModel(DOWNLOADED_FAVOURITES_CATEGORY_ID)
+		vm.awaitContent("all indexed Normal downloads") { cards ->
+			cards.filterIsInstance<MangaGridModel>().map { it.id }.toSet() == expected
+		}
+		assertEquals(expected, vm.getAllSelectableIds())
+		try {
+			FavouritesContainerFragment.searchQuery.value = keptFile.title
+			vm.awaitContent("Downloaded search") { cards ->
+				cards.filterIsInstance<MangaGridModel>().map { it.id } == listOf(keptFile.id)
+			}
+			assertEquals(setOf(keptFile.id), vm.getAllSelectableIds())
+		} finally {
+			FavouritesContainerFragment.searchQuery.value = ""
+		}
+	}
+
+	@Test fun downloadedDateAddedSortIgnoresMetadataRefresh() = runBlocking {
+		val older = remote(810_035L).copy(title = "Older favourite")
+		val newer = remote(810_036L).copy(title = "Newer favourite")
+		val withoutMembership = remote(810_037L).copy(title = "Alpha download")
+		val removed = remote(810_038L).copy(title = "Beta download")
+		val category = repository.createCategory("First", ListSortOrder.NEWEST, false, false, true)
+		val anotherCategory = repository.createCategory("Second", ListSortOrder.NEWEST, false, false, true)
+		val titles = listOf(older, newer, withoutMembership, removed)
+		for (title in titles) data.storeManga(title, replaceExisting = true)
+		db.getFavouritesDao().apply {
+			upsert(FavouriteEntity(older.id, category.id, 0, false, 100L, 0L))
+			upsert(FavouriteEntity(older.id, anotherCategory.id, 0, false, 300L, 0L))
+			upsert(FavouriteEntity(newer.id, category.id, 0, false, 200L, 0L))
+			upsert(FavouriteEntity(removed.id, category.id, 0, false, 400L, 500L))
+		}
+		db.getFavouriteDownloadIndexDao().upsert(titles.map { title ->
+			FavouriteDownloadIndexEntity(title.id, FavouriteSpace.NORMAL.dbValue, download(root, title).file.canonicalPath)
+		})
+
+		suspend fun ordered(order: ListSortOrder, limit: Int = titles.size) =
+			repository.observeDownloaded(order, emptySet(), limit).first().map { it.id }
+
+		val newestFirst = listOf(newer.id, older.id, withoutMembership.id, removed.id)
+		assertEquals(newestFirst, ordered(ListSortOrder.NEWEST))
+		assertEquals(listOf(older.id, newer.id, withoutMembership.id, removed.id), ordered(ListSortOrder.OLDEST))
+
+		data.storeManga(older, replaceExisting = true, detailsFetched = true)
+		assertTrue(data.getDetailsUpdatedAt(older.id) > data.getDetailsUpdatedAt(newer.id))
+		assertEquals(newestFirst, ordered(ListSortOrder.NEWEST))
+		assertEquals(newestFirst.take(2), ordered(ListSortOrder.NEWEST, limit = 2))
+	}
+
+	@Test fun sharedDestinationShelfRequiresOwnershipAndHonorsVaultMembership() = runBlocking {
+		PreferenceManager.getDefaultSharedPreferences(context).edit(commit = true) {
+			remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT)
+		}
+		val normalTitle = remote(810_031L)
+		val privateTitle = remote(810_032L)
+		val unownedTitle = remote(810_034L)
+		favourite(privateTitle, FavouriteSpace.PRIVATE)
+		data.storeManga(normalTitle, replaceExisting = true)
+		data.storeManga(unownedTitle, replaceExisting = true)
+		val normalCopy = download(root, normalTitle)
+		val privateCopy = download(root, privateTitle)
+		local.rememberDownloadedIdentity(unownedTitle, download(root, unownedTitle))
+		db.getFavouriteDownloadIndexDao().upsert(listOf(
+			FavouriteDownloadIndexEntity(normalTitle.id, FavouriteSpace.NORMAL.dbValue, normalCopy.file.canonicalPath),
+			FavouriteDownloadIndexEntity(privateTitle.id, FavouriteSpace.PRIVATE.dbValue, privateCopy.file.canonicalPath),
+			FavouriteDownloadIndexEntity(privateTitle.id, FavouriteSpace.NORMAL.dbValue, privateCopy.file.canonicalPath),
+		))
+
+		assertEquals(listOf(normalTitle.id), repository.getDownloadedEntries().map { it.mangaId })
+		assertEquals(listOf(privateTitle.id), repository.getDownloadedEntries(FavouriteSpace.PRIVATE).map { it.mangaId })
+	}
+
+	@Test fun selectAllInSimilarTitleScanMatchesTheCurrentSearch() = runBlocking {
+		val first = remote(810_021L).copy(title = "Same Story", description = "Translated edition")
+		val second = remote(810_022L).copy(
+			title = first.title, source = MissingMangaSource("BATCH11_SCAN_SECOND"), description = "Original edition",
+		)
+		favourite(first)
+		favourite(second)
+		val vm = favouritesViewModel()
+		try {
+			assertEquals(2, vm.enterSimilarTitleScanMode())
+			FavouritesContainerFragment.searchQuery.value = "Translated edition"
+			vm.awaitContent("filtered scan") { it.grid(first.id) != null && it.grid(second.id) == null }
+			assertEquals(setOf(first.id), vm.getAllSelectableIds())
+			FavouritesContainerFragment.searchQuery.value = "missing"
+			assertEquals(emptySet<Long>(), vm.getAllSelectableIds())
+		} finally {
+			FavouritesContainerFragment.searchQuery.value = ""
+		}
+	}
+
+	@Test fun bulkActionsResolveEverySelectedTitleAcrossPages() = runBlocking {
+		val titles = (810_100L until 810_170L).map(::remote)
+		val category = repository.createCategory("Paged selection", ListSortOrder.NEWEST, false, false, true)
+		repository.updateCategoryMemberships(titles, mapOf(category.id to true), FavouriteSpace.NORMAL)
+		val vm = favouritesViewModel()
+		vm.awaitContent("first page") { it.filterIsInstance<MangaGridModel>().size == 64 }
+		val loaded = vm.content.value.filterIsInstance<MangaGridModel>().map { it.manga }.toSet()
+		val selectedIds = checkNotNull(vm.getAllSelectableIds())
+		assertEquals(titles.map { it.id }.toSet(), selectedIds)
+		assertEquals(selectedIds, vm.resolveSelectedManga(selectedIds, loaded)?.map { it.id }?.toSet())
+		assertNull(vm.resolveSelectedManga(selectedIds + Long.MAX_VALUE, loaded))
+	}
+
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
 		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)
@@ -426,11 +564,11 @@ class DownloadedLocalStateTest {
 		return LocalMangaParser(output.rootFile).getManga(withDetails = true).also { ids += it.manga.id }
 	}
 
-	private fun favouritesViewModel(): FavouritesListViewModel {
+	private fun favouritesViewModel(categoryId: Long = 0L): FavouritesListViewModel {
 		lateinit var vm: FavouritesListViewModel
 		instrumentation.runOnMainSync {
 			vm = FavouritesListViewModel(
-				SavedStateHandle(mapOf(AppRouter.KEY_ID to 0L)), repository, mapper, markAsRead, filters,
+				SavedStateHandle(mapOf(AppRouter.KEY_ID to categoryId)), repository, mapper, markAsRead, filters,
 				settings, data, events, search, contentType, display, index, classifier, unread, sources,
 				detailsCache, downloadedSort, groups, duplicates, setSelection,
 			)

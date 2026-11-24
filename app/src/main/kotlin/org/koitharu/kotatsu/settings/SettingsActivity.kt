@@ -112,6 +112,7 @@ class SettingsActivity :
 				replace(R.id.container_master, RootSettingsFragment())
 			}
 		}
+		viewBinding.buttonJourneyModel?.setOnClickListener { onJourneyModelButtonClick?.invoke() }
 		viewModel.isSearchActive.observe(this, ::toggleSearchMode)
 		viewModel.onNavigateToPreference.observeEvent(this, ::navigateToPreference)
 		observeFoldHinge()
@@ -154,10 +155,18 @@ class SettingsActivity :
 		}
 		viewBinding.textViewHeader?.setTextColor(palette.onSurface)
 		findViewById<TextView>(R.id.text_title_search)?.setTextColor(palette.onSurface)
+		viewBinding.buttonJourneyModel?.apply {
+			imageTintList = android.content.res.ColorStateList.valueOf(palette.onSurface)
+			background = android.graphics.drawable.GradientDrawable().apply {
+				shape = android.graphics.drawable.GradientDrawable.OVAL
+				setColor(palette.surface)
+			}
+		}
 	}
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
 		val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+		systemBarsBottomPx = bars.bottom
 		val isTablet = viewBinding.containerMaster != null
 		viewBinding.appbar.updatePaddingRelative(
 			start = bars.start(v),
@@ -192,6 +201,18 @@ class SettingsActivity :
 			isFromRoot = false,
 		)
 		return true
+	}
+
+	/** Latest system bars bottom inset in pixels, for Compose content hosted here. */
+	var systemBarsBottomPx: Int = 0
+		private set
+
+	/** Click handler for the header's Journey panel model button, owned by RootSettingsFragment. */
+	var onJourneyModelButtonClick: (() -> Unit)? = null
+
+	/** Shows or hides the Journey panel model button at the end of the header title row. */
+	fun setJourneyModelButtonVisible(visible: Boolean) {
+		viewBinding.buttonJourneyModel?.isVisible = visible
 	}
 
 	fun setSectionTitle(title: CharSequence?) {

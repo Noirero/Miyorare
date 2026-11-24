@@ -104,4 +104,9 @@
     <string name="hub_publication">Publication</string>
     <string name="hub_recommendations">Recommendations</string>
     <string name="hub_partial_metadata">Some metadata could not be loaded.</string>
+    <string name="hub_catalog_snapshot_as_of">Catalogue snapshot · %1$s</string>
+    <string name="hub_tracking_last_known_notice">Tracking badges show the last known status; changes on the provider may appear later.</string>
+    <string name="hub_kitsu_trending_novel_empty">No novels in the current Kitsu Trending sample.</string>
+    <string name="hub_mal_novel_ranking_empty">No novels in this ranking page; other pages may contain novels.</string>
+    <string name="hub_mangabaka_library_truncated">Only part of your MangaBaka library was loaded. Some tracking badges may be out of date.</string>
 </resources>

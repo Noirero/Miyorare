@@ -37,6 +37,8 @@ class DetailsInteractor @Inject constructor(
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
 
+	internal val exhentaiDownloads get() = localMangaRepository.exhentaiDownloads
+
 	fun observeFavourite(
 		mangaId: Long,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,

@@ -11,6 +11,7 @@ for ((attempt=0; attempt<45; attempt++)); do
   if grep -Fq "$proof" <<<"$logs"; then
     grep -F 'TITLE_TRACE' <<<"$logs" | tee "$dir/title-trace.txt"
     grep -F 'TITLE_FIXTURE_OK' <<<"$logs"
+    grep -F 'GALLERY_PAGES_FIXTURE_OK' <<<"$logs"
     printf '%s\n' "$proof" | tee "$dir/android-15-proof.txt"
     exit 0
   fi

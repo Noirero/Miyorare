@@ -58,7 +58,10 @@ internal class PerformanceMonitor(private val session: DiagnosticsSession) {
 			activity.window.addOnFrameMetricsAvailableListener(listener, worker)
 			windows[activity] = listener
 			foreground = true
-		}.onFailure { session.event("monitor", PerformanceDiagnostics.currentTrace, "frame_listener_unavailable") }
+		}.onFailure {
+			session.captureFailed = true
+			session.event("monitor", PerformanceDiagnostics.currentTrace, "frame_listener_unavailable")
+		}
 	}
 
 	fun detach(activity: Activity) {

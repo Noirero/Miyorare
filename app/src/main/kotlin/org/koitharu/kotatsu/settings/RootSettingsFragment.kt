@@ -4,22 +4,31 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.OnBackPressedCallback
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,10 +38,18 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
+import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.github.AppUpdateRepository
@@ -40,6 +57,9 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareAccentSurface
+import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.core.util.ShareHelper
+import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
@@ -48,10 +68,19 @@ import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import org.koitharu.kotatsu.settings.journey.JourneyDisplayMode
+import org.koitharu.kotatsu.settings.journey.JourneyPanelModel
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelScreen
+import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelViewModel
 import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
+import org.koitharu.kotatsu.stats.domain.YearInReview
+import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
+import org.koitharu.kotatsu.stats.ui.StatsScreen
+import org.koitharu.kotatsu.stats.ui.StatsViewModel
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
 
@@ -61,7 +90,20 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
     @Inject
     lateinit var appUpdateRepository: AppUpdateRepository
 
+    @Inject
+    lateinit var imageLoader: ImageLoader
+
     private val searchViewModel: SettingsSearchViewModel by activityViewModels()
+
+    private val journeyViewModel: SettingsJourneyPanelViewModel by viewModels()
+
+    private val statsViewModel: StatsViewModel by viewModels()
+
+    // Bridges between the pager composition below and the activity back press:
+    // while the Journey page is showing, Back returns to the Settings page
+    // instead of leaving the Settings screen.
+    private val journeyPageVisible = MutableStateFlow(false)
+    private var journeyBackAction: (() -> Unit)? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -72,12 +114,121 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
         setContent {
             MiyorareTheme {
                 val update by appUpdateRepository.observeAvailableUpdate().collectAsState()
-                RootSettingsContent(
-                    appVersion = BuildConfig.VERSION_NAME,
-                    updateAvailable = update != null,
-                    onSectionClick = { section -> openSection(section) },
-                    onUpdateClick = { router.openAppUpdate() },
-                )
+                val journeyStats by journeyViewModel.stats.collectAsState()
+                val journeyProfile by journeyViewModel.profile.collectAsState()
+                val journeyModel by journeyViewModel.model.collectAsState()
+                val journeyGoal by journeyViewModel.weeklyGoal.collectAsState()
+                val panelDisplayMode by journeyViewModel.displayMode.collectAsState()
+                val stats by statsViewModel.stats.collectAsState()
+                val statsLoading by statsViewModel.isLoading.collectAsState()
+                val statsPeriod by statsViewModel.period.collectAsState()
+                val statsScope by statsViewModel.scope.collectAsState()
+                val statsMatureMode by statsViewModel.matureMode.collectAsState()
+                val statsSelectedCategories by statsViewModel.selectedCategories.collectAsState()
+                val statsCategories by statsViewModel.favoriteCategories.collectAsState(emptyList())
+                val statsProfile by statsViewModel.readerProfile.collectAsState()
+                val statsYearInReview by statsViewModel.yearInReview.collectAsState()
+                // Root Settings and the Reader Journey panel are two pages of one
+                // pager — the same stable swipe pattern as the Favourites tabs:
+                // the pages follow the finger and settle into place, instead of a
+                // bare trigger firing a navigation. Page 0 is Settings itself,
+                // page 1 is the Journey panel.
+                val pagerState = rememberPagerState(pageCount = { 2 })
+                val coroutineScope = rememberCoroutineScope()
+                val settingsActivity = activity as? SettingsActivity
+                val bottomInset = with(LocalDensity.current) {
+                    (settingsActivity?.systemBarsBottomPx ?: 0).toDp()
+                }
+                LaunchedEffect(pagerState.currentPage, panelDisplayMode) {
+                    journeyPageVisible.value = pagerState.currentPage == 1
+                    settingsActivity?.setSectionTitle(
+                        if (pagerState.currentPage == 1) {
+                            getString(R.string.reader_journey)
+                        } else {
+                            null
+                        },
+                    )
+                    settingsActivity?.setJourneyModelButtonVisible(
+                        pagerState.currentPage == 1 && panelDisplayMode == JourneyDisplayMode.KARTU,
+                    )
+                }
+                SideEffect {
+                    journeyBackAction = {
+                        coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                    }
+                }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    if (page == 0) {
+                        RootSettingsContent(
+                            appVersion = BuildConfig.VERSION_NAME,
+                            updateAvailable = update != null,
+                            onSectionClick = { section -> openSection(section) },
+                            onUpdateClick = { router.openAppUpdate() },
+                        )
+                    } else {
+                        // The Journey page starts on Kartu and keeps its own
+                        // remembered Utama / Kartu choice, independent from the
+                        // main Reader Journey screen's display mode. The switch
+                        // itself sits at the very end of the page's content —
+                        // the bottom of the Kartu Overview tab, and the bottom
+                        // of the Utama statistics list — with nothing below it.
+                        // The Kartu model picker leaves the page entirely: a
+                        // header button in Settings (shown only while this page
+                        // and Kartu mode are up) opens the model chooser.
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (panelDisplayMode == JourneyDisplayMode.KARTU) {
+                                SettingsJourneyPanelScreen(
+                                    stats = journeyStats.forMatureMode(statsMatureMode),
+                                    profile = journeyProfile,
+                                    model = journeyModel,
+                                    onModelChange = journeyViewModel::setModel,
+                                    weeklyGoal = journeyGoal,
+                                    onWeeklyGoalChange = journeyViewModel::setWeeklyGoal,
+                                    showModelPicker = false,
+                                    bottomInset = bottomInset,
+                                    overviewFooter = {
+                                        JourneyPanelDisplayToggle(
+                                            mode = panelDisplayMode,
+                                            onModeChange = journeyViewModel::setDisplayMode,
+                                        )
+                                    },
+                                )
+                            } else {
+                                StatsScreen(
+                                    stats = stats.forMatureMode(statsMatureMode),
+                                    isLoading = statsLoading || stats.matureMode != statsMatureMode,
+                                    period = statsPeriod,
+                                    scope = statsScope,
+                                    matureMode = statsMatureMode,
+                                    categories = statsCategories,
+                                    selectedCategories = statsSelectedCategories,
+                                    imageLoader = imageLoader,
+                                    profile = statsProfile,
+                                    yearInReview = statsYearInReview,
+                                    bottomInset = bottomInset,
+                                    onPeriodChange = { statsViewModel.period.value = it },
+                                    onScopeChange = { statsViewModel.scope.value = it },
+                                    onMatureModeChange = statsViewModel::setMatureMode,
+                                    onCategoryToggle = statsViewModel::toggleCategory,
+                                    onCategoriesClear = statsViewModel::clearCategories,
+                                    onProfileUpdate = statsViewModel::updateReaderProfile,
+                                    onCosmeticsUpdate = statsViewModel::updateReaderCosmetics,
+                                    onShareYearInReview = ::shareYearInReview,
+                                    onMangaClick = { router.openDetails(it) },
+                                    footerContent = {
+                                        JourneyPanelDisplayToggle(
+                                            mode = panelDisplayMode,
+                                            onModeChange = journeyViewModel::setDisplayMode,
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -88,11 +239,118 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
             SettingsSearchMenuProvider(searchViewModel),
             viewLifecycleOwner,
         )
+        (activity as? SettingsActivity)?.onJourneyModelButtonClick = { showJourneyModelPicker() }
+        statsViewModel.onActionDone.observeEvent(
+            viewLifecycleOwner,
+            ReversibleActionObserver(view),
+        )
+        val journeyBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                journeyBackAction?.invoke()
+            }
+        }
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, journeyBackCallback)
+        viewLifecycleOwner.lifecycleScope.launch {
+            journeyPageVisible.collect { journeyBackCallback.isEnabled = it }
+        }
+    }
+
+    override fun onDestroyView() {
+        (activity as? SettingsActivity)?.apply {
+            onJourneyModelButtonClick = null
+            setJourneyModelButtonVisible(false)
+        }
+        super.onDestroyView()
+    }
+
+    /** Model chooser for the Kartu panel, opened from the Settings header button. */
+    private fun showJourneyModelPicker() {
+        val models = JourneyPanelModel.entries
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.journey_panel_model_label)
+            .setSingleChoiceItems(
+                models.map { getString(it.labelRes) }.toTypedArray(),
+                models.indexOf(journeyViewModel.model.value),
+            ) { dialog, which ->
+                journeyViewModel.setModel(models[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun openSection(section: SettingsSection) {
         val activity = activity as? SettingsActivity ?: return
         activity.openFragment(section.fragmentClass, null, isFromRoot = true)
+    }
+
+    private fun shareYearInReview(review: YearInReview) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val context = requireContext()
+            val uri = withContext(Dispatchers.Default) {
+                YearInReviewShareCard.renderToShareUri(context, review)
+            }
+            ShareHelper(context).shareImage(uri)
+        }
+    }
+
+}
+
+/**
+ * Utama / Kartu switch shown at the very end of the Settings Journey page's
+ * content, below everything else on the page. A pill
+ * with two segments; the active segment is filled with the theme's primary
+ * color. Neutral chrome on purpose: it belongs to the page, not to any of the
+ * four Kartu visual models below it.
+ */
+@Composable
+private fun JourneyPanelDisplayToggle(
+    mode: JourneyDisplayMode,
+    onModeChange: (JourneyDisplayMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(percent = 50),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Row(modifier = Modifier.padding(4.dp)) {
+                JourneyDisplayMode.entries.forEach { item ->
+                    val selected = item == mode
+                    Surface(
+                        onClick = { onModeChange(item) },
+                        shape = RoundedCornerShape(percent = 50),
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            Color.Transparent
+                        },
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (item == JourneyDisplayMode.UTAMA) {
+                                    R.string.journey_display_utama
+                                } else {
+                                    R.string.journey_display_kartu
+                                },
+                            ),
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -266,6 +524,7 @@ private fun RootSettingsContent(
 ) {
     val ctx = LocalContext.current
     val modern = LocalMiyorareVisualPalette.current.isModern
+    // This content is page 0 of the root pager; page 1 is the Journey panel.
     SettingsScaffold {
         if (updateAvailable) {
             item {

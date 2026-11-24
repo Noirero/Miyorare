@@ -60,6 +60,7 @@ import javax.inject.Singleton
 class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+	private val discordCredentials = context.getSharedPreferences("miyorare_discord_credentials", Context.MODE_PRIVATE)
 	// Capture this before any migration/default writes below. Existing installs already have app
 	// preferences, while a true fresh install starts empty. That distinction lets Modern become the
 	// new-install default without forcing legacy users away from their previous Classic appearance.
@@ -70,6 +71,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	private val mangaListBadgesDefault = ArraySet(context.resources.getStringArray(R.array.values_list_badges))
 
 	init {
+		migrateDiscordToken()
 		if (!prefs.contains(MiyorareAppearance.KEY_DESIGN_STYLE)) {
 			prefs.edit {
 				putEnumValue(
@@ -1206,12 +1208,30 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_DISCORD_RPC_SKIP_NSFW, false)
 
 	var discordToken: String?
-		get() = prefs.getString(KEY_DISCORD_TOKEN, null)?.trim()?.nullIfEmpty()
-		set(value) = prefs.edit { putString(KEY_DISCORD_TOKEN, value?.nullIfEmpty()) }
+		get() = synchronized(discordCredentials) {
+			(discordCredentials.getString(KEY_DISCORD_TOKEN, null) ?: legacyDiscordToken())?.trim()?.nullIfEmpty()
+		}
+		set(value) = synchronized(discordCredentials) {
+			discordCredentials.edit { putString(KEY_DISCORD_TOKEN, value?.trim()?.nullIfEmpty()) }
+			prefs.edit { remove(KEY_DISCORD_TOKEN) }
+		}
 
-	var isVerboseLoggingEnabled: Boolean
-		get() = prefs.getBoolean(KEY_VERBOSE_LOGGING, false)
-		set(value) = prefs.edit { putBoolean(KEY_VERBOSE_LOGGING, value) }
+	fun observeDiscordTokenChanges(): Flow<String?> = discordCredentials.observeChanges()
+		.filter { it == null || it == KEY_DISCORD_TOKEN }
+		.onStart { emit(null) }
+		.flowOn(Dispatchers.IO)
+
+	private fun legacyDiscordToken(): String? =
+		if (prefs.contains(KEY_DISCORD_TOKEN)) prefs.all[KEY_DISCORD_TOKEN] as? String else null
+
+	private fun migrateDiscordToken() = synchronized(discordCredentials) {
+		if (!prefs.contains(KEY_DISCORD_TOKEN)) return@synchronized
+		val token = discordCredentials.getString(KEY_DISCORD_TOKEN, null) ?: legacyDiscordToken()
+		// Keep the legacy copy if the credential store could not be persisted.
+		if (discordCredentials.edit().putString(KEY_DISCORD_TOKEN, token).commit()) {
+			prefs.edit { remove(KEY_DISCORD_TOKEN) }
+		}
+	}
 
 	val isReadingTimeEstimationEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READING_TIME, true)
@@ -1234,6 +1254,45 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	var statsMatureMode: String
 		get() = prefs.getString(KEY_STATS_MATURE_MODE, "PRIVATE") ?: "PRIVATE"
 		set(value) = prefs.edit { putString(KEY_STATS_MATURE_MODE, value) }
+
+	/** Visual model key for the Settings Journey panel; see JourneyPanelModel. */
+	var journeyPanelModel: String
+		get() = prefs.getString(KEY_JOURNEY_PANEL_MODEL, "night") ?: "night"
+		set(value) = prefs.edit { putString(KEY_JOURNEY_PANEL_MODEL, value) }
+
+	/** Presentation of the main Reader Journey screen: "utama" or "kartu". */
+	var journeyDisplayMode: String
+		get() = prefs.getString(KEY_JOURNEY_DISPLAY_MODE, "utama") ?: "utama"
+		set(value) = prefs.edit { putString(KEY_JOURNEY_DISPLAY_MODE, value) }
+
+	/**
+	 * Presentation of the Reader Journey page inside Settings: "kartu" (default)
+	 * or "utama". Independent from [journeyDisplayMode] on purpose: the Settings
+	 * page keeps its own last choice and starts on Kartu.
+	 */
+	var journeyPanelDisplayMode: String
+		get() = prefs.getString(KEY_JOURNEY_PANEL_DISPLAY_MODE, "kartu") ?: "kartu"
+		set(value) = prefs.edit { putString(KEY_JOURNEY_PANEL_DISPLAY_MODE, value) }
+
+	/** Weekly reading goal in chapters (Monday–Sunday weeks); 0 means no goal. */
+	var journeyWeeklyGoal: Int
+		get() = prefs.getInt(KEY_JOURNEY_WEEKLY_GOAL, 0)
+		set(value) = prefs.edit { putInt(KEY_JOURNEY_WEEKLY_GOAL, value) }
+
+	/** Epoch day of the Monday the weekly-goal anchor belongs to; 0 means never anchored. */
+	var journeyGoalWeekStart: Long
+		get() = prefs.getLong(KEY_JOURNEY_GOAL_WEEK_START, 0L)
+		set(value) = prefs.edit { putLong(KEY_JOURNEY_GOAL_WEEK_START, value) }
+
+	/** Lifetime verified chapters at the start of the anchored week. */
+	var journeyGoalBaseline: Long
+		get() = prefs.getLong(KEY_JOURNEY_GOAL_BASELINE, 0L)
+		set(value) = prefs.edit { putLong(KEY_JOURNEY_GOAL_BASELINE, value) }
+
+	/** Chapters finished in the last completed week; -1 means unknown (no trend shown). */
+	var journeyGoalLastWeek: Long
+		get() = prefs.getLong(KEY_JOURNEY_GOAL_LAST_WEEK, -1L)
+		set(value) = prefs.edit { putLong(KEY_JOURNEY_GOAL_LAST_WEEK, value) }
 
 	val isAutoLocalChaptersCleanupEnabled: Boolean
 		get() = prefs.getBoolean(KEY_CHAPTERS_CLEAR_AUTO, false)
@@ -1456,6 +1515,13 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_EPUB_FONT_FAMILY = "epub_font_family"
 		const val KEY_APP_FONT_PACK_ID = "app_font_pack_id"
 		const val KEY_APP_ICON_PACK_ID = "app_icon_pack_id"
+		const val KEY_JOURNEY_PANEL_MODEL = "journey_panel_model"
+		const val KEY_JOURNEY_DISPLAY_MODE = "journey_display_mode"
+		const val KEY_JOURNEY_PANEL_DISPLAY_MODE = "journey_panel_display_mode"
+		const val KEY_JOURNEY_WEEKLY_GOAL = "journey_weekly_goal"
+		const val KEY_JOURNEY_GOAL_WEEK_START = "journey_goal_week_start"
+		const val KEY_JOURNEY_GOAL_BASELINE = "journey_goal_baseline"
+		const val KEY_JOURNEY_GOAL_LAST_WEEK = "journey_goal_last_week"
 		const val KEY_EPUB_FONT_WEIGHT = "epub_font_weight"
 		const val KEY_EPUB_LINE_HEIGHT = "epub_line_height"
 		const val KEY_EPUB_PARAGRAPH_SPACING = "epub_paragraph_spacing"
@@ -1622,6 +1688,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 			KEY_PROTECT_APP_BIOMETRIC_OLD,
 			KEY_PROXY_PASSWORD,
 			KEY_PROXY_LOGIN,
+			KEY_DISCORD_TOKEN,
 			KEY_INCOGNITO_MODE,
 			KEY_ONBOARDING_COMPLETED,
 			KEY_ONBOARDING_INSTALL_ID,

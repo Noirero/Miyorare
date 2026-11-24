@@ -6,6 +6,8 @@ import okhttp3.Request
 import okhttp3.Response
 import okio.Buffer
 import org.koitharu.kotatsu.core.network.CommonHeaders.ACCEPT_ENCODING
+import org.koitharu.kotatsu.core.network.CommonHeaders.AUTHORIZATION
+import org.koitharu.kotatsu.core.network.CommonHeaders.PROXY_AUTHORIZATION
 
 class CurlLoggingInterceptor(
 	private val curlOptions: String? = null
@@ -18,6 +20,12 @@ class CurlLoggingInterceptor(
 	}
 
 	private fun logRequest(request: Request) {
+		val command = formatCurlRequest(request)
+		log("---cURL (" + request.url + ")")
+		log(command)
+	}
+
+	internal fun formatCurlRequest(request: Request): String {
 		var isCompressed = false
 
 		val curlCmd = StringBuilder()
@@ -31,7 +39,10 @@ class CurlLoggingInterceptor(
 			if (name.equals(ACCEPT_ENCODING, ignoreCase = true) && value.equals("gzip", ignoreCase = true)) {
 				isCompressed = true
 			}
-			curlCmd.append(" -H \"").append(name).append(": ").append(value.escape()).append('\"')
+			val isCredential = name.equals(AUTHORIZATION, ignoreCase = true) ||
+				name.equals(PROXY_AUTHORIZATION, ignoreCase = true)
+			val logValue = if (isCredential) "<redacted>" else value
+			curlCmd.append(" -H \"").append(name).append(": ").append(logValue.escape()).append('\"')
 		}
 
 		val body = request.body
@@ -48,8 +59,7 @@ class CurlLoggingInterceptor(
 		}
 		curlCmd.append(" \"").append(request.url.toString().escape()).append('"')
 
-		log("---cURL (" + request.url + ")")
-		log(curlCmd.toString())
+		return curlCmd.toString()
 	}
 
 	private fun String.escape() = replace(escapeRegex) { match ->

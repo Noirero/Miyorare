@@ -45,6 +45,7 @@ import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.network.webview.WebViewExecutor
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.os.NetworkState
+import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.parser.favicon.FaviconFetcher
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.image.CoilImageGetter
@@ -56,6 +57,7 @@ import org.koitharu.kotatsu.core.util.ext.connectivityManager
 import org.koitharu.kotatsu.core.util.ext.isLowRamDevice
 import org.koitharu.kotatsu.details.ui.pager.pages.MangaPageFetcher
 import org.koitharu.kotatsu.details.ui.pager.pages.MangaPageKeyer
+import org.koitharu.kotatsu.kotatsu.KotatsuMangaRepository
 import org.koitharu.kotatsu.local.data.CacheDir
 import org.koitharu.kotatsu.local.data.FaviconCache
 import org.koitharu.kotatsu.local.data.LocalStorageCache
@@ -132,6 +134,7 @@ interface AppModule {
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
 			tsukiRuntimeProvider: Provider<TsukiPluginRuntime>,
+			mangaRepositoryFactoryProvider: Provider<MangaRepository.Factory>,
 			performanceImageListener: PerformanceImageListener,
 		): ImageLoader {
 			val okHttpClientLazy = lazy {
@@ -176,7 +179,10 @@ interface AppModule {
 					add(pageFetcherFactory)
 					add(imageProxyInterceptor)
 					add(coverRestoreInterceptor)
-					add(MangaSourceHeaderInterceptor(webViewExecutorProvider))
+					add(MangaSourceHeaderInterceptor(webViewExecutorProvider) { source ->
+						(mangaRepositoryFactoryProvider.get().create(source) as? KotatsuMangaRepository)
+							?.getCoverHeaders()
+					})
 				}.build()
 		}
 

@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.favourites.domain
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
@@ -10,6 +12,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,7 +50,12 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 				null
 			}
 		}
-		if (entries.isNotEmpty()) db.withTransaction {
+		if (entries.isEmpty()) return
+		// The worker already records the scope of a receipt-backed ExHentai archive. A current or
+		// historical folder can be visible from another scope and must not override the receipt.
+		val evidence = withContext(Dispatchers.IO) { ExhentaiChapterOwnership.inspectDestination(value.file) }
+		if ((evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt != null) return
+		db.withTransaction {
 			// BaseApp collects ownership and LocalMangaIndex independently. Either consumer can win
 			// the completion event, so persist a missing parent atomically with its ownership rows.
 			// Existing remote/local metadata must not be replaced by this secondary index writer.
@@ -70,12 +78,20 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 		space: FavouriteSpace?,
 		file: File,
 		verified: Boolean,
+		physicalMangaId: Long? = null,
+		receipt: ExhentaiChapterOwnership.Receipt? = null,
 	): Boolean {
 		val physical = file.canonicalFile
 		val paths = if (verified) listOf(physical.path)
 		else listOfNotNull(physical.path, physical.takeIf(File::isFile)?.parentFile?.path)
+		val hasMatchingReceipt = verified && space != null && receipt?.space == space
 		return db.getFavouriteDownloadIndexDao().findEntriesByPaths(paths).any {
-			(space != null && it.space != space.dbValue) || (!verified && it.mangaId != mangaId)
+			// Older installs also indexed the physical Local id from the generic storage event.
+			val localAlias = verified && it.mangaId == physicalMangaId && it.mangaId != mangaId
+			// Earlier builds could index the same gallery and file in both spaces from a storage
+			// event. Only a verified receipt can disambiguate those rows for the requested space.
+			val foreignSpace = space != null && it.space != space.dbValue && !hasMatchingReceipt
+			!localAlias && (it.mangaId != mangaId || foreignSpace)
 		}
 	}
 

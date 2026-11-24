@@ -4,6 +4,13 @@
 	xmlns:app="http://schemas.android.com/apk/res-auto">
 
 	<item
+		android:id="@+id/action_continue_reading"
+		android:icon="@drawable/ic_play"
+		android:title="@string/continue_reading"
+		android:visible="false"
+		app:showAsAction="never" />
+
+	<item
 		android:id="@+id/action_pin"
 		android:icon="@drawable/ic_pin"
 		android:title="@string/pin"

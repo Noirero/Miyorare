@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import org.koitharu.kotatsu.favourites.data.FavouriteCategorySetEntity
@@ -33,7 +34,10 @@ class FavouriteSetSelectionStore @Inject constructor(
 		revision.update { it + 1 }
 	}
 
-	fun observe(space: FavouriteSpace, type: Flow<FavouriteContentType>): Flow<FavouriteCategorySetEntity> = combine(
+	fun observe(space: FavouriteSpace, type: Flow<FavouriteContentType>): Flow<FavouriteCategorySetEntity> =
+		observeSelection(space, type).map { it.set }.distinctUntilChanged()
+
+	internal fun observeSelection(space: FavouriteSpace, type: Flow<FavouriteContentType>): Flow<Selection> = combine(
 		repository.observeSets(space), type, revision,
 	) { sets, contentType, _ -> sets to contentType }.mapLatest { (sets, contentType) ->
 		val preferenceKey = key(space, contentType)
@@ -46,9 +50,11 @@ class FavouriteSetSelectionStore @Inject constructor(
 			if (prefs.getString(preferenceKey, null) != saved) return@synchronized null
 			val selected = currentSets.firstOrNull { it.syncKey == saved } ?: checkNotNull(currentSets.firstOrNull())
 			select(selected, space, contentType)
-			selected
+			Selection(contentType, selected)
 		}
 	}.filterNotNull().distinctUntilChanged()
+
+	internal data class Selection(val type: FavouriteContentType, val set: FavouriteCategorySetEntity)
 
 	private fun key(space: FavouriteSpace, type: FavouriteContentType) = "${space.dbValue}:${type.name}"
 }

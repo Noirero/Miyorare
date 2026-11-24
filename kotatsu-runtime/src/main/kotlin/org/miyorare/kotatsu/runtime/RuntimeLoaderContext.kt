@@ -21,12 +21,15 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.json.JSONArray
 import org.json.JSONObject
+import org.koitharu.kotatsu.parsers.DirectParsersAccess
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParser
+import org.koitharu.kotatsu.parsers.ParsersBundle
 import org.koitharu.kotatsu.parsers.bitmap.Bitmap
 import org.koitharu.kotatsu.parsers.bitmap.Rect
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.config.MangaSourceConfig
+import org.koitharu.kotatsu.parsers.core.ParsersBundleImpl
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.webview.InterceptedRequest
 import org.koitharu.kotatsu.parsers.webview.InterceptionConfig
@@ -41,6 +44,9 @@ internal class RuntimeLoaderContext(private val appContext: Context) : MangaLoad
 	private val webViewInterceptor by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
 		RuntimeWebViewInterceptor(appContext, getDefaultUserAgent())
 	}
+
+	@OptIn(DirectParsersAccess::class)
+	override val parsers: ParsersBundle = ParsersBundleImpl
 
 	override val cookieJar: CookieJar = cookies
 	override val httpClient: OkHttpClient = OkHttpClient.Builder().cookieJar(cookies).build()

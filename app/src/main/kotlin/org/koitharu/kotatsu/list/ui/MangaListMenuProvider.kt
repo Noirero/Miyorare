@@ -7,7 +7,9 @@ import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
+import org.koitharu.kotatsu.favourites.ui.list.LocalFavouritesListFragment
 import org.koitharu.kotatsu.history.ui.HistoryListFragment
 import org.koitharu.kotatsu.list.ui.config.ListConfigSection
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsFragment
@@ -22,6 +24,11 @@ class MangaListMenuProvider(
 			is HistoryListFragment -> ListConfigSection.History
 			is SuggestionsFragment -> ListConfigSection.Suggestions
 			is FavouritesListFragment -> ListConfigSection.Favorites(fragment.categoryId)
+			is LocalFavouritesListFragment -> if (fragment.favouriteSpace == FavouriteSpace.NORMAL) {
+				ListConfigSection.LocalFavourites
+			} else {
+				ListConfigSection.General
+			}
 			is UpdatesFragment -> ListConfigSection.Updated
 			else -> ListConfigSection.General
 		}

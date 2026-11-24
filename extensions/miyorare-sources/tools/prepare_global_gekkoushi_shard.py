@@ -682,18 +682,36 @@ import androidx.collection.MutableIntObjectMap
     new_get_pages = '''    override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = coroutineScope {
         val baseUrl = chapter.url.substringBefore('?')
         val firstDoc = webClient.httpGet(baseUrl.toAbsoluteUrl(domain)).parseHtml()
-        val pageCount = firstDoc.body()
-            .selectFirst("table.ptt")
-            ?.selectFirst("tr")
-            ?.select("a")
-            ?.findLast { a -> a.text().toIntOrNull() != null }
-            ?.text()
-            ?.toIntOrNull()
-            ?: 1
+        val expectedImages = firstDoc.select("#gdd tr").firstNotNullOfOrNull { row ->
+            val cells = row.select("td")
+            if (cells.size < 2 || !cells[0].text().trimEnd(':').equals("Length", ignoreCase = true)) {
+                null
+            } else {
+                Regex("[0-9][0-9,]*").find(cells[1].text())?.value
+                    ?.replace(",", "")?.toIntOrNull()?.takeIf { it > 0 }
+            }
+        }
+        val pageParameter = Regex("[?&]p=([0-9]+)(?:[&#]|$)")
+        fun lastAdvertisedIndex(doc: org.jsoup.nodes.Document): Int? =
+            doc.select("table.ptt a[href], table.ptb a[href]").mapNotNull { link ->
+                pageParameter.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+            }.maxOrNull()
+
+        fun confirmsLastIndex(doc: org.jsoup.nodes.Document, index: Int): Boolean =
+            doc.select("table.ptt tr, table.ptb tr").any { row ->
+                val current = row.selectFirst("td.ptds")?.text()?.toIntOrNull()
+                val next = row.select("td").lastOrNull()
+                val nextLink = next?.selectFirst("a[href]")
+                val nextIndex = nextLink?.let {
+                    pageParameter.find(it.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+                }
+                current == index + 1 && next?.text() in setOf(">", "›", "»", "Next") &&
+                    (nextLink == null || nextIndex == index)
+            }
 
         fun parseGalleryPage(doc: org.jsoup.nodes.Document): List<MangaPage> {
             val root = doc.body().requireElementById("gdt")
-            return root.select("a").map { a ->
+            val images = root.select("a[href]").map { a ->
                 val url = a.attrAsRelativeUrl("href")
                 MangaPage(
                     id = generateUid(url),
@@ -702,27 +720,63 @@ import androidx.collection.MutableIntObjectMap
                     source = source,
                 )
             }
+            if (images.isEmpty()) {
+                throw java.io.IOException("An ExHentai gallery index returned no images. Please retry.")
+            }
+            return images
         }
 
         val pages = ArrayList<MangaPage>()
-        pages.addAll(parseGalleryPage(firstDoc))
+        val seen = HashSet<Long>()
+        fun addGalleryPage(images: List<MangaPage>) {
+            for (image in images) {
+                if (!seen.add(image.id)) {
+                    throw java.io.IOException("An ExHentai gallery index repeated images. Please retry.")
+                }
+                pages.add(image)
+            }
+        }
+        addGalleryPage(parseGalleryPage(firstDoc))
 
         // Fetch only a small number of gallery index pages concurrently. This removes the long
         // sequential wait seen on multi-page galleries while avoiding an unbounded request burst
         // that could trigger E-Hentai/ExHentai throttling. awaitAll preserves request order here,
         // so Reader page order remains identical to the website.
         val parallelism = 3
+        // Each index has at least one image. With no declared length cap fallback traversal
+        // so a malformed or endlessly advancing pager cannot keep issuing requests.
+        val indexLimit = expectedImages ?: 512
+        var lastPage = 0
+        fun observePager(doc: org.jsoup.nodes.Document) {
+            val advertised = lastAdvertisedIndex(doc) ?: return
+            if (advertised >= indexLimit || advertised >= Int.MAX_VALUE - parallelism) {
+                throw java.io.IOException("Invalid ExHentai gallery pagination. Please retry.")
+            }
+            lastPage = maxOf(lastPage, advertised)
+        }
+        observePager(firstDoc)
+
+        var lastDocument = firstDoc
         var batchStart = 1
-        while (batchStart < pageCount) {
-            val batchEnd = minOf(pageCount, batchStart + parallelism)
+        while (batchStart <= lastPage) {
+            val batchEnd = minOf(lastPage + 1, batchStart + parallelism)
             val batch = (batchStart until batchEnd).map { galleryPage ->
                 async {
-                    val doc = webClient.httpGet("$baseUrl?p=$galleryPage".toAbsoluteUrl(domain)).parseHtml()
-                    parseGalleryPage(doc)
+                    webClient.httpGet("$baseUrl?p=$galleryPage".toAbsoluteUrl(domain)).parseHtml()
                 }
             }.awaitAll()
-            batch.forEach(pages::addAll)
+            for (doc in batch) {
+                addGalleryPage(parseGalleryPage(doc))
+                observePager(doc)
+                lastDocument = doc
+            }
             batchStart = batchEnd
+        }
+        if (expectedImages == null && !confirmsLastIndex(lastDocument, lastPage)) {
+            throw java.io.IOException("Cannot verify the end of the ExHentai gallery. Please retry.")
+        }
+        if (expectedImages != null && pages.size != expectedImages) {
+            throw java.io.IOException("ExHentai gallery returned ${pages.size} of $expectedImages images. Please retry.")
         }
         pages
     }

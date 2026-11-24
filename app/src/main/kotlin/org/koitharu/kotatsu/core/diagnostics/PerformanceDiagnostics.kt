@@ -11,6 +11,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import org.koitharu.kotatsu.BuildConfig
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.settings.SettingsActivity
 import java.lang.ref.WeakReference
 import java.util.UUID
 import java.util.WeakHashMap
@@ -31,7 +35,7 @@ internal object PerformanceDiagnostics {
 	@Synchronized fun start(context: Context) {
 		if (session != null) return
 		val value = DiagnosticsSession(UUID.randomUUID().toString().take(12), SystemClock::elapsedRealtimeNanos) {
-			Log.i("PerformanceDiagnostics", it)
+			if (BuildConfig.DEBUG) Log.i("PerformanceDiagnostics", it)
 		}
 		session = value
 		val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -51,8 +55,17 @@ internal object PerformanceDiagnostics {
 		monitor = null
 		currentTrace = null
 		synchronized(owners) { owners.clear() }
-		return value.stop()
+		value.stop()
+		return value.exportSnapshot()
 	}
+
+	fun exportSnapshot(): String? = session?.exportSnapshot()
+
+	fun captureFailed(): Boolean = session?.captureFailed == true
+
+	fun recordingId(): String? = session?.id
+
+	fun subjectId(recording: String): Long? = session?.takeIf { it.id == recording }?.nextSubjectId()
 
 	fun navigation(from: String, to: String, owner: Any? = null): DiagnosticsSession.Trace? {
 		val value = session ?: return null
@@ -81,10 +94,39 @@ internal object PerformanceDiagnostics {
 		} else null
 	}
 
-	/** Copies only caller-supplied, code-defined diagnostic dimensions into the bounded summary. */
-	fun captureDiagnostic(tag: String, event: String, owner: Any, detail: String) {
+	/** Layout callers first check that the owning collection is Normal Favourites. */
+	fun captureDiagnostic(tag: String, event: String, detail: String) {
 		val value = session ?: return
-		value.captureDiagnostic(tag, event, ownerTrace(owner), detail)
+		val fields = DiagnosticExportFields.layout(tag, event, detail) ?: return
+		value.captureDiagnostic(tag, event, null, fields)
+	}
+
+	fun cover(
+		recording: String, holder: Long, event: CoverEvent, accepted: Boolean,
+		pending: Boolean, pendingMs: Long, stroke: Boolean, glowEligible: Boolean,
+	) {
+		session?.takeIf { it.id == recording }?.captureDiagnostic(
+			"FavouritesCoverBorder", event.name, null,
+			"holder=$holder accepted=$accepted pending=$pending pending_ms=$pendingMs stroke=$stroke glow_eligible=$glowEligible",
+		)
+	}
+
+	fun reader(recording: String, reader: Long, event: ReaderEvent, elapsedMs: Long = 0L) {
+		session?.takeIf { it.id == recording }?.captureDiagnostic(
+			"Reader", event.name, null, "reader=$reader elapsed_ms=$elapsedMs",
+		)
+	}
+
+	fun pageRoute(recording: String, reader: Long, route: PageRoute) {
+		session?.takeIf { it.id == recording }?.captureDiagnostic(
+			"Reader", "PAGE_ROUTE", null, "reader=$reader route=${route.name}",
+		)
+	}
+
+	fun download(recording: String, operation: Long, event: DownloadEvent, expected: Int, actual: Int) {
+		session?.takeIf { it.id == recording }?.captureDiagnostic(
+			"Download", event.name, null, "operation=$operation expected_pages=$expected actual_pages=$actual",
+		)
 	}
 
 	fun lifecycle(owner: Any, stage: String) {
@@ -188,6 +230,14 @@ internal object PerformanceDiagnostics {
 
 	fun registerFragments(activity: android.app.Activity) { lifecycle?.registerFragments(activity) }
 
-	fun resumed(activity: android.app.Activity) { monitor?.attach(activity) }
+	fun resumed(activity: android.app.Activity) {
+		// Shared image/network listeners and protected content screens cannot prove privacy
+		// ownership. Only frame totals from these public app windows go into the export.
+		if ((activity is MainActivity || activity is SettingsActivity) &&
+			FavouriteSpace.fromArgument(activity.intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)) == FavouriteSpace.NORMAL
+		) {
+			monitor?.attach(activity)
+		}
+	}
 	fun paused(activity: android.app.Activity) { monitor?.detach(activity) }
 }

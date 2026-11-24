@@ -36,4 +36,8 @@
     <string name="normal_transfer_error">Pemindahan ke Normal gagal. Disukai Private dan file download tidak dihapus.</string>
     <string name="normal_transfer_remove_private">Hapus dari Private</string>
     <string name="normal_transfer_removed_private">Dihapus dari Disukai Private.</string>
+    <string name="favourites_selection_unavailable">Sebagian judul terpilih gagal dimuat. Pilih ulang judulnya.</string>
+    <plurals name="favourites_remove_selected_count">
+        <item quantity="other">%d judul terpilih akan dihapus.</item>
+    </plurals>
 </resources>

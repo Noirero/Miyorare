@@ -72,7 +72,7 @@ class ContinueReadingWidget : AppWidgetProvider() {
 							buildContent(appContext, manga, history, wideCover, compactCover),
 						)
 					} else {
-						Log.w(TAG, "cover bitmap null for manga=${manga.title}")
+						Log.w(TAG, "No cover bitmap available")
 					}
 				}
 			}

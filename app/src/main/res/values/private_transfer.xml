@@ -36,4 +36,9 @@
     <string name="normal_transfer_error">Transfer to Normal failed. Private favourites and downloaded files were not removed.</string>
     <string name="normal_transfer_remove_private">Remove from Private</string>
     <string name="normal_transfer_removed_private">Removed from Private Favourites.</string>
+    <string name="favourites_selection_unavailable">Could not load every selected title. Select the titles again.</string>
+    <plurals name="favourites_remove_selected_count">
+        <item quantity="one">%d selected title will be removed.</item>
+        <item quantity="other">%d selected titles will be removed.</item>
+    </plurals>
 </resources>

@@ -73,6 +73,7 @@ import org.koitharu.kotatsu.local.library.LOCAL_LIBRARY_SCHEME
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -468,6 +469,19 @@ abstract class ChaptersPagesViewModel(
 				.collect { onDownloadComplete(it) }
 		}
 		launchJob(Dispatchers.Default) {
+			interactor.exhentaiDownloads.collect { event ->
+				if (event.space != favouriteSpace || isSmartLocal || !event.local.file.exists()) return@collect
+				mangaDetails.update { current ->
+					if (current == null || current.id != event.mangaId || !current.isOfficialExhentai) {
+						current
+					} else {
+						val details = current.copy(localManga = event.local)
+						if (isScanlatorsMerged.value) details.withMergedBranches() else details
+					}
+				}
+			}
+		}
+		launchJob(Dispatchers.Default) {
 			LocalMangaIndex.rebuildEvents.collect {
 				if (!isSmartLocal) onLocalIndexRebuilt()
 			}
@@ -768,8 +782,11 @@ abstract class ChaptersPagesViewModel(
 		}
 	}
 
+	protected open fun allowsDownloadDiagnosticExport(): Boolean = !settings.isIncognitoModeEnabled
+
 	fun download(chaptersIds: Set<Long>?, allowMeteredNetwork: Boolean) {
 		if (getMangaOrNull()?.source == LocalMangaSource) return
+		val allowDiagnosticExport = allowsDownloadDiagnosticExport()
 		launchJob(Dispatchers.Default) {
 			val manga = requireManga()
 			val active = activeChapterDownloads.value
@@ -788,6 +805,7 @@ abstract class ChaptersPagesViewModel(
 				format = null,
 				allowMeteredNetwork = allowMeteredNetwork,
 				favouriteSpace = favouriteSpace,
+				allowDiagnosticExport = allowDiagnosticExport,
 			)
 			downloadScheduler.schedule(setOf(manga to task))
 			onDownloadStarted.call(Unit)
@@ -813,10 +831,15 @@ abstract class ChaptersPagesViewModel(
 		launchLoadingJob(Dispatchers.Default) {
 			val remote = details?.sourceManga
 			if (remote != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
-				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file, useDestination = true)) {
+				check(deleteLocalMangaUseCase.deleteExhentaiCopy(remote, favouriteSpace, local.file)) {
 					"Downloaded ExHentai gallery is unavailable"
 				}
-			} else deleteLocalMangaUseCase(m)
+			} else {
+				if (remote != null && EhentaiSourceFamily.supportsTitleMatchedDownloads(remote.source.name)) {
+					deleteLocalMangaUseCase.requireSourceOwnedExhentaiDeletion(remote, favouriteSpace, local.file)
+				}
+				deleteLocalMangaUseCase(m)
+			}
 			onMangaRemoved.call(m)
 		}
 	}
@@ -899,6 +922,8 @@ abstract class ChaptersPagesViewModel(
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		if (isSmartLocal) return
 		val current = mangaDetails.value ?: return
+		// Official ExHentai publications carry an explicit space; the generic signal is for Local.
+		if (downloadedManga != null && current.isOfficialExhentai) return
 		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
 		if (downloadedManga != null) {
 			val matchingRoot = expectedRoots.filter { downloadedManga.file.isInside(it) }

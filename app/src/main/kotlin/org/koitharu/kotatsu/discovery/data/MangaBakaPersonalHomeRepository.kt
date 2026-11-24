@@ -59,9 +59,9 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		} catch (e: CatalogAccountUnauthorizedException) {
 			throw e
 		} catch (_: Exception) {
-			return MangaBakaPersonalHomeSnapshot(library = library, partial = true)
+			return MangaBakaPersonalHomeSnapshot(library = library.items, partial = true, libraryTruncated = library.truncated)
 		}
-		return MangaBakaPersonalHomeSnapshot(library, recommendations)
+		return MangaBakaPersonalHomeSnapshot(library.items, recommendations, partial = library.truncated, libraryTruncated = library.truncated)
 	}
 
 	/** Public exact-type browsing. MangaBaka Search officially supports type/type_not. */
@@ -117,15 +117,22 @@ class MangaBakaPersonalHomeRepository @Inject constructor(
 		return parseMangaBakaLibraryPage(root, filter, allowAdult, page, limit)
 	}
 
-	private suspend fun loadLibrary(filter: CatalogFilter, allowAdult: Boolean): List<MangaBakaLibraryItem> {
+	private data class LibraryScan(val items: List<MangaBakaLibraryItem>, val truncated: Boolean)
+
+	private suspend fun loadLibrary(filter: CatalogFilter, allowAdult: Boolean): LibraryScan {
 		val result = LinkedHashMap<Long, MangaBakaLibraryItem>()
 		var page = 1
+		var truncated = false
 		while (page <= MANGABAKA_LIBRARY_MAX_PAGES) {
 			val response = libraryPage(filter, allowAdult, page)
 			response.items.forEach { result[it.tracking.targetId] = it }
+			if (page == MANGABAKA_LIBRARY_MAX_PAGES) {
+				truncated = response.hasMore
+				break
+			}
 			page = response.nextPage ?: break
 		}
-		return result.values.toList()
+		return LibraryScan(result.values.toList(), truncated)
 	}
 
 	private suspend fun loadRecommendations(filter: CatalogFilter, allowAdult: Boolean): List<TrackerCatalogItem> {
@@ -178,6 +185,7 @@ internal fun parseMangaBakaLibraryPage(
 	return MangaBakaLibraryPage(
 		items = items,
 		nextPage = (page + 1).takeIf { hasNext && page < MANGABAKA_LIBRARY_MAX_PAGES },
+		hasMore = hasNext,
 	)
 }
 

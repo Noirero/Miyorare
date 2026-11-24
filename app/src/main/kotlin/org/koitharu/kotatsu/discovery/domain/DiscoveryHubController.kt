@@ -26,10 +26,21 @@ class DiscoveryHubController(
 	private var generation = 0L
 	private var job: Job? = null
 
+	/** Recheck on return to Home without restarting a fresh or already-running request. */
+	fun reloadIfStale() {
+		val current = state.value
+		if (current.loading || current.refreshing) return
+		val home = current.home
+		if (home == null || !CatalogCachePolicy.isFresh(home.savedAt, now()) ||
+			home.sections.any { it.failure != null }) {
+			load(current.request)
+		}
+	}
+
 	fun load(key: CatalogHomeRequest = state.value.request, force: Boolean = false) {
 		val ticket = ++generation
 		job?.cancel()
-		val retained = state.value.home?.takeIf { state.value.request == key }
+		val retained = state.value.home?.takeIf { state.value.request == key && CatalogCachePolicy.isReadable(it.savedAt, now()) }
 		mutableState.value = DiscoveryHubState(key, retained, loading = retained == null, refreshing = retained != null)
 		job = scope.launch {
 			fun current() = generation == ticket && mutableState.value.request == key

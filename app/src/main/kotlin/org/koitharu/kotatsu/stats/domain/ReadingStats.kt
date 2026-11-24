@@ -69,4 +69,13 @@ data class ReadingStats(
 
 	val averageSessionDuration: Long
 		get() = if (sessionCount > 0) totalDuration / sessionCount else 0L
+
+	/** A snapshot from the previous privacy mode must not be shown while its replacement loads. */
+	internal fun forMatureMode(mode: StatsMatureMode): ReadingStats =
+		if (matureMode == mode) this else ReadingStats(
+			period = period,
+			scope = scope,
+			matureMode = mode,
+			isJourneyEnabled = isJourneyEnabled,
+		)
 }

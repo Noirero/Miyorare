@@ -101,4 +101,9 @@
     <string name="hub_publication">Publikasi</string>
     <string name="hub_recommendations">Rekomendasi</string>
     <string name="hub_partial_metadata">Sebagian metadata tidak dapat dimuat.</string>
+    <string name="hub_catalog_snapshot_as_of">Snapshot katalog · %1$s</string>
+    <string name="hub_tracking_last_known_notice">Lencana pelacakan menampilkan status terakhir yang diketahui; perubahan di penyedia mungkin belum terlihat.</string>
+    <string name="hub_kitsu_trending_novel_empty">Tidak ada novel dalam sampel Trending Kitsu saat ini.</string>
+    <string name="hub_mal_novel_ranking_empty">Tidak ada novel pada halaman peringkat ini; halaman lain mungkin berisi novel.</string>
+    <string name="hub_mangabaka_library_truncated">Hanya sebagian pustaka MangaBaka yang termuat. Beberapa lencana pelacakan mungkin belum terbaru.</string>
 </resources>
