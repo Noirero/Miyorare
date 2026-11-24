@@ -8,7 +8,11 @@
         android:allowBackup="false"
         android:label="Miyorare Discord Presence"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <activity android:name=".PresenceActivity" android:exported="true">
+        <!-- The JNI bridge owns a single SDK client per process. -->
+        <activity
+            android:name=".PresenceActivity"
+            android:exported="true"
+            android:launchMode="singleInstance">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

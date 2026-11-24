@@ -101,7 +101,7 @@ class DetailsLoadUseCase @Inject constructor(
 			// stale Local index rebuild. Only titles without any initialized persistent details snapshot keep
 			// local-first behaviour, so a valid zero-chapter snapshot is not mistaken for "never loaded".
 			suspend fun findLocal() = PerformanceDiagnostics.measure("repository", "details_download_local", trace) {
-				downloadedMangaResolver.findSavedManga(manga, favouriteSpace)
+				downloadedMangaResolver.findSavedManga(manga, favouriteSpace, forExhentaiDetails = true)
 			}
 			fun detailsSnapshots(lookup: suspend () -> LocalManga?) = flow {
 				val savedManga = emitRemoteInitialSnapshot(
@@ -336,7 +336,7 @@ class DetailsLoadUseCase @Inject constructor(
 		emit(visibleDetails)
 
 		val discoveredLocal = localLookup.await()
-			?: PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace) }
+			?: PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, forExhentaiDetails = true) }
 		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(
 				manga = remoteDetails,

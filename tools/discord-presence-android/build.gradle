@@ -26,8 +26,8 @@ android {
         applicationId = 'org.noirero.miyorare.presenceprototype'
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = '0.1'
+        versionCode = 4
+        versionName = '0.2'
         buildConfigField 'long', 'DISCORD_APPLICATION_ID', discordApplicationId + 'L'
         ndk {
             abiFilters 'arm64-v8a'

@@ -97,6 +97,22 @@ class EhentaiLegacyDownloadResolverTest {
 		}
 	}
 
+
+	@Test
+	fun `legacy candidate discovery retains EN and ALL duplicates for independent identity checks`() {
+		withTempRoot { root ->
+			val en = legacyMangaDirectory(root, "E-Hentai (EN)", "Same Gallery")
+			val all = legacyMangaDirectory(root, "E-Hentai (ALL)", "Same Gallery")
+			val candidates = EhentaiLegacyDownloadResolver.findCandidateDirectories(
+				root, EhentaiLegacyDownloadResolver.OFFICIAL_SOURCE_NAME, "Same Gallery",
+			)
+			assertEquals(setOf(en.canonicalFile, all.canonicalFile), candidates.map { it.canonicalFile }.toSet())
+			assertNull(EhentaiLegacyDownloadResolver.findUniqueDirectory(
+				root, EhentaiLegacyDownloadResolver.OFFICIAL_SOURCE_NAME, "Same Gallery",
+			))
+		}
+	}
+
 	@Test
 	fun `mihon language source can reuse a different legacy language bucket`() {
 		withTempRoot { root ->

@@ -48,10 +48,24 @@
 		android:padding="8dp"
 		android:singleLine="true"
 		android:textAppearance="?textAppearanceTitleSmall"
-		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintEnd_toStartOf="@id/button_journey_model"
 		app:layout_constraintStart_toEndOf="@id/container_master"
 		app:layout_constraintTop_toTopOf="parent"
 		tools:text="@string/appearance" />
+
+	<ImageButton
+		android:id="@+id/button_journey_model"
+		android:layout_width="42dp"
+		android:layout_height="42dp"
+		android:layout_marginEnd="?listPreferredItemPaddingEnd"
+		android:background="@drawable/bg_journey_model_button"
+		android:contentDescription="@string/journey_panel_model_label"
+		android:src="@drawable/ic_palette"
+		android:visibility="gone"
+		app:layout_constraintTop_toTopOf="@id/textView_header"
+		app:layout_constraintBottom_toBottomOf="@id/textView_header"
+		app:layout_constraintEnd_toEndOf="parent"
+		app:tint="?attr/colorOnSurface" />
 
 	<androidx.fragment.app.FragmentContainerView
 		android:id="@id/container"

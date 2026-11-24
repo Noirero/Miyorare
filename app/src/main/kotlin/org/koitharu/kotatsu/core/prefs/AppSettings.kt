@@ -60,6 +60,7 @@ import javax.inject.Singleton
 class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+	private val discordCredentials = context.getSharedPreferences("miyorare_discord_credentials", Context.MODE_PRIVATE)
 	// Capture this before any migration/default writes below. Existing installs already have app
 	// preferences, while a true fresh install starts empty. That distinction lets Modern become the
 	// new-install default without forcing legacy users away from their previous Classic appearance.
@@ -70,6 +71,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	private val mangaListBadgesDefault = ArraySet(context.resources.getStringArray(R.array.values_list_badges))
 
 	init {
+		migrateDiscordToken()
 		if (!prefs.contains(MiyorareAppearance.KEY_DESIGN_STYLE)) {
 			prefs.edit {
 				putEnumValue(
@@ -1206,8 +1208,30 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_DISCORD_RPC_SKIP_NSFW, false)
 
 	var discordToken: String?
-		get() = prefs.getString(KEY_DISCORD_TOKEN, null)?.trim()?.nullIfEmpty()
-		set(value) = prefs.edit { putString(KEY_DISCORD_TOKEN, value?.nullIfEmpty()) }
+		get() = synchronized(discordCredentials) {
+			(discordCredentials.getString(KEY_DISCORD_TOKEN, null) ?: legacyDiscordToken())?.trim()?.nullIfEmpty()
+		}
+		set(value) = synchronized(discordCredentials) {
+			discordCredentials.edit { putString(KEY_DISCORD_TOKEN, value?.trim()?.nullIfEmpty()) }
+			prefs.edit { remove(KEY_DISCORD_TOKEN) }
+		}
+
+	fun observeDiscordTokenChanges(): Flow<String?> = discordCredentials.observeChanges()
+		.filter { it == null || it == KEY_DISCORD_TOKEN }
+		.onStart { emit(null) }
+		.flowOn(Dispatchers.IO)
+
+	private fun legacyDiscordToken(): String? =
+		if (prefs.contains(KEY_DISCORD_TOKEN)) prefs.all[KEY_DISCORD_TOKEN] as? String else null
+
+	private fun migrateDiscordToken() = synchronized(discordCredentials) {
+		if (!prefs.contains(KEY_DISCORD_TOKEN)) return@synchronized
+		val token = discordCredentials.getString(KEY_DISCORD_TOKEN, null) ?: legacyDiscordToken()
+		// Keep the legacy copy if the credential store could not be persisted.
+		if (discordCredentials.edit().putString(KEY_DISCORD_TOKEN, token).commit()) {
+			prefs.edit { remove(KEY_DISCORD_TOKEN) }
+		}
+	}
 
 	val isReadingTimeEstimationEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READING_TIME, true)
@@ -1664,6 +1688,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 			KEY_PROTECT_APP_BIOMETRIC_OLD,
 			KEY_PROXY_PASSWORD,
 			KEY_PROXY_LOGIN,
+			KEY_DISCORD_TOKEN,
 			KEY_INCOGNITO_MODE,
 			KEY_ONBOARDING_COMPLETED,
 			KEY_ONBOARDING_INSTALL_ID,
