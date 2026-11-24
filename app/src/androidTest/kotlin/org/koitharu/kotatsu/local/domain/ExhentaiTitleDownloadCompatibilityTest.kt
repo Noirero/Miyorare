@@ -1,13 +1,20 @@
 package org.koitharu.kotatsu.local.domain
 
+import android.content.Context
 import android.content.SharedPreferences
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -33,6 +40,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceLifecycleObserver
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
@@ -495,6 +503,58 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		presence.run(full = true)
 		assertFalse(main.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(main.id, gekko.id)))
 		assertFalse(gekko.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(main.id, gekko.id)))
+	}
+
+	@Test fun lifecycleStartupResumeToggleAndDestinationChangesDispatchCorrectScans() = runBlocking {
+		withContext(Dispatchers.Main.immediate) {
+			val context = InstrumentationRegistry.getInstrumentation().targetContext
+			val name = "exhentai-presence-lifecycle-${System.nanoTime()}"
+			val isolatedPrefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+			isolatedPrefs.edit(commit = true) {
+				putBoolean(ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME, false)
+			}
+			val calls = mutableListOf<Boolean>()
+			val owner = object : LifecycleOwner {
+				override val lifecycle = LifecycleRegistry(this)
+			}
+			val observer = ExhentaiPresenceLifecycleObserver(
+				scope = CoroutineScope(coroutineContext),
+				prefs = isolatedPrefs,
+				scan = { full -> calls += full },
+			)
+			try {
+				owner.lifecycle.addObserver(observer)
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+				assertEquals(listOf(true), calls)
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
+				assertEquals(listOf(true), calls)
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+
+				isolatedPrefs.edit(commit = true) {
+					putString(AppSettings.KEY_LOCAL_STORAGE, "/test/new-normal")
+				}
+				isolatedPrefs.edit(commit = true) {
+					putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, "/test/new-private")
+				}
+				assertEquals(listOf(true, false, false), calls)
+
+				isolatedPrefs.edit(commit = true) {
+					putBoolean(ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME, true)
+				}
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
+				assertEquals(listOf(true, false, false, false), calls)
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+				isolatedPrefs.edit(commit = true) {
+					putBoolean(ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME, false)
+				}
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
+				assertEquals(listOf(true, false, false, false), calls)
+			} finally {
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+				owner.lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+				context.deleteSharedPreferences(name)
+			}
+		}
 	}
 
 	/**

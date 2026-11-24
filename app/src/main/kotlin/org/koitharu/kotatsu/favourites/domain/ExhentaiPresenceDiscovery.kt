@@ -45,9 +45,9 @@ class ExhentaiPresenceDiscovery @Inject constructor(
     val state = mutableState.asStateFlow()
 
     suspend fun run(full: Boolean = false) = withContext(Dispatchers.IO) {
-        // A user-triggered full scan must not be dropped behind an automatic scan.
-        // Foreground triggers may coalesce with a scan already in progress.
-        if (full) mutex.lock() else if (!mutex.tryLock()) return@withContext
+        // A foreground or destination change during another scan must not be lost.
+        // Each request resolves the current roots only after acquiring the lock.
+        mutex.lock()
         val unavailable = LinkedHashSet<FavouriteSpace>()
         mutableState.value = ExhentaiPresenceScanState(running = true)
         try {

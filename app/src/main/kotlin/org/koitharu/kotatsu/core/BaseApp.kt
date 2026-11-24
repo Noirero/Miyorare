@@ -1,8 +1,6 @@
 package org.koitharu.kotatsu.core
 
 import android.app.Application
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import android.content.ComponentName
 import android.content.Context
@@ -40,6 +38,7 @@ import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.LegacyFavouriteDownloadReconciler
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceLifecycleObserver
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -147,19 +146,13 @@ open class BaseApp : Application(), Configuration.Provider {
 			runCatchingCancellable { legacyFavouriteDownloadReconcilerProvider.get().reconcileOnce() }
 				.onFailure(Throwable::printStackTraceDebug)
 		}
-		// Startup scan remains enabled even when foreground scan is disabled.
-		processLifecycleScope.launch(Dispatchers.IO) {
-			exhentaiPresenceDiscoveryProvider.get().run(full = true)
-		}
-		ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-			override fun onStart(owner: LifecycleOwner) {
-				if (!PreferenceManager.getDefaultSharedPreferences(this@BaseApp)
-						.getBoolean(ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME, true)) return
-				processLifecycleScope.launch(Dispatchers.IO) {
-					exhentaiPresenceDiscoveryProvider.get().run(full = false)
-				}
-			}
-		})
+		ProcessLifecycleOwner.get().lifecycle.addObserver(
+			ExhentaiPresenceLifecycleObserver(
+				scope = processLifecycleScope,
+				prefs = PreferenceManager.getDefaultSharedPreferences(this),
+				scan = { full -> exhentaiPresenceDiscoveryProvider.get().run(full) },
+			),
+		)
 		workScheduleManager.init()
 	}
 
