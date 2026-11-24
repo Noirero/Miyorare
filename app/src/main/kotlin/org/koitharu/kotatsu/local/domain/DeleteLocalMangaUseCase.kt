@@ -299,7 +299,14 @@ class DeleteLocalMangaUseCase @Inject constructor(
 				Os.remove(file.path)
 				withContext(NonCancellable) {
 					val removedPaths = linkedSetOf(approval.canonicalPath)
-					// Keep parent-directory index rows if any sibling CBZ still exists or listing fails.
+					// Clear the confirmed manga's legacy directory ownership, not other manga's rows.
+					// Use the exact validated parent path; do not resolve it again after removal.
+					if (titleFolder && parent != null) {
+						for (targetSpace in FavouriteSpace.entries) {
+							database.getFavouriteDownloadIndexDao().deleteIfPath(targetSpace.dbValue, remote.id, parent.path)
+						}
+					}
+					// Keep other manga's parent-directory rows while sibling CBZs remain or listing fails.
 					if (titleFolder && parent != null && parent.listFiles()?.none {
 							it.isFile && it.extension.equals("cbz", ignoreCase = true)
 						} == true) removedPaths.add(parent.path)
