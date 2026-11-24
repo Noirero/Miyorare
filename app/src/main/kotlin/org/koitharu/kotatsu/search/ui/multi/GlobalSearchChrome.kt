@@ -14,7 +14,7 @@ import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
 /** Presentation-only chrome; does not own search state or cover geometry. */
-internal class GlobalSearchChrome(view: View) {
+internal class GlobalSearchChrome(private val view: View) {
 
 	private val palette = view.context.miyorareViewPaletteFromPreferences()
 	private val density = view.resources.displayMetrics.density
@@ -28,7 +28,7 @@ internal class GlobalSearchChrome(view: View) {
 	private val outline = palette?.outlineVariant ?: color(materialR.attr.colorOutlineVariant)
 	private val selected = palette?.primaryContainer ?: color(materialR.attr.colorPrimaryContainer)
 	private val onSelected = palette?.onPrimaryContainer ?: color(materialR.attr.colorOnPrimaryContainer)
-	private val error = color(materialR.attr.colorError)
+	private val error = color(appcompatR.attr.colorError)
 	private val stroke = dp(1f)
 	private fun dp(value: Float) = (value * density).roundToInt().coerceAtLeast(1)
 
