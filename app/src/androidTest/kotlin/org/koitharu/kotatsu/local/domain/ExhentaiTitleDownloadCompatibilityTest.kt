@@ -1233,6 +1233,49 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue("Directory substitution must be rejected", outcome.exceptionOrNull() is UnverifiedDownloadRemovalException)
 	}
 
+	@Test fun confirmedDeleteSupportsAppSpecificExternalDestination() = runBlocking {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val external = requireNotNull(context.getExternalFilesDir(null))
+		val fixture = File(external, "exhentai-file-only-" + UUID.randomUUID())
+		check(fixture.mkdir())
+		try {
+			val space = FavouriteSpace.NORMAL
+			destinationStore.setRoot(space, fixture)
+			val chapter = archive("Legacy Gallery", "Chapter.cbz", destination = fixture)
+			val manga = gallery(990095, GEKKO_SOURCE)
+			val sibling = File(chapter.parentFile, "Keep.cbz").apply { writeText("keep") }
+			val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+			assertTrue(deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval))
+			assertFalse(chapter.exists())
+			assertTrue(chapter.parentFile!!.isDirectory)
+			assertEquals("keep", sibling.readText())
+		} finally {
+			check(fixture.deleteRecursively())
+		}
+	}
+
+	@Test fun successiveConfirmedDeletesOfDistinctArchivesPreserveSiblingAndFolder() = runBlocking {
+		val first = archive("Legacy Gallery", "Chapter.cbz")
+		val second = archive("Other Gallery", "Chapter.cbz")
+		val firstManga = gallery(990096, GEKKO_SOURCE)
+		val secondManga = gallery(990097, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME).copy(title = "Other Gallery")
+		val space = FavouriteSpace.NORMAL
+		val keep = File(first.parentFile, "Keep.cbz").apply { writeText("keep") }
+		val a = requireNotNull(deletion.previewExhentaiPhysicalDeletion(firstManga, space, first))
+		val b = requireNotNull(deletion.previewExhentaiPhysicalDeletion(secondManga, space, second))
+		withTimeout(10000) {
+			val firstDelete = async(Dispatchers.IO) { deletion.deleteConfirmedExhentaiPhysicalFile(firstManga, space, a) }
+			val secondDelete = async(Dispatchers.IO) { deletion.deleteConfirmedExhentaiPhysicalFile(secondManga, space, b) }
+			assertTrue(firstDelete.await())
+			assertTrue(secondDelete.await())
+		}
+		assertFalse(first.exists())
+		assertFalse(second.exists())
+		assertTrue(first.parentFile!!.isDirectory)
+		assertTrue(second.parentFile!!.isDirectory)
+		assertEquals("keep", keep.readText())
+	}
+
 	@Test fun confirmedSharedDeletePreservesMainAndGekkoPersonalState() = runBlocking {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		ZipOutputStream(chapter.outputStream()).use { zip ->

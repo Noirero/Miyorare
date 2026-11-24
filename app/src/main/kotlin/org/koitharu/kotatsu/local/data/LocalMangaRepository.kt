@@ -86,7 +86,7 @@ class LocalMangaRepository @Inject constructor(
 	private var listQueryCache: LocalListQueryCache? = null
 	private val listQueryCacheLock = Any()
 
-	// Shared by confirmed and source-owned ExHentai removals, regardless of manga ID.
+	// Shared by confirmed, source-owned and generic Local removals, regardless of manga ID.
 	// Callers holding MangaLock must acquire it before this mutex.
 	internal val exhentaiRemovalMutex = Mutex()
 
@@ -209,13 +209,16 @@ class LocalMangaRepository @Inject constructor(
 		return LocalMangaParser(chapter.url.toUri()).getPages(chapter)
 	}
 
-	suspend fun delete(manga: Manga): Boolean {
+	suspend fun delete(manga: Manga): Boolean = exhentaiRemovalMutex.withLock {
 		val file = manga.url.toUri().toFile()
+		// Local IDs may refer to the same physical archive (or an enclosing directory).
+		// A preceding confirmed removal must not be reported as another successful delete.
+		if (!file.exists()) return@withLock false
 		val result = file.deleteAwait()
 		if (result) {
 			clearDeletedMangaState(manga, file)
 		}
-		return result
+		result
 	}
 
 	private suspend fun clearDeletedMangaState(manga: Manga, file: File) {

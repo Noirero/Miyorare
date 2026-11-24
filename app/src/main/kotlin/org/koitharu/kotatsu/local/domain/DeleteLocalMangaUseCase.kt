@@ -25,6 +25,11 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.SecureDirectoryStream
+import java.nio.file.attribute.BasicFileAttributeView
 import android.util.Base64
 import android.system.Os
 import android.system.OsConstants
@@ -315,7 +320,7 @@ class DeleteLocalMangaUseCase @Inject constructor(
 						downloadDestinationStore.effectiveRoot(otherSpace)?.canonicalPath != approval.otherRoot ||
 						!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)
 					) throw UnverifiedDownloadRemovalException("The selected ExHentai destination changed. Files were kept.")
-					Os.remove(file.path)
+					deleteFileOnly(file)
 				}
 				withContext(NonCancellable) {
 					val removedPaths = linkedSetOf(approval.canonicalPath)
@@ -336,6 +341,32 @@ class DeleteLocalMangaUseCase @Inject constructor(
 				}
 				true
 			}
+		}
+	}
+
+	/**
+	 * Android's remove(3) also removes empty directories. The default Unix secure stream
+	 * uses file-only unlinkat instead. Never fall back to remove/deleteRecursively.
+	 * This does not make the approved content identity atomic against external writers.
+	 */
+	private fun deleteFileOnly(file: File) {
+		val path = file.toPath()
+		try {
+			Files.newDirectoryStream(path.parent).use { stream ->
+				val secure = stream as? SecureDirectoryStream<Path>
+					?: throw UnverifiedDownloadRemovalException("File-only removal is not supported by this storage. Files were kept.")
+				val attributes = secure.getFileAttributeView(
+					path.fileName, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS,
+				)?.readAttributes()
+				if (attributes?.isRegularFile != true) {
+					throw UnverifiedDownloadRemovalException("The selected ExHentai target is not a regular file. Files were kept.")
+				}
+				secure.deleteFile(path.fileName)
+			}
+		} catch (e: UnverifiedDownloadRemovalException) {
+			throw e
+		} catch (e: IOException) {
+			throw UnverifiedDownloadRemovalException("Cannot remove the selected ExHentai file.").apply { initCause(e) }
 		}
 	}
 
