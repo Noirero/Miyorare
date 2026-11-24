@@ -1,7 +1,7 @@
 name: Amain
 run-name: Amain · ${{ github.ref_name }}
 
-# Manual stable release entry point with a build-only mode for candidate testing.
+# Manual-only stable build entry point for the main branch.
 on:
   workflow_dispatch:
     inputs:
@@ -9,25 +9,14 @@ on:
         description: 'MAIN ONLY: optional stable version (e.g. 1.4.0). Leave empty for the next monotonic stable version.'
         required: false
         type: string
-      candidate_only:
-        description: Build the signed stable candidate APK without publishing a GitHub Release
-        type: boolean
-        default: false
-      discord_application_id:
-        description: Optional Discord Application ID override for this build
-        type: string
-        required: false
 
 concurrency:
-  group: release-workflow${{ inputs.candidate_only && '-candidate' || '' }}
+  group: release-workflow
   cancel-in-progress: false
 
 jobs:
   outside-main:
-    if: >-
-      github.ref != 'refs/heads/main' &&
-      !(inputs.candidate_only &&
-      (github.ref == 'refs/heads/Amain2' || github.ref == 'refs/heads/fix/shared-discord-sdk-build'))
+    if: github.ref_name != 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -45,10 +34,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   build:
-    if: >-
-      github.ref == 'refs/heads/main' ||
-      (inputs.candidate_only &&
-      (github.ref == 'refs/heads/Amain2' || github.ref == 'refs/heads/fix/shared-discord-sdk-build'))
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -92,10 +78,9 @@ jobs:
     - name: Determine release version
       id: version
       shell: bash
-      env:
-        REQUESTED: ${{ inputs.version_name }}
       run: |
         set -euo pipefail
+        REQUESTED="${{ inputs.version_name }}"
         BUILD_GRADLE="app/build.gradle"
         TAGS_FILE="build/stable-release-tags.txt"
 
@@ -230,7 +215,7 @@ jobs:
       shell: bash
       env:
         DISCORD_SDK_AAR_URL: ${{ secrets.AMAIN2_DISCORD_SDK_AAR_URL }}
-        DISCORD_APPLICATION_ID: ${{ inputs.discord_application_id || vars.MIYORARE_DISCORD_APPLICATION_ID }}
+        DISCORD_APPLICATION_ID: ${{ vars.MIYORARE_DISCORD_APPLICATION_ID }}
       run: bash .github/scripts/discord-sdk-apk.sh provision
 
     - name: Require stable release signing key
@@ -294,7 +279,6 @@ jobs:
           -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
     - name: Generate changelog
-      if: github.ref == 'refs/heads/main' && !inputs.candidate_only
       id: changelog
       shell: bash
       run: |
@@ -306,24 +290,28 @@ jobs:
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
 
-    - name: Collect Release APK
+    - name: Collect Release APKs
       env:
         VERSION_NAME: ${{ steps.version.outputs.name }}
-        CANDIDATE_ONLY: ${{ inputs.candidate_only }}
       run: |
         set -euo pipefail
         mkdir -p release
         shopt -s nullglob
-        apks=(app/build/outputs/apk/release/*.apk)
-        if [[ ${#apks[@]} -ne 1 ]]; then
-          echo "::error::Expected one universal Release APK, found ${#apks[@]}."
+        APK_FILES=(app/build/outputs/apk/release/*.apk)
+        if [ ${#APK_FILES[@]} -eq 0 ]; then
+          echo "::error::No release APK file found"
           exit 1
         fi
-        suffix=""
-        if [[ "$CANDIDATE_ONLY" == true ]]; then
-          suffix="-candidate"
-        fi
-        cp "${apks[0]}" "release/Miyorare-v${VERSION_NAME}${suffix}.apk"
+
+        for apk in "${APK_FILES[@]}"; do
+          if [ ${#APK_FILES[@]} -eq 1 ]; then
+            target="release/Miyorare-v${VERSION_NAME}.apk"
+          else
+            original_apk_name=$(basename "$apk" .apk)
+            target="release/Miyorare-v${VERSION_NAME}-${original_apk_name}.apk"
+          fi
+          cp "$apk" "$target"
+        done
 
     - name: Verify Discord SDK, stable identity, and permanent APK signature
       shell: bash
@@ -337,15 +325,14 @@ jobs:
         done
 
     - name: Upload release APK artifact
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@v4
       with:
+        name: Miyorare-v${{ steps.version.outputs.name }}
         path: release/*.apk
-        archive: false
         if-no-files-found: error
         retention-days: 14
 
     - name: Create GitHub Release
-      if: github.ref == 'refs/heads/main' && !inputs.candidate_only
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         VERSION_NAME: ${{ steps.version.outputs.name }}
