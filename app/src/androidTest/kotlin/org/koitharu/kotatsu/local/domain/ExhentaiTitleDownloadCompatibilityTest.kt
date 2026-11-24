@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.SavedStateHandle
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -12,6 +13,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -30,9 +33,13 @@ import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -56,6 +63,7 @@ import javax.inject.Inject
 class ExhentaiTitleDownloadCompatibilityTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
+	@Inject lateinit var detailsLoader: DetailsLoadUseCase
 	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var classifier: DownloadedContentClassifier
 	@Inject lateinit var presence: ExhentaiPresenceDiscovery
@@ -323,6 +331,47 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 		assertTrue(legacy.isFile)
 		assertTrue(exact.isFile)
+	}
+
+	@Test fun readerLocalFirstSnapshotUsesOnlyTheChosenCbzAndNewSessionsChooseAgain() = runBlocking {
+		val first = archive("Legacy Gallery", "Chapter.cbz")
+		val second = archive("Legacy Gallery_1", "Chapter.cbz")
+		val online = gallery(990081, GEKKO_SOURCE)
+		data.storeManga(online, replaceExisting = true, detailsFetched = true)
+		val intent = MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_MANGA to ParcelableManga(online))))
+		val space = FavouriteSpace.NORMAL
+		var requests = 0
+		for (file in listOf(first, second)) {
+			val details = detailsLoader(
+				intent = intent, force = false, favouriteSpace = space,
+				preferLocalBeforeInitialSnapshot = true,
+				chooseExhentaiFile = { manga, requestedSpace, choices ->
+					requests++
+					assertEquals(online.id, manga.id)
+					assertEquals(online.source.name, manga.source.name)
+					assertEquals(space, requestedSpace)
+					assertEquals(setOf(first.canonicalPath, second.canonicalPath), choices.map { it.path }.toSet())
+					resolver.selectExhentaiReadChoice(manga, requestedSpace, choices.single { it.path == file.canonicalPath })
+				},
+			).first()
+			assertEquals(file.canonicalFile, details.local?.file?.canonicalFile)
+			assertEquals(online.id, details.sourceManga.id)
+			assertEquals(online.source.name, details.sourceManga.source.name)
+			assertEquals(online.chapters!!.single().id, details.allChapters.single().id)
+		}
+		assertEquals(2, requests)
+		val cancelled = try {
+			detailsLoader(
+				intent = intent, force = false, favouriteSpace = space,
+				preferLocalBeforeInitialSnapshot = true,
+				chooseExhentaiFile = { _, _, _ -> null },
+			).first()
+			false
+		} catch (_: CancellationException) {
+			true
+		}
+		assertTrue("Cancellation must prevent any chapter snapshot from being published", cancelled)
+		assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, online.id))
 	}
 
 	@Test fun detailsReadsUnmarkedLegacyCbzWithInvalidOptionalXmlInBothSources() = runBlocking {
@@ -712,7 +761,11 @@ class ExhentaiTitleDownloadCompatibilityTest {
 				),
 			)
 		}
-		val local = checkNotNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL, forExhentaiDetails = true))
+		val space = FavouriteSpace.NORMAL
+		val choices = resolver.getExhentaiReadChoices(manga, space)
+		assertEquals(setOf(chapter.canonicalPath, sibling.canonicalPath), choices.map { it.path }.toSet())
+		val selected = requireNotNull(resolver.selectExhentaiReadChoice(manga, space, choices.single { it.path == chapter.canonicalPath }))
+		val local = requireNotNull(resolver.resolveExhentaiSessionChoice(manga, space, selected))
 		// A legacy directory ownership row must not redirect confirmed Delete to the directory.
 		assertEquals(chapter.canonicalFile, local.file.canonicalFile)
 		val approval = checkNotNull(deletion.previewExhentaiPhysicalDeletion(manga, FavouriteSpace.NORMAL, local))
@@ -777,6 +830,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertEquals(originalLength, chapter.length())
 			assertEquals(originalModified, chapter.lastModified())
 			// An unchanged candidate path/size/mtime is not the same physical content.
+			assertNull(resolver.selectExhentaiReadChoice(online, space, selected))
 			assertNull(resolver.resolveExhentaiSessionChoice(online, space, session))
 			assertNull(resolver.findSavedManga(online, space, forExhentaiDetails = true))
 			assertEquals(2, resolver.getExhentaiReadChoices(online, space).size)

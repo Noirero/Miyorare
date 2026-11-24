@@ -471,6 +471,8 @@ abstract class ChaptersPagesViewModel(
 		}
 		launchJob(Dispatchers.Default) {
 			interactor.exhentaiDownloads.collect { event ->
+				if (this@ChaptersPagesViewModel is ReaderViewModel &&
+					this@ChaptersPagesViewModel.hasExhentaiSessionChoice) return@collect
 				if (event.space != favouriteSpace || isSmartLocal || !event.local.file.exists()) return@collect
 				mangaDetails.update { current ->
 					if (current == null || current.id != event.mangaId || !current.isOfficialExhentai) {
@@ -935,6 +937,7 @@ abstract class ChaptersPagesViewModel(
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		if (isSmartLocal) return
+		if (downloadedManga != null && this is ReaderViewModel && hasExhentaiSessionChoice) return
 		val current = mangaDetails.value ?: return
 		// Official ExHentai publications carry an explicit space; the generic signal is for Local.
 		if (downloadedManga != null && current.isOfficialExhentai) return

@@ -134,8 +134,9 @@ internal object EhentaiLegacyDownloadResolver {
 	 * Do not rely on directory mtime or the Details title cache for a user selection.
 	 */
 	fun findReadChoiceCandidates(root: File, remoteTitle: String): List<File> {
+		val active = root.canonicalFile
 		val matches = LinkedHashMap<String, File>()
-		for (contentRoot in linkedSetOf(File(root, "downloads"), root)) {
+		for (contentRoot in linkedSetOf(File(active, "downloads"), active)) {
 			val sources = contentRoot.listFiles()?.filter {
 				it.isDirectory && !it.isHidden && (it.name.equals("ExHentai (OTHER)", ignoreCase = true) ||
 					isLegacySourceDirectoryName(it.name))

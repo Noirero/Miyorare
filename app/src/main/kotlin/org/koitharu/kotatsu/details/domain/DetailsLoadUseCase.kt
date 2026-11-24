@@ -145,7 +145,11 @@ class DetailsLoadUseCase @Inject constructor(
 					cachedIsFresh = cachedState.fresh,
 					trace = trace,
 					findSavedManga = lookup,
-					resolveFreshReaderLocal = if (chooseExhentaiFile != null) ({ target -> findLocal(target) }) else null,
+					resolveFreshReaderLocal = if (chooseExhentaiFile != null &&
+						(manga.source.name == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+							manga.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) {
+						{ target: Manga -> findLocal(target) }
+					} else null,
 				)
 			}
 			if (!preferLocalBeforeInitialSnapshot && !cachedState.fresh &&

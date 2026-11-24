@@ -178,7 +178,8 @@ class ReaderViewModel @Inject constructor(
     private val mutableExhentaiChoiceRequest = MutableStateFlow<ExhentaiChoiceRequest?>(null)
     internal val exhentaiChoiceRequest = mutableExhentaiChoiceRequest
     // Owned by this Reader ViewModel only; a new Reader never inherits it.
-    private var exhentaiSessionChoice: DownloadedMangaResolver.ExhentaiSessionChoice? = null
+    @Volatile private var exhentaiSessionChoice: DownloadedMangaResolver.ExhentaiSessionChoice? = null
+    internal val hasExhentaiSessionChoice: Boolean get() = exhentaiSessionChoice != null
 
     private suspend fun chooseExhentaiFile(
         manga: Manga,

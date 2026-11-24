@@ -113,7 +113,7 @@ class DownloadedMangaResolver @Inject constructor(
 		// An exact receipt/ownership row is not permission to bypass a multi-file read choice.
 		// Keep non-Details callers (completion/automatic removal) on their original strict path.
 		if (detailsTitleRead && supportsActiveExhentaiChoice(manga) &&
-			loadActiveExhentaiTitleCandidates(manga, space).size > 1) return null
+			listActiveExhentaiTitleFiles(manga, space).size > 1) return null
 
 		// Space ownership is stronger than the global Local index for sidecar-free downloads.
 		val ownership = database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id)
@@ -136,7 +136,7 @@ class DownloadedMangaResolver @Inject constructor(
 					// Older ownership rows may point at a gallery directory. Details/Delete must use
 					// the unambiguous CBZ itself, not the generic directory-backed LocalManga.
 					findTitleMatchedChapter(manga, space, roots, detailsTitleRead = true)?.let { return it }
-					if (getExhentaiReadChoices(manga, space).isNotEmpty()) return null
+					if (requiresExhentaiReadChoice(manga, space)) return null
 				}
 				localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let { return it }
 			}
@@ -151,7 +151,7 @@ class DownloadedMangaResolver @Inject constructor(
 			// is unresolved. Verified exact ownership above still takes precedence.
 			if (detailsTitleRead) {
 				findTitleMatchedChapter(manga, space, roots, detailsTitleRead = true)?.let { return it }
-				if (getExhentaiReadChoices(manga, space).isNotEmpty()) return null
+				if (requiresExhentaiReadChoice(manga, space)) return null
 			}
 			return localMangaRepository.findExhentaiDestinationCopy(manga, space, roots)
 				?: localMangaRepository.findExhentaiInRoots(manga, roots, withDetails = true, space = space)
@@ -236,6 +236,7 @@ class DownloadedMangaResolver @Inject constructor(
 		val length: Long,
 		val lastModified: Long,
 		val readable: Boolean = true,
+		val sha256: String? = null,
 	)
 
 	/** A selected file is bound to this Reader session, not stored as a gallery preference. */
@@ -247,7 +248,7 @@ class DownloadedMangaResolver @Inject constructor(
 		val sha256: String,
 	)
 
-	suspend fun getExhentaiReadChoices(manga: Manga, space: FavouriteSpace): List<ExhentaiReadChoice> {
+	private suspend fun choiceCandidates(manga: Manga, space: FavouriteSpace): List<ExhentaiReadChoice> {
 		if (!supportsActiveExhentaiChoice(manga)) return emptyList()
 		val candidates = loadActiveExhentaiTitleCandidates(manga, space).map { it.first }
 		if (candidates.size >= 2) return candidates
@@ -257,13 +258,24 @@ class DownloadedMangaResolver @Inject constructor(
 			candidates else emptyList()
 	}
 
+	private suspend fun requiresExhentaiReadChoice(manga: Manga, space: FavouriteSpace): Boolean =
+		choiceCandidates(manga, space).isNotEmpty()
+
+	/** Snapshot readable candidates only at a Read action, never during Details discovery. */
+	suspend fun getExhentaiReadChoices(manga: Manga, space: FavouriteSpace): List<ExhentaiReadChoice> =
+		choiceCandidates(manga, space).map { candidate ->
+			val fingerprint = if (candidate.readable) fingerprintOfChoice(candidate) else null
+			candidate.copy(readable = candidate.readable && fingerprint != null, sha256 = fingerprint)
+		}
+
 	suspend fun selectExhentaiReadChoice(
 		manga: Manga,
 		space: FavouriteSpace,
 		choice: ExhentaiReadChoice,
 	): ExhentaiSessionChoice? {
-		if (!choice.readable || getExhentaiReadChoices(manga, space).none { it == choice }) return null
-		val fingerprint = fingerprintOfChoice(choice) ?: return null
+		val fingerprint = choice.sha256 ?: return null
+		if (!choice.readable || choiceCandidates(manga, space).none { it == choice.copy(sha256 = null) } ||
+			fingerprintOfChoice(choice) != fingerprint) return null
 		return ExhentaiSessionChoice(manga.id, manga.source.name, space, choice, fingerprint)
 	}
 
@@ -273,9 +285,10 @@ class DownloadedMangaResolver @Inject constructor(
 		selection: ExhentaiSessionChoice,
 	): LocalManga? {
 		if (!supportsActiveExhentaiChoice(manga) || selection.mangaId != manga.id ||
-			selection.sourceName != manga.source.name || selection.space != space) return null
+			selection.sourceName != manga.source.name || selection.space != space ||
+			selection.candidate.sha256 != selection.sha256) return null
 		val candidate = loadActiveExhentaiTitleCandidates(manga, space)
-			.firstOrNull { it.first == selection.candidate } ?: return null
+			.firstOrNull { it.first == selection.candidate.copy(sha256 = null) } ?: return null
 		if (candidate.second == null || fingerprintOfChoice(candidate.first) != selection.sha256) return null
 		return candidate.second
 	}
@@ -303,14 +316,14 @@ class DownloadedMangaResolver @Inject constructor(
 			}
 			Base64.encodeToString(digest.digest(), Base64.NO_WRAP)
 		}.getOrNull()
-		hash?.takeIf { file.isFile && file.length() == choice.length &&
-			file.lastModified() == choice.lastModified }
+		hash?.takeIf { file.isFile && file.canonicalPath == choice.path &&
+			file.length() == choice.length && file.lastModified() == choice.lastModified }
 	}
 
-	private suspend fun loadActiveExhentaiTitleCandidates(
+	private suspend fun listActiveExhentaiTitleFiles(
 		manga: Manga,
 		space: FavouriteSpace,
-	): List<Pair<ExhentaiReadChoice, LocalManga?>> = withContext(Dispatchers.IO) {
+	): List<File> = withContext(Dispatchers.IO) {
 		if (!supportsActiveExhentaiChoice(manga)) return@withContext emptyList()
 		val candidates = LinkedHashSet<File>()
 		for (root in downloadDestinationStore.activeExhentaiRoots(space)) {
@@ -320,7 +333,14 @@ class DownloadedMangaResolver @Inject constructor(
 				candidates += path.canonicalFile
 			}
 		}
-		candidates.map { file ->
+		candidates.toList()
+	}
+
+	private suspend fun loadActiveExhentaiTitleCandidates(
+		manga: Manga,
+		space: FavouriteSpace,
+	): List<Pair<ExhentaiReadChoice, LocalManga?>> = withContext(Dispatchers.IO) {
+		listActiveExhentaiTitleFiles(manga, space).map { file ->
 			val local = ExhentaiDownloadedCopy.readTitleMatchedChapter(manga, file, allowIndexed = true)
 			val evidence = ExhentaiChapterOwnership.inspectDestination(file)
 			val id = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.galleryId
