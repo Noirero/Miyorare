@@ -60,19 +60,20 @@ fun searchResultsAD(
 		binding.buttonMore.isVisible = isSource
 		val sourceKey = item.source.name to item.titleResId
 		if (boundSourceKey != sourceKey) {
-			// FaviconView normally uses its current drawable as a placeholder. Do not
-			// show another source's logo when this holder is rebound.
+			// Clear the previous source's drawable before it can become a placeholder.
 			binding.imageViewSourceIcon.disposeImage()
-			if (isSource) {
-				binding.imageViewSourceIcon.setImageAsync(item.source)
-			} else {
-				binding.imageViewSourceIcon.setImageAsync(when (item.titleResId) {
-					R.string.history -> R.drawable.ic_history
-					R.string.favourites -> R.drawable.ic_heart
-					else -> R.drawable.ic_manga_source
-				})
-			}
 			boundSourceKey = sourceKey
+		}
+		// Bind every time: CoilImageView deduplicates valid requests and retries failed
+		// or cancelled requests, even when the source identity has not changed.
+		if (isSource) {
+			binding.imageViewSourceIcon.setImageAsync(item.source)
+		} else {
+			binding.imageViewSourceIcon.setImageAsync(when (item.titleResId) {
+				R.string.history -> R.drawable.ic_history
+				R.string.favourites -> R.drawable.ic_heart
+				else -> R.drawable.ic_manga_source
+			})
 		}
 		binding.textViewSourceLanguage.isVisible = isSource
 		binding.textViewSourceLanguage.text = item.getLanguageLabel() ?: "—"

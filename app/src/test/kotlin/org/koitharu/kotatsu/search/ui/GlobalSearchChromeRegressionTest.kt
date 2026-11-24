@@ -42,6 +42,21 @@ class GlobalSearchChromeRegressionTest {
 		assertTrue(source("search/ui/multi/GlobalSearchChrome.kt").contains("miyorareViewPaletteFromPreferences()"))
 	}
 
+	@Test fun faviconRebindDelegatesRetryAndDeduplicationToCoil() {
+		val delegate = source("search/ui/multi/adapter/SearchResultsAD.kt")
+			.lineSequence()
+			.filterNot { it.trimStart().startsWith("//") }
+			.joinToString("")
+			.replace(Regex("""\s+"""), "")
+		// The identity guard must end before either image request. A same-source
+		// rebind must reach Coil even if the preceding request failed or was cancelled.
+		assertTrue(delegate.contains(
+			"if(boundSourceKey!=sourceKey){binding.imageViewSourceIcon.disposeImage()boundSourceKey=sourceKey}" +
+				"if(isSource){binding.imageViewSourceIcon.setImageAsync(item.source)}else{" +
+				"binding.imageViewSourceIcon.setImageAsync(when(item.titleResId){",
+		))
+	}
+
 	private fun resource(path: String) = read("src/main/res/$path")
 	private fun source(path: String) = read("src/main/kotlin/org/koitharu/kotatsu/$path")
 	private fun read(path: String) = sequenceOf(File(path), File("app", path))
