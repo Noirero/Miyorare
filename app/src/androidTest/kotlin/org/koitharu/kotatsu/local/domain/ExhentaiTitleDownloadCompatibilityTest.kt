@@ -1251,6 +1251,70 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue("Directory substitution must be rejected", outcome.exceptionOrNull() is UnverifiedDownloadRemovalException)
 	}
 
+	@Test fun confirmedDeleteRejectsParentDirectoryReplacementAtRemovalBoundary() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val replacement = archive("Replacement Gallery", "Chapter.cbz", pageBytes = byteArrayOf(4, 5, 6))
+		val parent = requireNotNull(chapter.parentFile)
+		val replacementParent = requireNotNull(replacement.parentFile)
+		val movedParent = File(parent.parentFile, "Original Gallery")
+		val originalBytes = chapter.readBytes()
+		val replacementBytes = replacement.readBytes()
+		assertFalse(originalBytes.contentEquals(replacementBytes))
+		val sibling = File(replacementParent, "Keep.cbz").apply { writeText("keep replacement sibling") }
+		val manga = gallery(990104, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		var reached = false
+		val outcome = runCatching {
+			deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+				check(parent.renameTo(movedParent))
+				check(replacementParent.renameTo(parent))
+				reached = true
+			}
+		}
+		assertTrue("Parent replacement boundary was not reached: ${outcome.exceptionOrNull()}", reached)
+		assertArrayEquals(originalBytes, File(movedParent, chapter.name).readBytes())
+		assertTrue("A CBZ in a substituted parent must not be removed", chapter.isFile)
+		assertArrayEquals(replacementBytes, chapter.readBytes())
+		assertEquals("keep replacement sibling", File(parent, sibling.name).readText())
+		assertTrue("Parent namespace substitution must be rejected", outcome.exceptionOrNull() is UnverifiedDownloadRemovalException)
+	}
+
+	@Test fun confirmedDeleteRejectsInRootParentSymlinkAtRemovalBoundary() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val replacement = archive("Redirect Gallery", "Chapter.cbz", pageBytes = byteArrayOf(7, 8, 9))
+		val parent = requireNotNull(chapter.parentFile)
+		val redirectParent = requireNotNull(replacement.parentFile)
+		val movedParent = File(parent.parentFile, "Original Gallery")
+		val originalBytes = chapter.readBytes()
+		val replacementBytes = replacement.readBytes()
+		assertFalse(originalBytes.contentEquals(replacementBytes))
+		val manga = gallery(990105, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
+		var reached = false
+		try {
+			val outcome = runCatching {
+				deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
+					check(parent.renameTo(movedParent))
+					android.system.Os.symlink(redirectParent.path, parent.path)
+					check(java.nio.file.Files.isSymbolicLink(parent.toPath()))
+					reached = true
+				}
+			}
+			assertTrue("Symlink fixture did not reach removal boundary: ${outcome.exceptionOrNull()}", reached)
+			assertArrayEquals(originalBytes, File(movedParent, chapter.name).readBytes())
+			assertTrue("A CBZ reached through a redirected parent must not be removed", replacement.isFile)
+			assertArrayEquals(replacementBytes, replacement.readBytes())
+			assertTrue("Parent symlink substitution must be rejected", outcome.exceptionOrNull() is UnverifiedDownloadRemovalException)
+		} finally {
+			// Remove only the fixture link itself, before recursive fixture teardown.
+			if (java.nio.file.Files.isSymbolicLink(parent.toPath())) {
+				java.nio.file.Files.delete(parent.toPath())
+			}
+		}
+	}
+
 	@Test fun confirmedDeleteSupportsAppSpecificExternalDestination() = runBlocking {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val external = requireNotNull(context.getExternalFilesDir(null))
