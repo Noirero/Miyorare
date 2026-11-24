@@ -26,21 +26,22 @@ data class SearchResultsListModel(
 	val rank: Int = Int.MAX_VALUE,
 ) : ListModel {
 
-	fun getTitle(context: Context): String {
-		val baseTitle = if (titleResId != 0) context.getString(titleResId) else source.getTitle(context)
-		if (titleResId != 0 || source === UnknownMangaSource) return baseTitle
+	fun getBaseTitle(context: Context): String =
+		if (titleResId != 0) context.getString(titleResId) else source.getTitle(context)
 
-		val language = when (val code = source.searchLanguageCode()) {
-			LANGUAGE_OTHER -> null
-			LANGUAGE_LOCAL -> "LOCAL"
-			else -> code.uppercase(Locale.ROOT)
-		}
-		val status = when {
-			isLoading -> "…"
-			error != null -> "⚠"
-			else -> "✓"
-		}
-		return listOfNotNull(baseTitle, language, if (isLoading) null else list.size.toString(), status)
+	fun getLanguageLabel(): String? = when (val code = source.searchLanguageCode()) {
+		LANGUAGE_OTHER -> null
+		LANGUAGE_LOCAL -> "LOCAL"
+		else -> code.uppercase(Locale.ROOT)
+	}
+
+	internal val headerStatus: SearchSourceStatus
+		get() = searchSourceStatus(isLoading, error != null)
+
+	fun getTitle(context: Context): String {
+		val baseTitle = getBaseTitle(context)
+		if (titleResId != 0 || source === UnknownMangaSource) return baseTitle
+		return listOfNotNull(baseTitle, getLanguageLabel(), if (isLoading) null else list.size.toString(), headerStatus.symbol)
 			.joinToString(" · ")
 	}
 
@@ -58,4 +59,14 @@ data class SearchResultsListModel(
 			super.getChangePayload(previousState)
 		}
 	}
+}
+
+internal enum class SearchSourceStatus(val symbol: String) {
+	LOADING("…"), ERROR("⚠"), COMPLETE("✓"),
+}
+
+internal fun searchSourceStatus(isLoading: Boolean, hasError: Boolean): SearchSourceStatus = when {
+	isLoading -> SearchSourceStatus.LOADING
+	hasError -> SearchSourceStatus.ERROR
+	else -> SearchSourceStatus.COMPLETE
 }

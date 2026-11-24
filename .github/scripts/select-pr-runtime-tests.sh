@@ -261,6 +261,11 @@ add_full_suite() {
     add_class org.koitharu.kotatsu.reader.ui.config.ModernReaderSheetChromeProbeTest
   fi
 
+  # Measure actual grouped Global Search rows on narrow screens and large font scales.
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/search/ui/GlobalSearchGeometryRuntimeTest.kt ]]; then
+    add_class org.koitharu.kotatsu.search.ui.GlobalSearchGeometryRuntimeTest
+  fi
+
   # Enforce launcher widget palette compatibility on Android 15 when the test exists.
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/widget/common/ModernWidgetThemeRuntimeTest.kt ]]; then
     add_class org.koitharu.kotatsu.widget.common.ModernWidgetThemeRuntimeTest

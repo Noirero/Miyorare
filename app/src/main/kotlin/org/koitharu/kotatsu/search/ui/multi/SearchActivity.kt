@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.search.ui.multi
 
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.text.InputType
 import android.view.Menu
@@ -11,6 +12,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import androidx.activity.viewModels
 import androidx.appcompat.view.ActionMode
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
@@ -42,6 +44,7 @@ import org.koitharu.kotatsu.list.ui.MangaSelectionDecoration
 import org.koitharu.kotatsu.list.ui.adapter.MangaListListener
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListHeader
+import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -72,6 +75,7 @@ class SearchActivity :
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(ActivitySearchBinding.inflate(layoutInflater))
+		applySearchChrome()
 		title = when (viewModel.kind) {
 			SearchKind.SIMPLE,
 			SearchKind.TITLE -> viewModel.query
@@ -123,12 +127,40 @@ class SearchActivity :
 		viewModel.sourceMode.observe(this, ::updateSourceModeChip)
 		viewModel.preferredLanguages.observe(this) { updateLanguageChip(it) }
 		viewModel.hasResultsOnly.observe(this) { viewBinding.chipHasResults.isChecked = it }
-		viewModel.flatView.observe(this) { viewBinding.chipFlatView.isChecked = it }
+		viewModel.flatView.observe(this) {
+			viewBinding.chipFlatView.isChecked = it
+			updateSearchSummary(viewModel.list.value)
+		}
 		viewModel.hideLibrary.observe(this) { viewBinding.chipHideLibrary.isChecked = it }
 		viewModel.searchProgress.observe(this, ::updateProgress)
 		viewModel.hasActiveFilters.observe(this, ::onActiveFiltersChanged)
 		viewModel.list.observe(this, adapter)
+		viewModel.list.observe(this, ::updateSearchSummary)
 		viewModel.onError.observeEvent(this, SnackbarErrorObserver(viewBinding.recyclerView, null))
+	}
+
+	private fun applySearchChrome() {
+		val chrome = GlobalSearchChrome(viewBinding.root)
+		with(viewBinding) {
+			toolbar.background = chrome.toolbarBackground()
+			toolbar.setTitleTextColor(chrome.onSurface)
+			toolbar.setSubtitleTextColor(chrome.muted)
+			chrome.styleChip(chipSearchMode)
+			chrome.styleChip(chipLanguage, emphasized = true)
+			chrome.styleChip(chipHasResults)
+			chrome.styleChip(chipFlatView)
+			chrome.styleChip(chipHideLibrary)
+			chrome.styleChip(chipResetFilters)
+			textViewSearchSummary.setTextColor(chrome.onSurface)
+			textViewSearchSummary.compoundDrawableTintList = ColorStateList.valueOf(chrome.primary)
+			textViewSearchProgress.setTextColor(chrome.muted)
+			progressSearch.setIndicatorColor(chrome.primary)
+		}
+	}
+
+	private fun updateSearchSummary(items: List<ListModel>) {
+		viewBinding.textViewSearchSummary.isVisible =
+			!viewModel.flatView.value && items.any { it is SearchResultsListModel }
 	}
 
 	private fun showSearchQueryDialog() {
@@ -215,6 +247,11 @@ class SearchActivity :
 
 	private fun updateSourceModeChip(mode: SearchSourceMode) {
 		viewBinding.chipSearchMode.setText(mode.labelRes())
+		viewBinding.chipSearchMode.chipIcon = ContextCompat.getDrawable(this, when (mode) {
+			SearchSourceMode.PINNED_ONLY -> R.drawable.ic_pin
+			SearchSourceMode.PREFERRED_LANGUAGES -> R.drawable.ic_language
+			SearchSourceMode.ALL_SOURCES -> R.drawable.ic_stacks
+		})
 	}
 
 	private fun updateLanguageChip(languages: Set<String>) {
@@ -232,8 +269,13 @@ class SearchActivity :
 	}
 
 	private fun updateProgress(progress: GlobalSearchProgress) {
+		val searching = progress.total > 0 && progress.completed < progress.total
+		viewBinding.textViewSearchProgress.isVisible = searching
+		viewBinding.textViewSearchProgress.text = getString(
+			R.string.global_search_progress_count, progress.completed, progress.total,
+		)
 		with(viewBinding.progressSearch) {
-			isVisible = progress.total > 0 && progress.completed < progress.total
+			isVisible = searching
 			max = progress.total.coerceAtLeast(1)
 			setProgressCompat(progress.completed, true)
 		}
