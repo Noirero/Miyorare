@@ -7,6 +7,7 @@ import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
@@ -59,7 +60,7 @@ class GlobalSearchGeometryRuntimeTest {
 
     @Test fun narrowHeadersKeepMetadataAndActionsReadable() = withRows { row, width, scale, bind ->
         val failures = mutableListOf<String>()
-        val header = row.findViewById<ViewGroup>(R.id.source_header)
+        val header = row.findViewById<LinearLayout>(R.id.source_header)
         val title = row.findViewById<TextView>(R.id.textView_title)
         val language = row.findViewById<TextView>(R.id.text_view_source_language)
         val count = row.findViewById<TextView>(R.id.text_view_result_count)
@@ -80,6 +81,16 @@ class GlobalSearchGeometryRuntimeTest {
                     (layout?.let { l -> (0 until l.lineCount).sumOf { l.getEllipsisCount(it) } } ?: -1)
             }
             Log.i("GlobalSearchGeometry", "$tag header=${header.width}x${header.height}px $report")
+            if (scale == 1f && header.orientation != LinearLayout.HORIZONTAL) {
+                failures += "$tag ordinary header must remain horizontal"
+            }
+            if (scale == 2f && header.orientation != LinearLayout.VERTICAL) {
+                failures += "$tag constrained header must give the action its own row"
+            }
+            if (header.orientation == LinearLayout.VERTICAL &&
+                more.top < row.findViewById<View>(R.id.source_identity).bottom) {
+                failures += "$tag action overlaps identity row"
+            }
             for ((name, view) in views) {
                 val bounds = Rect(0, 0, view.width, view.height)
                 header.offsetDescendantRectToMyCoords(view, bounds)
@@ -101,6 +112,20 @@ class GlobalSearchGeometryRuntimeTest {
                             textLayout.getEllipsisStart(0) > 0)
                 } else complete
                 if (!fits || !readable) failures += "$tag $name fits=$fits readable=$readable $report"
+            }
+        }
+        // The same holder must recover its horizontal layout when the available width
+        // increases, then return to stacked rows without stale state on a narrow screen.
+        if (scale == 2f) {
+            bind(0, false)
+            title.text = "Shinigami"
+            language.text = "EN-GB"
+            for ((probeWidth, expected) in listOf(width to LinearLayout.VERTICAL,
+                600 to LinearLayout.HORIZONTAL, width to LinearLayout.VERTICAL)) {
+                measureRow(row, probeWidth)
+                if (header.orientation != expected) {
+                    failures += "font=$scale width=$probeWidth stale orientation=${header.orientation}, expected=$expected"
+                }
             }
         }
         failures
