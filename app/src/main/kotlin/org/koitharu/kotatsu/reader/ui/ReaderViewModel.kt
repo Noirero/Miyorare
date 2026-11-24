@@ -1002,11 +1002,12 @@ class ReaderViewModel @Inject constructor(
             val currentManga = m.toManga()
             discordReading.value = DiscordReading(
                 mangaId = currentManga.id,
-                title = newState.mangaName ?: currentManga.title,
+                title = currentManga.title,
                 chapter = newState.chapterNumber,
                 chapterCount = newState.chaptersTotal,
                 coverUrl = currentManga.coverUrl,
                 sourceUrl = currentManga.publicUrl,
+                source = currentManga.source,
                 nsfw = currentManga.isNsfw(),
             )
         }

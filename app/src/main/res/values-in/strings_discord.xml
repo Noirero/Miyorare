@@ -3,7 +3,6 @@
     <string name="discord_official_sdk">Gunakan SDK Discord resmi</string>
     <string name="discord_official_sdk_summary">Gunakan akun yang sudah login di aplikasi Discord pada perangkat ini.</string>
     <string name="discord_official_sdk_unavailable">SDK tidak tersedia di build ini. Matikan opsi ini untuk memakai token.</string>
-    <string name="discord_read_at_source">Baca di sumber</string>
     <string name="discord_token_saved">Token tersimpan di perangkat ini</string>
     <string name="discord_token_rejected">Token ini ditolak oleh Discord</string>
     <string name="discord_token_rate_limited">Terlalu banyak percobaan. Coba lagi nanti.</string>

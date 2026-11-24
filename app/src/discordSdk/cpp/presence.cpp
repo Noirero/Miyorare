@@ -28,27 +28,33 @@ Java_org_koitharu_kotatsu_scrobbling_discord_sdk_DiscordPresenceNative_initializ
 extern "C" JNIEXPORT void JNICALL
 Java_org_koitharu_kotatsu_scrobbling_discord_sdk_DiscordPresenceNative_publish(
     JNIEnv* env, jobject, jbyteArray title, jbyteArray chapter, jbyteArray cover,
+    jbyteArray coverDescription, jbyteArray icon, jbyteArray iconDescription,
     jbyteArray url, jbyteArray buttonLabel, jlong startedAt
 ) {
     if (!client) return;
     discordpp::Activity activity;
-    activity.SetType(discordpp::ActivityTypes::Playing);
+    activity.SetType(discordpp::ActivityTypes::Watching);
+    activity.SetName("Miyorare");
     activity.SetDetails(readUtf8(env, title));
     activity.SetState(readUtf8(env, chapter));
 
     discordpp::ActivityAssets assets;
     assets.SetLargeImage(readUtf8(env, cover));
-    assets.SetLargeText(readUtf8(env, title));
+    assets.SetLargeText(readUtf8(env, coverDescription));
+    assets.SetSmallImage(readUtf8(env, icon));
+    assets.SetSmallText(readUtf8(env, iconDescription));
     activity.SetAssets(assets);
 
     discordpp::ActivityTimestamps timestamps;
     timestamps.SetStart(startedAt);
     activity.SetTimestamps(timestamps);
 
-    discordpp::ActivityButton button;
-    button.SetLabel(readUtf8(env, buttonLabel));
-    button.SetUrl(readUtf8(env, url));
-    activity.AddButton(button);
+    if (buttonLabel) {
+        discordpp::ActivityButton button;
+        button.SetLabel(readUtf8(env, buttonLabel));
+        button.SetUrl(readUtf8(env, url));
+        activity.AddButton(button);
+    }
     client->UpdateRichPresence(std::move(activity), [](discordpp::ClientResult) {});
 }
 

@@ -7,9 +7,13 @@ import androidx.annotation.Keep
 import androidx.annotation.MainThread
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.parsers.model.MangaSource
 import java.lang.ref.WeakReference
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val BUTTON_LABEL_BYTE_LIMIT = 32
 
 internal data class DiscordReading(
 	val mangaId: Long,
@@ -18,13 +22,24 @@ internal data class DiscordReading(
 	val chapterCount: Int,
 	val coverUrl: String?,
 	val sourceUrl: String,
+	val source: MangaSource,
 	val nsfw: Boolean,
 )
 
 @Keep
 internal object DiscordPresenceNative {
 	external fun initialize(applicationId: Long)
-	external fun publish(title: ByteArray, chapter: ByteArray, cover: ByteArray, url: ByteArray, button: ByteArray, startedAt: Long)
+	external fun publish(
+		title: ByteArray,
+		chapter: ByteArray,
+		cover: ByteArray,
+		coverDescription: ByteArray,
+		icon: ByteArray,
+		iconDescription: ByteArray,
+		url: ByteArray,
+		button: ByteArray?,
+		startedAt: Long,
+	)
 	external fun pump()
 	external fun clear()
 }
@@ -72,11 +87,17 @@ class OfficialDiscordPresence @Inject constructor() {
 			currentManga = reading.mangaId
 			startedAt = System.currentTimeMillis() / 1_000L
 		}
+		val button = reader.getString(R.string.read_on_s, reading.source.getTitle(reader)).encodeToByteArray()
 		DiscordPresenceNative.publish(
-			reading.title.discordTextBytes(),
-			reader.getString(R.string.discord_chapter_d_of_d, reading.chapter, reading.chapterCount).encodeToByteArray(),
-			cover.encodeToByteArray(), source.encodeToByteArray(),
-			reader.getString(R.string.discord_read_at_source).encodeToByteArray(), startedAt,
+			title = reading.title.discordTextBytes(),
+			chapter = reader.getString(R.string.discord_chapter_d_of_d, reading.chapter, reading.chapterCount).encodeToByteArray(),
+			cover = cover.encodeToByteArray(),
+			coverDescription = reader.getString(R.string.reading_s, reading.title).discordTextBytes(),
+			icon = reader.getString(R.string.url_miyorare_rpc_icon).encodeToByteArray(),
+			iconDescription = reader.getString(R.string.discord_rpc_description).discordTextBytes(),
+			url = source.encodeToByteArray(),
+			button = button.takeIf { it.size <= BUTTON_LABEL_BYTE_LIMIT },
+			startedAt = startedAt,
 		)
 	}
 
