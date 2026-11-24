@@ -30,7 +30,6 @@ import android.system.Os
 import android.system.OsConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -286,8 +285,9 @@ class DeleteLocalMangaUseCase @Inject constructor(
 		space: FavouriteSpace,
 		approval: ExhentaiDeletionApproval,
 		beforePhysicalRemoval: () -> Unit,
-	): Boolean = confirmedFileMutex.withLock {
-		mangaLock.withLock(remote) {
+	): Boolean = mangaLock.withLock(remote) {
+		// Match the source-owned removal lock order: manga first, then physical removal.
+		localMangaRepository.exhentaiRemovalMutex.withLock {
 			withContext(Dispatchers.IO) {
 				val file = File(approval.canonicalPath)
 				val fresh = runCatching { snapshotExhentaiDeletion(remote, space, file) }.getOrNull()
@@ -340,8 +340,6 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	}
 
 	private companion object {
-		// Serialize explicit shared-file removals across Main and Gekko, not just manga IDs.
-		val confirmedFileMutex = Mutex()
 		const val GEKKO_EXHENTAI_SOURCE_NAME = "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
 	}
 

@@ -1137,6 +1137,8 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertFalse("Competing internal removal did not terminate", competitor.isAlive)
 		}
 		assertNotNull("Competing internal removal did not report an outcome", competingResult.get())
+		assertFalse("Competing removal must not report a second successful deletion",
+			competingResult.get()!!.getOrNull() == true)
 		val error = competingResult.get()!!.exceptionOrNull()
 		assertTrue("Unexpected competing removal failure: $error",
 			error == null || error is UnverifiedDownloadRemovalException)

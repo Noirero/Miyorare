@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
@@ -83,6 +85,10 @@ class LocalMangaRepository @Inject constructor(
 	@Volatile
 	private var listQueryCache: LocalListQueryCache? = null
 	private val listQueryCacheLock = Any()
+
+	// Shared by confirmed and source-owned ExHentai removals, regardless of manga ID.
+	// Callers holding MangaLock must acquire it before this mutex.
+	internal val exhentaiRemovalMutex = Mutex()
 
 	internal data class ExhentaiDownloadChange(val mangaId: Long, val space: FavouriteSpace, val local: LocalManga)
 
@@ -378,9 +384,10 @@ class LocalMangaRepository @Inject constructor(
 		local: LocalManga,
 		cleanupEmptyLegacyParent: Boolean = false,
 		confirmedRemoteMangaId: Long? = null,
-	): Boolean {
+	): Boolean = exhentaiRemovalMutex.withLock {
 		val file = local.file.canonicalFile
-		if (!file.deleteAwait()) return false
+		// A preceding confirmed removal may have consumed this physical target.
+		if (!file.isFile || !file.deleteAwait()) return@withLock false
 		val indexed = localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile
 		if (indexed == file) localMangaIndex.delete(local.manga.id)
 		favouriteDownloadOwnershipIndex.removePath(file)
@@ -406,7 +413,7 @@ class LocalMangaRepository @Inject constructor(
 			}
 		}
 		localStorageChanges.emit(null)
-		return true
+		true
 	}
 
 	internal suspend fun findExhentaiAtPath(
