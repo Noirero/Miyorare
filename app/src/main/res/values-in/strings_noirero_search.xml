@@ -21,4 +21,10 @@
 	<string name="search_progress_sources">%1$d/%2$d source · %3$d error</string>
 	<string name="search_paste">Tempel</string>
 	<string name="search_open_browser">Buka di browser</string>
+	<string name="global_search_by_source">Hasil pencarian per source</string>
+	<string name="global_search_source_complete">Pencarian selesai</string>
+	<string name="global_search_progress_count">Mencari source… (%1$d/%2$d)</string>
+	<plurals name="global_search_result_count">
+		<item quantity="other">%d hasil</item>
+	</plurals>
 </resources>

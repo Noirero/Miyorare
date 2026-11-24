@@ -57,7 +57,8 @@
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
 					android:checkable="false"
-					android:text="@string/search_filter_language" />
+					android:text="@string/search_filter_language"
+					app:chipIcon="@drawable/ic_language" />
 
 				<com.google.android.material.chip.Chip
 					android:id="@+id/chip_has_results"
@@ -91,6 +92,28 @@
 			</com.google.android.material.chip.ChipGroup>
 
 		</HorizontalScrollView>
+
+		<TextView
+			android:id="@+id/text_view_search_summary"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:paddingHorizontal="@dimen/margin_normal"
+			android:paddingVertical="6dp"
+			android:drawablePadding="8dp"
+			android:text="@string/global_search_by_source"
+			android:textAppearance="?attr/textAppearanceTitleSmall"
+			android:textStyle="bold"
+			android:visibility="gone"
+			app:drawableStartCompat="@drawable/ic_stacks" />
+
+		<TextView
+			android:id="@+id/text_view_search_progress"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:paddingHorizontal="@dimen/margin_normal"
+			android:paddingBottom="4dp"
+			android:textAppearance="?attr/textAppearanceBodySmall"
+			android:visibility="gone" />
 
 		<com.google.android.material.progressindicator.LinearProgressIndicator
 			android:id="@+id/progress_search"

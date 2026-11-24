@@ -20,4 +20,11 @@
 	<string name="search_progress_sources">%1$d/%2$d sources · %3$d errors</string>
 	<string name="search_paste">Paste</string>
 	<string name="search_open_browser">Open in browser</string>
+	<string name="global_search_by_source">Search results by source</string>
+	<string name="global_search_source_complete">Search completed</string>
+	<string name="global_search_progress_count">Searching sources… (%1$d/%2$d)</string>
+	<plurals name="global_search_result_count">
+		<item quantity="one">%d result</item>
+		<item quantity="other">%d results</item>
+	</plurals>
 </resources>
