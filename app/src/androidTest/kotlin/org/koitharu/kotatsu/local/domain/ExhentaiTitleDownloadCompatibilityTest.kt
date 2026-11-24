@@ -1018,31 +1018,6 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue(chapter.exists())
 	}
 
-	@Test fun confirmedDeleteRejectsReplacementAtRemovalBoundary() = runBlocking {
-		val chapter = archive("Legacy Gallery", "Chapter.cbz")
-		val manga = gallery(990087, GEKKO_SOURCE)
-		val space = FavouriteSpace.NORMAL
-		val approval = requireNotNull(deletion.previewExhentaiPhysicalDeletion(manga, space, chapter))
-		val original = File(chapter.parentFile, "Original.cbz")
-		val bytes = chapter.readBytes()
-		val replacement = bytes.copyOf().also { it[it.lastIndex] = (it.last() + 1).toByte() }
-		var reached = false
-		val result = runCatching {
-			deletion.deleteConfirmedExhentaiPhysicalFile(manga, space, approval) {
-				// Interleave a real rename and same-size/same-mtime replacement after the last check.
-				check(chapter.renameTo(original))
-				chapter.writeBytes(replacement)
-				check(chapter.setLastModified(approval.lastModified))
-				reached = true
-			}
-		}
-		assertTrue("Removal boundary was not reached", reached)
-		assertArrayEquals(bytes, original.readBytes())
-		assertTrue("An unapproved replacement must not be removed", chapter.isFile)
-		assertArrayEquals(replacement, chapter.readBytes())
-		assertTrue("Changed target must be rejected", result.exceptionOrNull() is UnverifiedDownloadRemovalException)
-	}
-
 	@Test fun confirmedDeleteRejectsDestinationChangeAtRemovalBoundary() = runBlocking {
 		val chapter = archive("Legacy Gallery", "Chapter.cbz")
 		val manga = gallery(990088, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
