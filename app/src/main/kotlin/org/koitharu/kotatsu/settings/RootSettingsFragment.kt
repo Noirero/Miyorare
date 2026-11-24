@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -67,7 +68,9 @@ import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.settings.journey.JourneyDisplayMode
+import org.koitharu.kotatsu.settings.journey.JourneyPanelModel
 import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelScreen
 import org.koitharu.kotatsu.settings.journey.SettingsJourneyPanelViewModel
 import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
@@ -133,7 +136,10 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                 val pagerState = rememberPagerState(pageCount = { 2 })
                 val coroutineScope = rememberCoroutineScope()
                 val settingsActivity = activity as? SettingsActivity
-                LaunchedEffect(pagerState.currentPage) {
+                val bottomInset = with(LocalDensity.current) {
+                    (settingsActivity?.systemBarsBottomPx ?: 0).toDp()
+                }
+                LaunchedEffect(pagerState.currentPage, panelDisplayMode) {
                     journeyPageVisible.value = pagerState.currentPage == 1
                     settingsActivity?.setSectionTitle(
                         if (pagerState.currentPage == 1) {
@@ -141,6 +147,9 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                         } else {
                             null
                         },
+                    )
+                    settingsActivity?.setJourneyModelButtonVisible(
+                        pagerState.currentPage == 1 && panelDisplayMode == JourneyDisplayMode.KARTU,
                     )
                 }
                 SideEffect {
@@ -160,51 +169,62 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
                             onUpdateClick = { router.openAppUpdate() },
                         )
                     } else {
-                        // The Journey page carries its own Utama / Kartu switch.
-                        // The Settings toolbar above belongs to Settings itself,
-                        // so the switch lives at the top of the page instead of
-                        // in a toolbar menu. The page starts on Kartu and keeps
-                        // its own remembered choice, independent from the main
-                        // Reader Journey screen's display mode.
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            JourneyPanelDisplayToggle(
-                                mode = panelDisplayMode,
-                                onModeChange = journeyViewModel::setDisplayMode,
-                            )
-                            Box(modifier = Modifier.weight(1f)) {
-                                if (panelDisplayMode == JourneyDisplayMode.KARTU) {
-                                    SettingsJourneyPanelScreen(
-                                        stats = journeyStats.forMatureMode(statsMatureMode),
-                                        profile = journeyProfile,
-                                        model = journeyModel,
-                                        onModelChange = journeyViewModel::setModel,
-                                        weeklyGoal = journeyGoal,
-                                        onWeeklyGoalChange = journeyViewModel::setWeeklyGoal,
-                                    )
-                                } else {
-                                    StatsScreen(
-                                        stats = stats.forMatureMode(statsMatureMode),
-                                        isLoading = statsLoading || stats.matureMode != statsMatureMode,
-                                        period = statsPeriod,
-                                        scope = statsScope,
-                                        matureMode = statsMatureMode,
-                                        categories = statsCategories,
-                                        selectedCategories = statsSelectedCategories,
-                                        imageLoader = imageLoader,
-                                        profile = statsProfile,
-                                        yearInReview = statsYearInReview,
-                                        bottomInset = 0.dp,
-                                        onPeriodChange = { statsViewModel.period.value = it },
-                                        onScopeChange = { statsViewModel.scope.value = it },
-                                        onMatureModeChange = statsViewModel::setMatureMode,
-                                        onCategoryToggle = statsViewModel::toggleCategory,
-                                        onCategoriesClear = statsViewModel::clearCategories,
-                                        onProfileUpdate = statsViewModel::updateReaderProfile,
-                                        onCosmeticsUpdate = statsViewModel::updateReaderCosmetics,
-                                        onShareYearInReview = ::shareYearInReview,
-                                        onMangaClick = { router.openDetails(it) },
-                                    )
-                                }
+                        // The Journey page starts on Kartu and keeps its own
+                        // remembered Utama / Kartu choice, independent from the
+                        // main Reader Journey screen's display mode. The switch
+                        // itself sits at the very end of the page's content —
+                        // the bottom of the Kartu Overview tab, and the bottom
+                        // of the Utama statistics list — with nothing below it.
+                        // The Kartu model picker leaves the page entirely: a
+                        // header button in Settings (shown only while this page
+                        // and Kartu mode are up) opens the model chooser.
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (panelDisplayMode == JourneyDisplayMode.KARTU) {
+                                SettingsJourneyPanelScreen(
+                                    stats = journeyStats.forMatureMode(statsMatureMode),
+                                    profile = journeyProfile,
+                                    model = journeyModel,
+                                    onModelChange = journeyViewModel::setModel,
+                                    weeklyGoal = journeyGoal,
+                                    onWeeklyGoalChange = journeyViewModel::setWeeklyGoal,
+                                    showModelPicker = false,
+                                    bottomInset = bottomInset,
+                                    overviewFooter = {
+                                        JourneyPanelDisplayToggle(
+                                            mode = panelDisplayMode,
+                                            onModeChange = journeyViewModel::setDisplayMode,
+                                        )
+                                    },
+                                )
+                            } else {
+                                StatsScreen(
+                                    stats = stats.forMatureMode(statsMatureMode),
+                                    isLoading = statsLoading || stats.matureMode != statsMatureMode,
+                                    period = statsPeriod,
+                                    scope = statsScope,
+                                    matureMode = statsMatureMode,
+                                    categories = statsCategories,
+                                    selectedCategories = statsSelectedCategories,
+                                    imageLoader = imageLoader,
+                                    profile = statsProfile,
+                                    yearInReview = statsYearInReview,
+                                    bottomInset = bottomInset,
+                                    onPeriodChange = { statsViewModel.period.value = it },
+                                    onScopeChange = { statsViewModel.scope.value = it },
+                                    onMatureModeChange = statsViewModel::setMatureMode,
+                                    onCategoryToggle = statsViewModel::toggleCategory,
+                                    onCategoriesClear = statsViewModel::clearCategories,
+                                    onProfileUpdate = statsViewModel::updateReaderProfile,
+                                    onCosmeticsUpdate = statsViewModel::updateReaderCosmetics,
+                                    onShareYearInReview = ::shareYearInReview,
+                                    onMangaClick = { router.openDetails(it) },
+                                    footerContent = {
+                                        JourneyPanelDisplayToggle(
+                                            mode = panelDisplayMode,
+                                            onModeChange = journeyViewModel::setDisplayMode,
+                                        )
+                                    },
+                                )
                             }
                         }
                     }
@@ -219,6 +239,7 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
             SettingsSearchMenuProvider(searchViewModel),
             viewLifecycleOwner,
         )
+        (activity as? SettingsActivity)?.onJourneyModelButtonClick = { showJourneyModelPicker() }
         statsViewModel.onActionDone.observeEvent(
             viewLifecycleOwner,
             ReversibleActionObserver(view),
@@ -232,6 +253,30 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
         viewLifecycleOwner.lifecycleScope.launch {
             journeyPageVisible.collect { journeyBackCallback.isEnabled = it }
         }
+    }
+
+    override fun onDestroyView() {
+        (activity as? SettingsActivity)?.apply {
+            onJourneyModelButtonClick = null
+            setJourneyModelButtonVisible(false)
+        }
+        super.onDestroyView()
+    }
+
+    /** Model chooser for the Kartu panel, opened from the Settings header button. */
+    private fun showJourneyModelPicker() {
+        val models = JourneyPanelModel.entries
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.journey_panel_model_label)
+            .setSingleChoiceItems(
+                models.map { getString(it.labelRes) }.toTypedArray(),
+                models.indexOf(journeyViewModel.model.value),
+            ) { dialog, which ->
+                journeyViewModel.setModel(models[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun openSection(section: SettingsSection) {
@@ -252,7 +297,8 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
 }
 
 /**
- * Utama / Kartu switch shown at the top of the Settings Journey page. A pill
+ * Utama / Kartu switch shown at the very end of the Settings Journey page's
+ * content, below everything else on the page. A pill
  * with two segments; the active segment is filled with the theme's primary
  * color. Neutral chrome on purpose: it belongs to the page, not to any of the
  * four Kartu visual models below it.

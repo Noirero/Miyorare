@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="discord_token_saved">Token tersimpan di perangkat ini</string>
+    <string name="discord_token_rejected">Token ini ditolak oleh Discord</string>
+    <string name="discord_token_rate_limited">Terlalu banyak percobaan. Coba lagi nanti.</string>
+    <string name="discord_token_verification_unavailable">Token belum bisa diperiksa saat ini</string>
+    <string name="discord_token_remove">Hapus token tersimpan</string>
+</resources>

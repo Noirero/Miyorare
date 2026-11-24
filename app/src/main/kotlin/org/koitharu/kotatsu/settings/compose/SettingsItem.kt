@@ -70,6 +70,7 @@ fun SettingsItem(
 	hapticEffect: HapticEffect? = null,
 	// Specialized content shares the card surface, click behavior and Settings Search highlight.
 	contentOverride: @Composable (() -> Unit)? = null,
+	leading: @Composable (() -> Unit)? = null,
 	trailing: @Composable (() -> Unit)? = null,
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
@@ -145,7 +146,10 @@ fun SettingsItem(
 				contentOverride()
 				return@Row
 			}
-			if (icon != null) {
+			if (leading != null) {
+				leading()
+				Spacer(Modifier.width(if (modern) 12.dp else 14.dp))
+			} else if (icon != null) {
 				when {
 					modernIcons -> SettingsIconModern(
 						iconRes = icon,

@@ -235,6 +235,12 @@ add_full_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/reader/domain/ReaderCustomTintRuntimeTest.kt ]]; then
     add_reader_custom_tint_suite
   fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/sources/KotatsuSourceManagementScreenTest.kt ]]; then
+    add_class org.koitharu.kotatsu.settings.sources.KotatsuSourceManagementScreenTest
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/core/image/KotatsuCoverNetworkTest.kt ]]; then
+    add_class org.koitharu.kotatsu.core.image.KotatsuCoverNetworkTest
+  fi
 
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/welcome/OnboardingAppearanceIntegrationTest.kt ]]; then
     add_onboarding_suite

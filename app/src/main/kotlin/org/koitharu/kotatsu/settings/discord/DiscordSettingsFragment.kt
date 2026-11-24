@@ -24,8 +24,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.StateFlow
@@ -39,7 +42,6 @@ import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
-import org.koitharu.kotatsu.settings.compose.rememberStringPref
 
 @AndroidEntryPoint
 class DiscordSettingsFragment : BaseComposeSettingsFragment(R.string.discord) {
@@ -56,6 +58,7 @@ class DiscordSettingsFragment : BaseComposeSettingsFragment(R.string.discord) {
 			MiyorareSettingsTheme("services") {
 				DiscordScreen(
 					tokenState = viewModel.tokenState,
+					onSaveToken = viewModel::saveToken,
 					onSignIn = ::openSignIn,
 				)
 			}
@@ -69,25 +72,28 @@ class DiscordSettingsFragment : BaseComposeSettingsFragment(R.string.discord) {
 
 @Composable
 private fun DiscordScreen(
-	tokenState: StateFlow<Pair<TokenState, String?>>,
+	tokenState: StateFlow<TokenState>,
+	onSaveToken: (String?) -> Unit,
 	onSignIn: () -> Unit,
 ) {
 	val ctx = LocalContext.current
-	val tokenPair by tokenState.collectAsState()
-	val state = tokenPair.first
-	val stateToken = tokenPair.second
+	val state by tokenState.collectAsState()
 
 	var rpcEnabled by rememberBooleanPref(AppSettings.KEY_DISCORD_RPC, false)
 	var skipNsfw by rememberBooleanPref(AppSettings.KEY_DISCORD_RPC_SKIP_NSFW, false)
-	var token by rememberStringPref(AppSettings.KEY_DISCORD_TOKEN, "")
 
 	var showTokenDialog by remember { mutableStateOf(false) }
 
-	val isWarning = state == TokenState.REQUIRED || state == TokenState.INVALID
+	val isWarning = when (state) {
+		TokenState.REQUIRED, TokenState.INVALID, TokenState.RATE_LIMITED, TokenState.UNAVAILABLE -> true
+		else -> false
+	}
 	val tokenSubtitle = when (state) {
 		TokenState.EMPTY, TokenState.REQUIRED -> stringResource(R.string.discord_token_summary)
-		TokenState.INVALID -> stringResource(R.string.invalid_token, stateToken ?: "")
-		TokenState.VALID -> stateToken
+		TokenState.SAVED, TokenState.VALID -> stringResource(R.string.discord_token_saved)
+		TokenState.INVALID -> stringResource(R.string.discord_token_rejected)
+		TokenState.RATE_LIMITED -> stringResource(R.string.discord_token_rate_limited)
+		TokenState.UNAVAILABLE -> stringResource(R.string.discord_token_verification_unavailable)
 		TokenState.CHECKING -> stringResource(R.string.loading_)
 	}
 
@@ -110,7 +116,6 @@ private fun DiscordScreen(
 						subtitle = tokenSubtitle,
 						icon = if (isWarning) R.drawable.ic_alert_outline else R.drawable.ic_lock,
 						shape = pos.shape,
-						enabled = rpcEnabled,
 						onClick = { showTokenDialog = true },
 					)
 				}
@@ -132,12 +137,12 @@ private fun DiscordScreen(
 
 	if (showTokenDialog) {
 		DiscordTokenDialog(
-			initialValue = token,
+			hasSavedToken = state != TokenState.EMPTY && state != TokenState.REQUIRED,
 			message = ctx.getString(
 				R.string.discord_token_description,
 				ctx.getString(R.string.sign_in),
 			),
-			onConfirm = { token = it },
+			onConfirm = onSaveToken,
 			onSignIn = {
 				showTokenDialog = false
 				onSignIn()
@@ -149,15 +154,16 @@ private fun DiscordScreen(
 
 @Composable
 private fun DiscordTokenDialog(
-	initialValue: String,
+	hasSavedToken: Boolean,
 	message: String,
-	onConfirm: (String) -> Unit,
+	onConfirm: (String?) -> Unit,
 	onSignIn: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
-	var value by remember { mutableStateOf(initialValue) }
+	var value by remember { mutableStateOf("") }
 	AlertDialog(
 		onDismissRequest = onDismiss,
+		properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
 		title = { Text(stringResource(R.string.discord_token)) },
 		text = {
 			androidx.compose.foundation.layout.Column {
@@ -169,15 +175,25 @@ private fun DiscordTokenDialog(
 					placeholder = { Text(stringResource(R.string.discord_token_hint)) },
 					singleLine = true,
 					keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+					visualTransformation = PasswordVisualTransformation(),
 					modifier = Modifier.fillMaxWidth(),
 				)
+				if (hasSavedToken) {
+					TextButton(onClick = {
+						onConfirm(null)
+						onDismiss()
+					}) { Text(stringResource(R.string.discord_token_remove)) }
+				}
 			}
 		},
 		confirmButton = {
-			TextButton(onClick = {
-				onConfirm(value)
-				onDismiss()
-			}) { Text(stringResource(android.R.string.ok)) }
+			TextButton(
+				enabled = value.isNotBlank(),
+				onClick = {
+					onConfirm(value)
+					onDismiss()
+				},
+			) { Text(stringResource(android.R.string.ok)) }
 		},
 		dismissButton = {
 			TextButton(onClick = onSignIn) { Text(stringResource(R.string.sign_in)) }

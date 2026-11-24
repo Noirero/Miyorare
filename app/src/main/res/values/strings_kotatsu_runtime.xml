@@ -20,6 +20,9 @@
     <string name="kotatsu_parsers_manage_sources_summary">Choose which Kotatsu sources appear in Explore and global search</string>
     <string name="kotatsu_parsers_sources">Kotatsu sources</string>
     <string name="kotatsu_parsers_search_sources">Search sources</string>
+    <string name="kotatsu_parsers_unknown_language">Unknown language</string>
+    <string name="kotatsu_source_settings_named">Source settings for %1$s</string>
+    <string name="kotatsu_source_enable_named">Enable %1$s</string>
     <string name="kotatsu_parsers_enabled_count">%1$d of %2$d enabled</string>
     <string name="kotatsu_parsers_broken_source">Unavailable in this runtime revision</string>
     <string name="kotatsu_source_config_title">Source settings</string>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="discord_token_saved">Token saved on this device</string>
+    <string name="discord_token_rejected">Discord rejected this token</string>
+    <string name="discord_token_rate_limited">Too many attempts. Try again later.</string>
+    <string name="discord_token_verification_unavailable">Could not verify the token right now</string>
+    <string name="discord_token_remove">Remove saved token</string>
+</resources>
