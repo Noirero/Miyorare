@@ -4,6 +4,7 @@
     <string name="discord_official_sdk_summary">Use the account signed in to the Discord app on this device.</string>
     <string name="discord_official_sdk_unavailable">This build does not include the SDK. Turn this off to use the token method.</string>
     <string name="discord_read_at_source">Read at source</string>
+    <string name="discord_chapter_d_of_d" translatable="false">Chapter %1$d of %2$d</string>
     <string name="discord_token_saved">Token saved on this device</string>
     <string name="discord_token_rejected">Discord rejected this token</string>
     <string name="discord_token_rate_limited">Too many attempts. Try again later.</string>

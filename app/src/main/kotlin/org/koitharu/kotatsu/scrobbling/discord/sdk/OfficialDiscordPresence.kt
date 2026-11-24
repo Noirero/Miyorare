@@ -74,7 +74,7 @@ class OfficialDiscordPresence @Inject constructor() {
 		}
 		DiscordPresenceNative.publish(
 			reading.title.discordTextBytes(),
-			reader.getString(R.string.chapter_d_of_d, reading.chapter, reading.chapterCount).encodeToByteArray(),
+			reader.getString(R.string.discord_chapter_d_of_d, reading.chapter, reading.chapterCount).encodeToByteArray(),
 			cover.encodeToByteArray(), source.encodeToByteArray(),
 			reader.getString(R.string.discord_read_at_source).encodeToByteArray(), startedAt,
 		)
