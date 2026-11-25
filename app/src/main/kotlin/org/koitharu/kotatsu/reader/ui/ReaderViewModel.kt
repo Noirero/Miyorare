@@ -1001,7 +1001,17 @@ class ReaderViewModel @Inject constructor(
 
     private fun getPageProgress(state: ReaderState): Pair<Int, Int> {
         if (mangaDetails.value?.toManga()?.isEpub != true) {
-            return state.page to chaptersLoader.getPagesCount(state.chapterId)
+            val loadedCount = chaptersLoader.getPagesCount(state.chapterId)
+            // Fragment teardown may save the last displayed state after the Reader backing
+            // lease has been released. For the selected ExHentai CBZ version, the published
+            // page snapshot still describes that exact chapter. Do not turn a completed
+            // cursor into 0% merely because the loader has already cleared its pages.
+            val pageCount = if (loadedCount == 0 &&
+                mangaDetails.value?.local?.exhentaiContentVersion?.chapterId == state.chapterId
+            ) {
+                content.value.pages.count { it.chapterId == state.chapterId }
+            } else loadedCount
+            return state.page to pageCount
         }
         val progress = uiState.value?.takeIf { it.chapter.id == state.chapterId }
         if (progress != null) {
