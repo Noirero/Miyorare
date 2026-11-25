@@ -1307,6 +1307,7 @@ internal fun InlineChapterCard(
 	onPersonalClick: () -> Unit,
 	onNoteClick: () -> Unit,
 	canAnimateTitle: () -> Boolean = { false },
+	hasExhentaiPresence: Boolean = false,
 ) {
 	val context = LocalContext.current
 	val palette = LocalMiyorareVisualPalette.current
@@ -1519,6 +1520,14 @@ internal fun InlineChapterCard(
 						Icon(
 							painter = painterResource(R.drawable.ic_eye_check),
 							contentDescription = null,
+							tint = if (palette.isModern) palette.primary else accent,
+							modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
+						)
+					}
+					hasExhentaiPresence -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+						Icon(
+							painter = painterResource(R.drawable.ic_eye_check),
+							contentDescription = stringResource(R.string.downloaded),
 							tint = if (palette.isModern) palette.primary else accent,
 							modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 						)

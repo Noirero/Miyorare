@@ -444,6 +444,7 @@ class DetailsExpressiveActivity :
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
 				val exhentaiDownloaded by viewModel.exhentaiDownloadedPresence.collectAsState()
+				val exhentaiPresentChapter by viewModel.exhentaiPresentChapter.collectAsState()
 				val chapterReleaseOrigin by viewModel.chapterReleaseCalendarOrigin.collectAsState()
 				val chapterPresentation by viewModel.groupedChapterPresentation.collectAsState()
 				val chapters = chapterPresentation.chapters
@@ -486,6 +487,7 @@ class DetailsExpressiveActivity :
 				DetailsExpressiveScreen(
 					details = details,
 					isExhentaiDownloaded = exhentaiDownloaded,
+					exhentaiPresentChapterId = exhentaiPresentChapter?.takeIf { it.first == details?.id }?.second,
 					note = mangaNote.value,
 					tags = tags,
 					historyInfo = history,

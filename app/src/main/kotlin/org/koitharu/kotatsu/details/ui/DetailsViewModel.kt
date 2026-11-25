@@ -192,6 +192,19 @@ class DetailsViewModel @Inject constructor(
 		id in downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, listOf(id))
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
+	// Presence-only presentation: never select a CBZ or change the chapter mapping/ownership.
+	internal val exhentaiPresentChapter: StateFlow<Pair<Long, Long>?> = combine(
+		mangaDetails.map { it?.sourceManga?.let { manga -> Triple(manga.id, manga.source.name, manga.chapters?.singleOrNull()?.id) } }.distinctUntilChanged(),
+		localStorageChanges.onStart { emit(null) },
+	) { identity, _ -> identity }.mapLatest { identity ->
+		val (id, source, chapterId) = identity ?: return@mapLatest null
+		if (chapterId == null || !supportsExhentaiPresenceIndicator(source)) return@mapLatest null
+		val root = downloadDestinationStore.effectiveRoot(favouriteSpace)?.absoluteFile?.normalize()?.path
+			?: return@mapLatest null
+		val paths = database.getExhentaiPresenceDao().findPaths(favouriteSpace.dbValue, root, id)
+		if (paths.any(::isStandardExhentaiPresencePath)) id to chapterId else null
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
 	private val rangeExpansion = savedStateHandle.getStateFlow<HashMap<String, Boolean>>("chapter_range_expansion", hashMapOf())
 
 	internal val groupedChapterPresentation = combine(chapterPresentation, rangeExpansion) { presentation, expansion ->
