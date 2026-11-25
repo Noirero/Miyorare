@@ -51,7 +51,9 @@ class PrivateSanctuaryHostRuntimeTest {
 	@Before
 	fun setUp() {
 		if (!WorkManager.isInitialized()) WorkManager.initialize(context, Configuration.Builder().build())
-		hilt.inject()
+		instrumentation.runOnMainSync {
+			hilt.inject()
+		}
 		runBlocking { withContext(Dispatchers.IO) { baseHttpClient.get() } }
 	}
 
