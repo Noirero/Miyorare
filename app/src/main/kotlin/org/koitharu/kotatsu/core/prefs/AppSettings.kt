@@ -1211,6 +1211,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isDiscordRpcSkipNsfw: Boolean
 		get() = prefs.getBoolean(KEY_DISCORD_RPC_SKIP_NSFW, false)
 
+	val isDiscordSocialSdkEnabled: Boolean
+		get() = prefs.getBoolean(KEY_DISCORD_SOCIAL_SDK, false)
+
 	var discordToken: String?
 		get() = synchronized(discordCredentials) {
 			(discordCredentials.getString(KEY_DISCORD_TOKEN, null) ?: legacyDiscordToken())?.trim()?.nullIfEmpty()
@@ -1675,6 +1678,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_LAST_EXTENSION_UPDATE_NOTIFICATION_TIME = "last_extension_update_notification_time"
 		const val KEY_DISCORD_RPC = "discord_rpc"
 		const val KEY_DISCORD_RPC_SKIP_NSFW = "discord_rpc_skip_nsfw"
+		const val KEY_DISCORD_SOCIAL_SDK = "discord_social_sdk"
 		const val KEY_DISCORD_TOKEN = "discord_token"
 		const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
 		const val KEY_ONBOARDING_INSTALL_ID = "onboarding_install_id"

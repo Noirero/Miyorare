@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <queries>
+        <package android:name="com.discord" />
+    </queries>
+    <application
+        android:allowBackup="false"
+        android:label="Miyorare Discord Presence"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- The JNI bridge owns a single SDK client per process. -->
+        <activity
+            android:name=".PresenceActivity"
+            android:exported="true"
+            android:launchMode="singleInstance">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
