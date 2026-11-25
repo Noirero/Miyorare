@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
@@ -67,6 +69,10 @@ private const val FILE_SCAN_QUEUE_CAPACITY = MAX_PARALLELISM * 2
 private const val MAX_MANGA_CHAPTER_FILENAME_LENGTH = 96
 private const val MAX_NOVEL_CHAPTER_FILENAME_LENGTH = 120
 
+// One in-process removal boundary for legacy and Smart Local physical deletes.
+// MangaLock, when needed, must be acquired before this mutex.
+internal val localPhysicalRemovalMutex = Mutex()
+
 @Singleton
 @OptIn(InternalParsersApi::class)
 class LocalMangaRepository @Inject constructor(
@@ -83,6 +89,10 @@ class LocalMangaRepository @Inject constructor(
 	@Volatile
 	private var listQueryCache: LocalListQueryCache? = null
 	private val listQueryCacheLock = Any()
+
+	// Shared by confirmed, source-owned and generic Local removals, regardless of manga ID.
+	// Callers holding MangaLock must acquire it before this mutex.
+	internal val exhentaiRemovalMutex = localPhysicalRemovalMutex
 
 	internal data class ExhentaiDownloadChange(val mangaId: Long, val space: FavouriteSpace, val local: LocalManga)
 
@@ -203,13 +213,16 @@ class LocalMangaRepository @Inject constructor(
 		return LocalMangaParser(chapter.url.toUri()).getPages(chapter)
 	}
 
-	suspend fun delete(manga: Manga): Boolean {
+	suspend fun delete(manga: Manga): Boolean = exhentaiRemovalMutex.withLock {
 		val file = manga.url.toUri().toFile()
+		// Local IDs may refer to the same physical archive (or an enclosing directory).
+		// A preceding confirmed removal must not be reported as another successful delete.
+		if (!file.exists()) return@withLock false
 		val result = file.deleteAwait()
 		if (result) {
 			clearDeletedMangaState(manga, file)
 		}
-		return result
+		result
 	}
 
 	private suspend fun clearDeletedMangaState(manga: Manga, file: File) {
@@ -236,6 +249,10 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	suspend fun deleteChapters(manga: Manga, ids: Set<Long>) = lock.withLock(manga) {
+		exhentaiRemovalMutex.withLock { deleteChaptersLocked(manga, ids) }
+	}
+
+	private suspend fun deleteChaptersLocked(manga: Manga, ids: Set<Long>) {
 		check(!ExhentaiDownloadedCopy.isOfficial(manga)) { "ExHentai remote deletion requires a verified space-owned artifact" }
 		val subject = if (manga.isLocal) manga else checkNotNull(findSavedManga(manga, withDetails = true)) {
 			"Manga is not stored on local storage"
@@ -329,7 +346,11 @@ class LocalMangaRepository @Inject constructor(
 	 * Only deterministic title destinations participate. A shared-root CBZ needs a matching
 	 * space receipt or exact ownership row; a title folder alone does not prove space.
 	 */
-	internal suspend fun findExhentaiDestinationCopy(remote: Manga, space: FavouriteSpace): LocalManga? =
+	internal suspend fun findExhentaiDestinationCopy(
+		remote: Manga,
+		space: FavouriteSpace,
+		roots: Collection<File> = downloadDestinationStore.readableRoots(space),
+	): LocalManga? =
 		withContext(Dispatchers.IO) {
 			if (!ExhentaiDownloadedCopy.isOfficial(remote)) return@withContext null
 			if (remote.chapters?.size != 1) {
@@ -337,8 +358,7 @@ class LocalMangaRepository @Inject constructor(
 				return@withContext null
 			}
 			val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
-			val otherRoots = downloadDestinationStore.readableRoots(otherSpace)
-			for (root in downloadDestinationStore.readableRoots(space)) {
+			for (root in roots) {
 				for (path in LocalMangaOutput.exhentaiReadCandidates(root, remote, preferFullTitle = true)) {
 					LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_CANDIDATE)
 					val target = if (path.isDirectory) {
@@ -349,16 +369,12 @@ class LocalMangaRepository @Inject constructor(
 						} ?: continue
 					} else path
 					val file = target.canonicalFile
-					if (file != target.absoluteFile || !file.isInsideAny(listOf(root))) continue
+					if (file != target.absoluteFile || !file.isInsideAny(listOf(root)) ||
+						!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)) continue
 					val evidence = ExhentaiChapterOwnership.inspectDestination(file)
 					val receiptSpace = (evidence as? ExhentaiChapterOwnership.Evidence.Owned)?.receipt?.space
 					if (evidence == ExhentaiChapterOwnership.Evidence.Unusable || receiptSpace == otherSpace) continue
 
-					if (file.isInsideAny(otherRoots) && receiptSpace != space &&
-						!favouriteDownloadOwnershipIndex.ownsExactExhentaiFile(remote.id, space, file)) {
-						LegacyCbzTrace.record(LegacyCbzTrace.Stage.DESTINATION_SHARED_ROOT)
-						continue
-					}
 					val match = findExhentaiAtPath(remote, file, withDetails = true, space = space)
 					if (match?.verified == true) return@withContext match.local
 					if (evidence is ExhentaiChapterOwnership.Evidence.Owned ||
@@ -375,15 +391,40 @@ class LocalMangaRepository @Inject constructor(
 		}
 
 	/** Delete the physical artifact, not the archive's embedded manga identity. */
-	internal suspend fun deleteExhentaiDestinationCopy(local: LocalManga): Boolean {
-		val file = local.file
-		if (!file.deleteAwait()) return false
-		if (localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile == file.canonicalFile) {
-			localMangaIndex.delete(local.manga.id)
-		}
+	internal suspend fun deleteExhentaiDestinationCopy(
+		local: LocalManga,
+		cleanupEmptyLegacyParent: Boolean = false,
+		confirmedRemoteMangaId: Long? = null,
+	): Boolean = exhentaiRemovalMutex.withLock {
+		val file = local.file.canonicalFile
+		// A preceding confirmed removal may have consumed this physical target.
+		if (!file.isFile || !file.deleteAwait()) return@withLock false
+		val indexed = localMangaIndex.findIndexedPath(local.manga.id)?.canonicalFile
+		if (indexed == file) localMangaIndex.delete(local.manga.id)
 		favouriteDownloadOwnershipIndex.removePath(file)
+		if (confirmedRemoteMangaId != null) {
+			val indexedRemote = localMangaIndex.findIndexedPath(confirmedRemoteMangaId)?.canonicalFile
+			if (indexedRemote == file || indexedRemote == file.parentFile) {
+				localMangaIndex.delete(confirmedRemoteMangaId)
+			}
+			favouriteDownloadOwnershipIndex.removeMangaPaths(
+				confirmedRemoteMangaId, listOfNotNull(file, file.parentFile),
+			)
+		}
+		if (cleanupEmptyLegacyParent) {
+			// Older task rows can index a directory containing Chapter.cbz rather than
+			// the CBZ itself. Clear them before emitting the storage invalidation so
+			// both Favorites spaces observe the final state, not a stale folder row.
+			val parent = file.parentFile
+			if (parent != null && parent.listFiles()?.none { sibling ->
+				sibling.isFile && sibling.extension.equals("cbz", ignoreCase = true)
+			} == true) {
+				favouriteDownloadOwnershipIndex.removePath(parent)
+				if (indexed == parent) localMangaIndex.delete(local.manga.id)
+			}
+		}
 		localStorageChanges.emit(null)
-		return true
+		true
 	}
 
 	internal suspend fun findExhentaiAtPath(
@@ -423,7 +464,9 @@ class LocalMangaRepository @Inject constructor(
 			downloadDestinationStore.readableRoots(if (it == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL)
 		}.orEmpty()
 		suspend fun ExhentaiDownloadedCopy.Match.allowed(): Boolean {
-			val allowed = !local.file.isInsideAny(otherRoots) || (space != null && receipt?.space == space)
+			val allowed = if (space != null && ExhentaiDownloadedCopy.isOfficial(remote)) {
+				downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, local.file)
+			} else !local.file.isInsideAny(otherRoots) || (space != null && receipt?.space == space)
 			if (!allowed) LegacyCbzTrace.record(LegacyCbzTrace.Stage.SPACE_REJECTED)
 			return allowed
 		}

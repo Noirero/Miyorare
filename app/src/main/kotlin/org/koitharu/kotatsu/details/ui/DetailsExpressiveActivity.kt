@@ -24,12 +24,15 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNot
@@ -37,6 +40,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.R
@@ -120,6 +125,15 @@ class DetailsExpressiveActivity :
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
+	private var exhentaiDeleteDialog: androidx.appcompat.app.AlertDialog? = null
+
+	internal fun trackExhentaiDeleteDialog(dialog: androidx.appcompat.app.AlertDialog) {
+		exhentaiDeleteDialog?.dismiss()
+		exhentaiDeleteDialog = dialog
+		dialog.setOnDismissListener {
+			if (exhentaiDeleteDialog === dialog) exhentaiDeleteDialog = null
+		}
+	}
 
 	private enum class PrivateContentState {
 		UNKNOWN,
@@ -205,8 +219,9 @@ class DetailsExpressiveActivity :
 		val menuInvalidator = MenuInvalidator(this)
 		viewModel.isStatsAvailable.observe(this, menuInvalidator)
 		viewModel.remoteManga.observe(this, menuInvalidator)
+		viewModel.exhentaiDownloadedPresence.observe(this, menuInvalidator)
 		viewModel.mangaDetails.observe(this) {
-			it?.let { d -> title = d.toManga().title }
+			it?.let { details -> title = details.toManga().title }
 			invalidateOptionsMenu()
 		}
 		viewModel.onChapterDownloadRenameMessage.observeEvent(this) { message ->
@@ -296,6 +311,8 @@ class DetailsExpressiveActivity :
 	}
 
 	override fun onStop() {
+		// A suspended/locked Private session must not leave a physical CBZ path in a dialog.
+		exhentaiDeleteDialog?.dismiss()
 		viewModel.pauseExpandedRelated()
 		viewModel.pauseGenreRecommendations()
 		viewModel.pauseTrackerPeople()
@@ -426,6 +443,7 @@ class DetailsExpressiveActivity :
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
+				val exhentaiDownloaded by viewModel.exhentaiDownloadedPresence.collectAsState()
 				val chapterReleaseOrigin by viewModel.chapterReleaseCalendarOrigin.collectAsState()
 				val chapterPresentation by viewModel.groupedChapterPresentation.collectAsState()
 				val chapters = chapterPresentation.chapters
@@ -467,6 +485,7 @@ class DetailsExpressiveActivity :
 
 				DetailsExpressiveScreen(
 					details = details,
+					isExhentaiDownloaded = exhentaiDownloaded,
 					note = mangaNote.value,
 					tags = tags,
 					historyInfo = history,
@@ -565,6 +584,14 @@ class DetailsExpressiveActivity :
 		}
 	}
 
+	internal fun canShowExhentaiFileDetails(): Boolean {
+		val state = privateContentStateFlow.value
+		if (state == PrivateContentState.UNKNOWN) return false
+		val protected = state == PrivateContentState.PRIVATE ||
+			viewModel.favouriteSpace == FavouriteSpace.PRIVATE
+		return !protected || privateFavouritesSession.isUnlocked.value
+	}
+
 	private fun openPrivateFavourite(manga: Manga) {
 		if (privateFavouritesSession.isUnlocked.value) {
 			showPrivateFavouriteDialog(manga)
@@ -606,7 +633,7 @@ class DetailsExpressiveActivity :
 			return
 		}
 		val intentBuilder = ReaderIntent.Builder(this)
-			.manga(manga)
+			.mangaForRead(manga, viewModel.mangaDetails.value?.sourceManga ?: manga)
 			.favouriteSpace(viewModel.favouriteSpace.dbValue)
 			.branch(viewModel.selectedBranchValue)
 		if (isIncognitoMode) intentBuilder.incognito()
@@ -622,7 +649,7 @@ class DetailsExpressiveActivity :
 			val state = viewModel.getChapterResumeState(item)
 			val openReader = { peek: Boolean ->
 				val builder = ReaderIntent.Builder(this@DetailsExpressiveActivity)
-					.manga(manga)
+					.mangaForRead(manga, viewModel.mangaDetails.value?.sourceManga ?: manga)
 					.favouriteSpace(viewModel.favouriteSpace.dbValue)
 					.branch(viewModel.selectedBranchValue)
 					.state(state)

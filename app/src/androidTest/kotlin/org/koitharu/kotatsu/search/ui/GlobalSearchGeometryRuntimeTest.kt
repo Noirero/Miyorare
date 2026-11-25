@@ -42,6 +42,7 @@ import org.koitharu.kotatsu.search.ui.multi.adapter.searchResultsAD
 import javax.inject.Inject
 import javax.inject.Provider
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /** Measure real grouped-search rows, with offline synthetic data and no changes to app code. */
@@ -67,7 +68,7 @@ class GlobalSearchGeometryRuntimeTest {
         val status = row.findViewById<TextView>(R.id.text_view_status)
         val more = row.findViewById<TextView>(R.id.button_more)
         for (loading in listOf(false, true)) for (longName in listOf(false, true)) {
-            bind(0, loading)
+            bind(0, loading, null)
             // Simulate extension metadata without requiring a third-party extension or network.
             title.text = if (longName) "A Very Long Extension Source Name" else "Shinigami"
             language.text = "EN-GB"
@@ -117,7 +118,7 @@ class GlobalSearchGeometryRuntimeTest {
         // The same holder must recover its horizontal layout when the available width
         // increases, then return to stacked rows without stale state on a narrow screen.
         if (scale == 2f) {
-            bind(0, false)
+            bind(0, false, null)
             title.text = "Shinigami"
             language.text = "EN-GB"
             for ((probeWidth, expected) in listOf(width to LinearLayout.VERTICAL,
@@ -131,12 +132,49 @@ class GlobalSearchGeometryRuntimeTest {
         failures
     }
 
+    @Test fun sourceStatusStaysBesideShortTitleAcrossBindings() = withRows { row, width, scale, bind ->
+        val failures = mutableListOf<String>()
+        val title = row.findViewById<TextView>(R.id.textView_title)
+        val status = row.findViewById<TextView>(R.id.text_view_status)
+        val language = row.findViewById<TextView>(R.id.text_view_source_language)
+        val margin = (status.layoutParams as ViewGroup.MarginLayoutParams).marginStart
+        val tolerance = ceil(2f * row.resources.displayMetrics.density).toInt()
+        val states = listOf(
+            Triple(false, null, "✓"),
+            Triple(true, null, "…"),
+            Triple(false, IllegalStateException("Synthetic source failure"), "⚠"),
+        )
+        // Use actual adapter bindings, including error and loading transitions on the same holder.
+        for ((loading, error, symbol) in states) for (name in listOf("A", "Komi")) {
+            bind(0, loading, error)
+            title.text = name
+            language.text = "EN-GB"
+            measureRow(row, width)
+            val textLayout = title.layout
+            val tag = "${width}dp font=$scale status=$symbol title=$name"
+            if (textLayout == null || textLayout.lineCount != 1 ||
+                textLayout.getEllipsisCount(0) != 0 || status.visibility != View.VISIBLE ||
+                status.text.toString() != symbol || title.parent !== status.parent) {
+                failures += "$tag expected a visible bound status and complete single-line title"
+                continue
+            }
+            // Compare the rendered text edge, not the weighted TextView's right bound.
+            val textEnd = title.left + title.compoundPaddingLeft + textLayout.getLineRight(0)
+            val gap = status.left - textEnd
+            Log.i("GlobalSearchGeometry", "$tag statusGap=${gap}px expectedMargin=${margin}px")
+            if (gap < margin - tolerance || gap > margin + tolerance) {
+                failures += "$tag status gap=${gap}px expected=${margin}px ±${tolerance}px"
+            }
+        }
+        failures
+    }
+
     @Test fun singleAndMultipleResultsKeepSameMeasuredCoverGeometry() = withRows { row, width, scale, bind ->
         val failures = mutableListOf<String>()
         val rail = row.findViewById<RecyclerView>(R.id.recyclerView)
         var reference: Pair<Int, Int>? = null
         for (count in listOf(1, 5, 1)) {
-            bind(count, false)
+            bind(count, false, null)
             measureRow(row, width)
             // A second layout lets the attach-driven DynamicItemSizeResolver settle.
             measureRow(row, width)
@@ -161,7 +199,7 @@ class GlobalSearchGeometryRuntimeTest {
         failures
     }
 
-    private fun withRows(probe: (View, Int, Float, (Int, Boolean) -> Unit) -> List<String>) {
+    private fun withRows(probe: (View, Int, Float, (Int, Boolean, Throwable?) -> Unit) -> List<String>) {
         val failures = mutableListOf<String>()
         ActivityScenario.launch(MangaUpdatesAuthActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
@@ -198,7 +236,7 @@ class GlobalSearchGeometryRuntimeTest {
                                 RecyclerView.RecycledViewPool(), resolver, MangaSelectionDecoration(themed),
                                 listener, OnListItemClickListener<SearchResultsListModel> { _, _ -> },
                             ))
-                            fun group(count: Int, loading: Boolean) = SearchResultsListModel(
+                            fun group(count: Int, loading: Boolean, error: Throwable? = null) = SearchResultsListModel(
                                 titleResId = 0, source = LocalMangaSource, listFilter = null, sortOrder = null,
                                 list = List(count) { index ->
                                     MangaGridModel(
@@ -207,14 +245,14 @@ class GlobalSearchGeometryRuntimeTest {
                                         override = null, counter = 0, progress = null, isFavorite = false,
                                         isSaved = false, isTitleOverCover = true, unreadCount = null,
                                     )
-                                }, error = null, isLoading = loading,
+                                }, error = error, isLoading = loading,
                             )
                             adapter.items = listOf(group(0, false))
                             val holder = adapter.createViewHolder(host, adapter.getItemViewType(0))
                             val row = holder.itemView
                             host.addView(row)
-                            failures += probe(row, width, scale) { count, loading ->
-                                adapter.items = listOf(group(count, loading))
+                            failures += probe(row, width, scale) { count, loading, error ->
+                                adapter.items = listOf(group(count, loading, error))
                                 adapter.bindViewHolder(holder, 0)
                             }
                         } finally {

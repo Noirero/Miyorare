@@ -365,7 +365,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	@Transaction
 	@RawQuery(observedEntities = [
-		LocalMangaIndexEntity::class, FavouriteDownloadIndexEntity::class, MangaEntity::class,
+		LocalMangaIndexEntity::class, FavouriteDownloadIndexEntity::class, ExhentaiPresenceEntity::class, MangaEntity::class,
 		FavouriteEntity::class, PrivateFavouriteEntity::class, FavouriteCategoryEntity::class,
 		HistoryEntity::class, TrackEntity::class, MangaTagsEntity::class,
 	])

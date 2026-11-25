@@ -49,7 +49,8 @@ fun HistoryInfo(
 		currentChapter = currentChapter,
 		history = history,
 		isIncognitoMode = isIncognitoMode,
-		isChapterMissing = history != null && manga?.isLoaded == true && manga.allChapters.none { it.id == history.chapterId },
+		isChapterMissing = history != null && manga?.isLoaded == true &&
+			manga.local?.exhentaiContentVersion == null && manga.allChapters.none { it.id == history.chapterId },
 		canDownload = manga?.isLocal == false,
 		estimatedTime = estimatedTime,
 	)

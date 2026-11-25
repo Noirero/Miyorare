@@ -60,6 +60,8 @@ import javax.inject.Singleton
 class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+	// Serialize active download-root publication with confirmed physical removal.
+	internal val downloadDestinationMutationLock = Any()
 	private val discordCredentials = context.getSharedPreferences("miyorare_discord_credentials", Context.MODE_PRIVATE)
 	// Capture this before any migration/default writes below. Existing installs already have app
 	// preferences, while a true fresh install starts empty. That distinction lets Modern become the
@@ -985,15 +987,17 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_LOCAL_STORAGE, null)?.let {
 			File(it)
 		}?.takeIf { it.exists() && it in userSpecifiedMangaDirectories }
-		set(value) = prefs.edit {
-			if (value == null) {
-				remove(KEY_LOCAL_STORAGE)
-			} else {
-				val userDirs = userSpecifiedMangaDirectories
-				if (value !in userDirs) {
-					userSpecifiedMangaDirectories = userDirs + value
+		set(value) = synchronized(downloadDestinationMutationLock) {
+			prefs.edit {
+				if (value == null) {
+					remove(KEY_LOCAL_STORAGE)
+				} else {
+					val userDirs = userSpecifiedMangaDirectories
+					if (value !in userDirs) {
+						userSpecifiedMangaDirectories = userDirs + value
+					}
+					putString(KEY_LOCAL_STORAGE, value.path)
 				}
-				putString(KEY_LOCAL_STORAGE, value.path)
 			}
 		}
 

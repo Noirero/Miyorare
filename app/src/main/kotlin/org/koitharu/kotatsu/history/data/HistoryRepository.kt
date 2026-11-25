@@ -31,6 +31,8 @@ import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import org.koitharu.kotatsu.details.data.ChapterProgressEntity
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
@@ -219,6 +221,29 @@ class HistoryRepository @Inject constructor(
 		mangaRepository.storeManga(manga.copy(chapters = null), replaceExisting = true)
 		val branch = manga.chapters?.findById(chapterId)?.branch
 		val historyDao = db.getHistoryDao()
+		if (manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+			manga.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI") {
+			// The global row is the latest cursor, not a version archive. Keep an older
+			// cursor's position if no per-chapter progress was ever recorded for it.
+			// Never recreate an explicitly reset/unread position.
+			val previous = historyDao.find(manga.id)
+			if (previous != null && previous.chapterId != chapterId &&
+				settings.getChapterReadOverrides(manga.id)[previous.chapterId] != false &&
+				settings.getChapterPageResetStamp(manga.id, previous.chapterId, previous.space) >= 0
+			) {
+				val cached = db.getChaptersDao().findAll(manga.id).singleOrNull {
+					it.chapterId == previous.chapterId && it.source == manga.source.name
+				}
+				val url = cached?.url ?: "miyorare-exhentai-chapter:${previous.chapterId}"
+				val progress = db.getChapterProgressDao()
+				if (progress.find(manga.id, manga.source.name, url, previous.space) == null) {
+					progress.upsert(ChapterProgressEntity(
+						mangaId = manga.id, source = manga.source.name, url = url, space = previous.space,
+						page = previous.page, scroll = previous.scroll.toInt(), totalPages = null,
+					))
+				}
+			}
+		}
 		historyDao.upsert(
 			HistoryEntity(
 				mangaId = manga.id,
@@ -324,6 +349,9 @@ class HistoryRepository @Inject constructor(
 	private suspend fun HistoryEntity.recoverIfNeeded(manga: Manga): HistoryEntity {
 		val chapters = manga.chapters
 		if (manga.isLocal || chapters.isNullOrEmpty() || chapters.findById(chapterId) != null) return this
+		// A missing projected CBZ chapter/version is historical, not a source reorder.
+		if (manga.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+			manga.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI") return this
 		val index = ceil(chapters.size * percent.toDouble()).toInt() - 1
 		val newChapterId = chapters.getOrNull(index.coerceIn(chapters.indices))?.id ?: return this
 		val newEntity = copy(chapterId = newChapterId)
