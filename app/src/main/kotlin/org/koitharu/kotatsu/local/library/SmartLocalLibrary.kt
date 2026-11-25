@@ -32,6 +32,7 @@ import org.koitharu.kotatsu.core.util.AlphanumComparator
 import org.koitharu.kotatsu.core.util.ext.toZipUri
 import org.koitharu.kotatsu.local.data.input.EpubParser
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.data.localPhysicalRemovalMutex
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -426,7 +427,8 @@ class SmartLocalLibrary @Inject constructor(
 
     suspend fun deleteFromDevice(ids: Set<Long>) = withContext(Dispatchers.IO) {
         initialize()
-        try { mutex.withLock {
+        // Acquire the common removal boundary before the Smart Local index mutex.
+        try { localPhysicalRemovalMutex.withLock { mutex.withLock {
             val targets = state.value.books.filter { it.id in ids }
             require(targets.size == ids.size) { "Selected collections changed" }
             // Calculate ownership once for the complete batch, including selected books.
@@ -483,7 +485,7 @@ class SmartLocalLibrary @Inject constructor(
                 saveExclusions(exclusions)
                 publishLocked(state.value.copy(books = state.value.books.filterNot { it.id == book.id }, excludedCount = exclusions.size))
             }
-        } } catch (error: Exception) {
+        } } } catch (error: Exception) {
             withContext(NonCancellable) { runCatching { scan() } }
             throw error
         }
@@ -723,7 +725,8 @@ class SmartLocalLibrary @Inject constructor(
 
     suspend fun deleteChapters(mangaId: Long, ids: Set<Long>) = withContext(Dispatchers.IO) {
         initialize()
-        try { mutex.withLock {
+        // Acquire the common removal boundary before the Smart Local index mutex.
+        try { localPhysicalRemovalMutex.withLock { mutex.withLock {
             val book = state.value.books.firstOrNull { it.id == mangaId } ?: error("Local manga is unavailable")
             val root = documents.root(book.rootUri)
             val chapters = book.chapters.filter { it.id in ids }
@@ -737,7 +740,7 @@ class SmartLocalLibrary @Inject constructor(
                 for (page in owned) if (documents.exists(root, page)) documents.delete(root, page)
                 if (chapter.node.directory && chapter.node.uri.toUri().scheme == "file" && chapter.node.key != root.key && documents.exists(root, chapter.node) && documents.children(root, chapter.node).isEmpty()) documents.delete(root, chapter.node)
             }
-        } } catch (error: Exception) {
+        } } } catch (error: Exception) {
             withContext(NonCancellable) { runCatching { scan() } }
             throw error
         }

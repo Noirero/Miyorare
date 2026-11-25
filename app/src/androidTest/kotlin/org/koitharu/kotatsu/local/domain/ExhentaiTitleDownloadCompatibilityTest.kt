@@ -1275,6 +1275,26 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun confirmedDeleteSerializesWithSmartLocalWholeBookRemoval() = runBlocking {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val sibling = chapter.copyTo(File(chapter.parentFile, "Keep.cbz"))
+		val uri = android.net.Uri.fromFile(requireNotNull(chapter.parentFile))
+		val fixtureIds = ArrayList<Long>()
+		try {
+			smartLocal.addRoot(uri)
+			val books = smartLocal.state.value.books.filter { it.rootUri == uri.toString() }
+			fixtureIds.addAll(books.map { it.id })
+			val book = books.single { item -> item.chapters.any { it.node.key == chapter.canonicalPath } }
+			assertEquals(chapter.canonicalPath, book.node.key)
+			verifyConfirmedRemovalExcludesChapterMutation(chapter, sibling, gallery(990111, GEKKO_SOURCE)) {
+				localRouting.deleteIndexedBook(book.id)
+			}
+		} finally {
+			smartLocal.removeRoot(uri.toString())
+			database.getMangaDao().delete(fixtureIds.mapNotNull { database.getMangaDao().find(it)?.manga })
+		}
+	}
+
 	private suspend fun verifyConfirmedRemovalExcludesChapterMutation(
 		chapter: File,
 		sibling: File,
@@ -1310,6 +1330,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 				completed.await(2, java.util.concurrent.TimeUnit.SECONDS)
 				assertTrue("Local chapter mutation must not consume the confirmed CBZ before commit", chapter.isFile)
 				assertArrayEquals(bytes, chapter.readBytes())
+				assertEquals("Competing removal must wait for the confirmed commit", 1L, completed.count)
 			})
 			assertFalse(chapter.exists())
 		} finally {

@@ -69,6 +69,10 @@ private const val FILE_SCAN_QUEUE_CAPACITY = MAX_PARALLELISM * 2
 private const val MAX_MANGA_CHAPTER_FILENAME_LENGTH = 96
 private const val MAX_NOVEL_CHAPTER_FILENAME_LENGTH = 120
 
+// One in-process removal boundary for legacy and Smart Local physical deletes.
+// MangaLock, when needed, must be acquired before this mutex.
+internal val localPhysicalRemovalMutex = Mutex()
+
 @Singleton
 @OptIn(InternalParsersApi::class)
 class LocalMangaRepository @Inject constructor(
@@ -88,7 +92,7 @@ class LocalMangaRepository @Inject constructor(
 
 	// Shared by confirmed, source-owned and generic Local removals, regardless of manga ID.
 	// Callers holding MangaLock must acquire it before this mutex.
-	internal val exhentaiRemovalMutex = Mutex()
+	internal val exhentaiRemovalMutex = localPhysicalRemovalMutex
 
 	internal data class ExhentaiDownloadChange(val mangaId: Long, val space: FavouriteSpace, val local: LocalManga)
 
@@ -245,6 +249,10 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	suspend fun deleteChapters(manga: Manga, ids: Set<Long>) = lock.withLock(manga) {
+		exhentaiRemovalMutex.withLock { deleteChaptersLocked(manga, ids) }
+	}
+
+	private suspend fun deleteChaptersLocked(manga: Manga, ids: Set<Long>) {
 		check(!ExhentaiDownloadedCopy.isOfficial(manga)) { "ExHentai remote deletion requires a verified space-owned artifact" }
 		val subject = if (manga.isLocal) manga else checkNotNull(findSavedManga(manga, withDetails = true)) {
 			"Manga is not stored on local storage"
