@@ -70,11 +70,6 @@ class DiscordRpc @Inject constructor(
 	init {
 		lifecycle.addOnClearedListener(this)
 		coroutineScope.launch {
-			settings.observe(AppSettings.KEY_DISCORD_RPC, AppSettings.KEY_DISCORD_SOCIAL_SDK).collect {
-				if (!settings.isDiscordRpcEnabled || settings.isDiscordSocialSdkEnabled) clearRpc()
-			}
-		}
-		coroutineScope.launch {
 			merge(
 				favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
 				favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
@@ -102,7 +97,7 @@ class DiscordRpc @Inject constructor(
 		val activity = lastActivity ?: return
 		val mangaId = lastMangaId ?: return
 		launchRpcRequest {
-			if (settings.isDiscordSocialSdkEnabled || isPrivateOnly(mangaId)) {
+			if (isPrivateOnly(mangaId)) {
 				clearRpc()
 				return@launchRpcRequest
 			}
@@ -185,7 +180,7 @@ class DiscordRpc @Inject constructor(
 			)
 			// Media-proxy conversion above can suspend too. One last classification immediately before
 			// updateRPC prevents a membership change during proxy I/O from publishing stale metadata.
-			if (settings.isDiscordSocialSdkEnabled || !settings.isDiscordRpcEnabled || isPrivateOnly(mangaId)) {
+			if (isPrivateOnly(mangaId)) {
 				clearRpc()
 				return@launch
 			}
@@ -214,7 +209,7 @@ class DiscordRpc @Inject constructor(
 	}
 
 	private fun getRpc(): KizzyRPC? {
-		if (!settings.isDiscordRpcEnabled || settings.isDiscordSocialSdkEnabled) {
+		if (!settings.isDiscordRpcEnabled) {
 			clearRpc()
 			return null
 		}
