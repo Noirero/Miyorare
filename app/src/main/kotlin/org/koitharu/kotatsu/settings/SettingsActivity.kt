@@ -120,6 +120,14 @@ class SettingsActivity :
 
 	override fun isPrivateVaultContent(): Flow<Boolean> = flowOf(isPrivateSettings)
 
+	internal fun refreshPrivateFavouritesSettingsChrome() {
+		if (intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS &&
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			supportFragmentManager.findFragmentById(R.id.container) is PrivateFavouritesSettingsFragment) {
+			applyModernSettingsChrome(visualEffectPreferences.level.value)
+		}
+	}
+
 	/** Normal Modern Settings shares the blurred Favourites wallpaper; Private keeps its own surface. */
 	private fun applyModernSettingsChrome(level: VisualEffectLevel) {
 		val palette = miyorareViewPalette(settings, level)

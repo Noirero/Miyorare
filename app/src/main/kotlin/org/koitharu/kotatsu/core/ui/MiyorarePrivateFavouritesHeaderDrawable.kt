@@ -22,7 +22,15 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 	private val variant: MiyorareHeaderShapeDrawable.Variant,
 	private val spec: PrivateFavouritesVisualSpec,
 	private val density: Float,
+	private var sanctuaryBottomColor: Int? = null,
 ) : Drawable() {
+
+	internal val hasSanctuaryFade: Boolean get() = sanctuaryBottomColor != null
+
+	internal fun clearSanctuaryFade() {
+		sanctuaryBottomColor = null
+		invalidateSelf()
+	}
 
 	private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 	private val artworkPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
@@ -68,6 +76,12 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 
 		drawArtwork(canvas)
 		drawReadabilityScrim(canvas, width, height)
+		sanctuaryBottomColor?.let { color ->
+			scrimPaint.shader = LinearGradient(0f, height * 0.48f, 0f, height,
+				intArrayOf(android.graphics.Color.TRANSPARENT, withDrawableAlpha(color)), null, Shader.TileMode.CLAMP)
+			canvas.drawRect(0f, 0f, width, height, scrimPaint)
+			scrimPaint.shader = null
+		}
 		canvas.restore()
 	}
 

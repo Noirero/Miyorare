@@ -383,6 +383,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	CompositionLocalProvider(
 		LocalMiyorareVisualPalette provides visualPalette,
 		LocalSettingsIconStyle provides settingsIconStyle,
+		LocalPrivateSettingsThemeSnapshot provides if (privateHost) PrivateSettingsThemeSnapshot(privateTheme, modernColors != null, effectLevel) else null,
 	) {
 		MaterialTheme(
 			colorScheme = scheme,
