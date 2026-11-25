@@ -15,6 +15,8 @@ import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commit
+import androidx.lifecycle.Lifecycle
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import androidx.preference.PreferenceManager
 import com.google.android.material.appbar.CollapsingToolbarLayout
 import com.google.android.material.appbar.MaterialToolbar
@@ -47,9 +49,14 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
     private val themeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME ||
             key == MiyorareAppearance.KEY_THEME_PRESET ||
-            key == MiyorareAppearance.KEY_CUSTOM_ACCENT
+            key == MiyorareAppearance.KEY_CUSTOM_ACCENT ||
+            key == MiyorareAppearance.KEY_DESIGN_STYLE || key == VisualEffectPreferences.KEY_LEVEL
         ) {
-            view?.post(::applyPrivateTheme)
+            val root = view ?: return@OnSharedPreferenceChangeListener
+            val owner = viewLifecycleOwner
+            root.post {
+                if (view === root && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) applyPrivateTheme()
+            }
         }
     }
 
@@ -71,6 +78,7 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
             // the Private workspace title after the child has resumed so a previous "Settings"
             // label cannot leak into Favourites/Feed/History/Explore.
             updateTitle(itemIdFor(f))
+            if (fm.primaryNavigationFragment === f) (activity as? FavouritesActivity)?.refreshSanctuaryHeader()
         }
     }
 
@@ -177,10 +185,16 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
         }
     }
 
+    internal fun hasActivePrivateSettings(): Boolean {
+        val current = childFragmentManager.primaryNavigationFragment
+        return view != null && current is PrivateFavouritesSettingsFragment && current.isAdded && !current.isDetached && current.view != null &&
+            current.viewLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+    }
+
     private fun applyPrivateTheme() {
         val root = view ?: return
-        val palette = requireContext().miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
         (activity as? FavouritesActivity)?.applyPrivateAppBarChrome()
+        val palette = requireContext().miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
         root.background = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(
@@ -239,6 +253,9 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
                 add(R.id.private_workspace_content, target, tag)
             }
             setPrimaryNavigationFragment(target)
+            runOnCommit {
+                if (view != null && isAdded) (activity as? FavouritesActivity)?.refreshSanctuaryHeader()
+            }
         }
     }
 

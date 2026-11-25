@@ -15,6 +15,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -71,6 +75,9 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.domain.PageSaveDestinationStore
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
+import org.koitharu.kotatsu.settings.compose.LocalPrivateSettingsThemeSnapshot
+import org.koitharu.kotatsu.settings.compose.SanctuaryRole
+import org.koitharu.kotatsu.settings.compose.rememberPrivateSanctuary
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
@@ -93,7 +100,6 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 	private val hasPinState = MutableStateFlow(false)
 	private val backupState = MutableStateFlow(false)
 	private val screenshotsState = MutableStateFlow(false)
-	private val themeState = MutableStateFlow(PrivateFavouritesThemePreset.FOLLOW_NORMAL)
 	private val privatePagesDirState = MutableStateFlow<String?>(null)
 
 	private val pickPrivatePagesDirLauncher = OpenDocumentTreeHelper(this) {
@@ -112,7 +118,10 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 				val hasPin by hasPinState.collectAsState()
 				val includeBackup by backupState.collectAsState()
 				val allowScreenshots by screenshotsState.collectAsState()
-				val privateTheme by themeState.collectAsState()
+				val privateTheme = LocalPrivateSettingsThemeSnapshot.current?.theme ?: appearance.themePreset
+				LaunchedEffect(privateTheme) {
+					(activity as? SettingsActivity)?.refreshPrivateFavouritesSettingsChrome()
+				}
 				val privatePagesDirectory by privatePagesDirState.collectAsState()
 				PrivateFavouritesSettingsScreen(
 					protection = protection,
@@ -148,7 +157,6 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 		hasPinState.value = security.hasPin
 		backupState.value = security.includePrivateInBackup
 		screenshotsState.value = security.allowPrivateScreenshots
-		themeState.value = appearance.themePreset
 		val privatePagesDir = pageSaveDestinationStore.getDirectory(FavouriteSpace.PRIVATE)
 		privatePagesDirState.value = privatePagesDir?.uri?.resolveFile(requireContext())?.path
 			?: privatePagesDir?.uri?.toString()
@@ -189,7 +197,6 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 
 	private fun changePrivateTheme(theme: PrivateFavouritesThemePreset) {
 		appearance.themePreset = theme
-		themeState.value = theme
 	}
 
 	private fun showProtectionChooser() {
@@ -388,7 +395,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 }
 
 @Composable
-private fun PrivateFavouritesSettingsScreen(
+internal fun PrivateFavouritesSettingsScreen(
 	protection: PrivateFavouritesProtection,
 	hasPin: Boolean,
 	includeBackup: Boolean,
@@ -405,6 +412,7 @@ private fun PrivateFavouritesSettingsScreen(
 	onPrivatePagesDirectoryClick: () -> Unit,
 	onDisablePrivate: () -> Unit,
 ) {
+	val sanctuary = rememberPrivateSanctuary(LocalPrivateSettingsThemeSnapshot.current)
 	val protectionTitle = when (protection) {
 		PrivateFavouritesProtection.NONE -> stringResource(R.string.private_favourites_security_none)
 		PrivateFavouritesProtection.PIN -> stringResource(R.string.private_favourites_security_pin)
@@ -413,10 +421,12 @@ private fun PrivateFavouritesSettingsScreen(
 	}
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_appearance_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_appearance_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_theme_title),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.APPEARANCE),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.APPEARANCE),
 						subtitle = stringResource(privateTheme.titleResId),
 						icon = R.drawable.ic_palette,
 						shape = pos.shape,
@@ -424,16 +434,18 @@ private fun PrivateFavouritesSettingsScreen(
 					)
 				}
 				item {
-					PrivateThemePreviewStrip(selected = privateTheme, onSelect = onThemeSelect)
+					PrivateThemePreviewStrip(selected = privateTheme, onSelect = onThemeSelect, sanctuary = sanctuary != null)
 				}
 			}
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_security_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_security_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_security),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.PROTECTION),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.PROTECTION),
 						subtitle = protectionTitle,
 						icon = R.drawable.ic_lock,
 						shape = pos.shape,
@@ -444,6 +456,8 @@ private fun PrivateFavouritesSettingsScreen(
 					item { pos ->
 						SettingsItem(
 							title = stringResource(R.string.private_favourites_change_pin),
+							surfaceOverride = sanctuary?.surface(SanctuaryRole.STANDARD),
+							iconColors = sanctuary?.iconColors(SanctuaryRole.STANDARD),
 							subtitle = stringResource(R.string.private_favourites_change_pin_summary),
 							icon = R.drawable.ic_lock,
 							shape = pos.shape,
@@ -455,6 +469,8 @@ private fun PrivateFavouritesSettingsScreen(
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_lock_now),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.ACCENTED_STANDARD),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.ACCENTED_STANDARD),
 						subtitle = stringResource(R.string.private_favourites_lock_now_summary),
 						icon = R.drawable.ic_lock,
 						shape = pos.shape,
@@ -465,10 +481,12 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_privacy_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_privacy_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.private_favourites_allow_screenshots),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.ACCENTED_STANDARD),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.ACCENTED_STANDARD),
 						subtitle = stringResource(R.string.private_favourites_allow_screenshots_summary),
 						checked = allowScreenshots,
 						onCheckedChange = onAllowScreenshotsChange,
@@ -480,10 +498,12 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_saved_pages_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_saved_pages_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_saved_pages_directory),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.STANDARD),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.STANDARD),
 						subtitle = privatePagesDirectory
 							?: stringResource(R.string.private_favourites_saved_pages_unset),
 						icon = R.drawable.ic_download,
@@ -495,10 +515,12 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_backup_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_backup_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.private_favourites_include_backup),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.STANDARD),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.STANDARD),
 						subtitle = stringResource(R.string.private_favourites_include_backup_summary),
 						checked = includeBackup,
 						onCheckedChange = onIncludeBackupChange,
@@ -510,10 +532,12 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_disable_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_disable_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_disable_all),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.DESTRUCTIVE),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.DESTRUCTIVE),
 						subtitle = stringResource(R.string.private_favourites_disable_all_summary),
 						icon = R.drawable.ic_delete_all,
 						shape = pos.shape,
@@ -529,6 +553,7 @@ private fun PrivateFavouritesSettingsScreen(
 private fun PrivateThemePreviewStrip(
 	selected: PrivateFavouritesThemePreset,
 	onSelect: (PrivateFavouritesThemePreset) -> Unit,
+	sanctuary: Boolean = false,
 ) {
 	Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
 		Text(
@@ -552,7 +577,7 @@ private fun PrivateThemePreviewStrip(
 					modifier = Modifier
 						.width(100.dp)
 						.padding(horizontal = 4.dp)
-						.clickable { onSelect(theme) },
+						.let { if (sanctuary) it.selectable(selected = theme == selected, role = Role.RadioButton) { onSelect(theme) } else it.clickable { onSelect(theme) } },
 				) {
 					Box(
 						contentAlignment = Alignment.Center,
@@ -593,11 +618,18 @@ private fun PrivateThemePreviewStrip(
 								modifier = Modifier.fillMaxSize(),
 							)
 						}
+						if (sanctuary && theme == selected) {
+							Icon(painterResource(R.drawable.ic_check), contentDescription = null,
+								tint = MaterialTheme.colorScheme.onSurface,
+								modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp)
+									.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)))
+						}
 					}
 					Text(
 						text = stringResource(theme.titleResId),
 						style = MaterialTheme.typography.labelSmall,
-						maxLines = 1,
+						color = if (sanctuary) MaterialTheme.colorScheme.onSurface else Color.Unspecified,
+						maxLines = if (sanctuary) Int.MAX_VALUE else 1,
 						overflow = TextOverflow.Ellipsis,
 						modifier = Modifier.padding(top = 5.dp),
 					)
