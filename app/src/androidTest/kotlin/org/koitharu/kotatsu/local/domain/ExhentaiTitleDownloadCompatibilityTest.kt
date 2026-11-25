@@ -2363,6 +2363,132 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun sharedPhysicalCbzKeepsMainAndGekkoReaderBookmarksAndCompletionIndependent() = runBlocking {
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val main = gallery(990124L, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val gekkoSource = gallery(990125L, GEKKO_SOURCE)
+		// Same remote gallery locator AND same physical pages, but distinct source manga identities.
+		val gekko = gekkoSource.copy(
+			url = main.url, publicUrl = main.publicUrl,
+			chapters = gekkoSource.chapters!!.map { it.copy(url = main.url) },
+		)
+		val all = listOf(main, gekko)
+		val space = FavouriteSpace.NORMAL
+		val bitmap = android.graphics.Bitmap.createBitmap(64, 96, android.graphics.Bitmap.Config.ARGB_8888)
+		val png = try {
+			java.io.ByteArrayOutputStream().use { output ->
+				check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+				output.toByteArray()
+			}
+		} finally { bitmap.recycle() }
+		ZipOutputStream(file.outputStream()).use { zip ->
+			for (page in 1..8) {
+				zip.putNextEntry(ZipEntry("$page.png").apply { time = 1700000000000L })
+				zip.write(png)
+				zip.closeEntry()
+			}
+		}
+		val originalBytes = file.readBytes()
+		val history = database.getHistoryDao()
+		val progress = database.getChapterProgressDao()
+		val bookmarks = database.getBookmarksDao()
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		suspend fun awaitCondition(stage: String, condition: suspend () -> Boolean) {
+			assertTrue("Timed out: $stage", withTimeoutOrNull(30000) {
+				while (!condition()) kotlinx.coroutines.delay(25)
+				true
+			} == true)
+		}
+		try {
+			for (manga in all) data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			presence.run(full = true)
+			assertEquals(all.map { it.id }.toSet(), classifier.getDownloadedIds(space, all.map { it.id }))
+			val mainDetails = loadVersionFixtureDetails(main, space)
+			val gekkoDetails = loadVersionFixtureDetails(gekko, space)
+			assertEquals(file.canonicalFile, mainDetails.local?.file?.canonicalFile)
+			assertEquals(file.canonicalFile, gekkoDetails.local?.file?.canonicalFile)
+			val mainRow = mainDetails.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			val gekkoRow = gekkoDetails.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			assertTrue(mainRow.isDownloaded)
+			assertTrue(gekkoRow.isDownloaded)
+			assertFalse(mainRow.personalKey == gekkoRow.personalKey)
+			fun open(details: MangaDetails) = ReaderIntent.Builder(context)
+				.mangaForRead(details.toManga(), details.sourceManga)
+				.favouriteSpace(space.dbValue)
+				.incognito(false)
+				.build().intent
+
+			ActivityScenario.launch<ReaderActivity>(open(mainDetails)).use { scenario ->
+				lateinit var reader: ReaderViewModel
+				scenario.onActivity { reader = ViewModelProvider(it)[ReaderViewModel::class.java] }
+				awaitCondition("Main first page") {
+					reader.content.value.pages.count { it.chapterId == mainRow.chapter.id } == 8 &&
+						reader.getCurrentState() == ReaderState(mainRow.chapter.id, 0, 0)
+				}
+				scenario.onActivity { reader.toggleBookmark() }
+				awaitCondition("Main bookmark inserted") { bookmarks.findAll(main.id).size == 1 }
+				assertEquals(0, bookmarks.findAll(main.id).single().page)
+				scenario.onActivity { reader.switchChapter(mainRow.chapter.id, 7) }
+				awaitCondition("Main completed and durable") {
+					reader.getCurrentState()?.page == 7 &&
+						history.find(main.id)?.let { it.page == 7 && it.percent == 1f } == true &&
+						chapterProgress.get(main.id, space, mainRow.personalKey, mainRow.chapter.id)?.page == 7
+				}
+			}
+			val mainHistory = requireNotNull(history.find(main.id))
+			val mainProgress = requireNotNull(chapterProgress.get(main.id, space, mainRow.personalKey, mainRow.chapter.id))
+			val mainBookmark = bookmarks.findAll(main.id).single()
+			assertEquals(1f, mainHistory.percent)
+			assertEquals(7, mainProgress.page)
+			assertNull(history.find(gekko.id))
+			assertTrue(progress.findAll(listOf(gekko.id), space.dbValue).isEmpty())
+			assertTrue(bookmarks.findAll(gekko.id).isEmpty())
+			assertTrue(loadVersionFixtureDetails(gekko, space)
+				.mapChapters(0L, 0, null, emptyList(), false, false).single().isUnread)
+
+			ActivityScenario.launch<ReaderActivity>(open(gekkoDetails)).use { scenario ->
+				lateinit var reader: ReaderViewModel
+				scenario.onActivity { reader = ViewModelProvider(it)[ReaderViewModel::class.java] }
+				awaitCondition("Gekko first page without inheriting Main completion") {
+					reader.content.value.pages.count { it.chapterId == gekkoRow.chapter.id } == 8 &&
+						reader.getCurrentState() == ReaderState(gekkoRow.chapter.id, 0, 0)
+				}
+				awaitCondition("Gekko independent durable first-page history") {
+					history.find(gekko.id)?.let { it.page == 0 && it.percent == 0f } == true &&
+						chapterProgress.get(gekko.id, space, gekkoRow.personalKey, gekkoRow.chapter.id)?.page == 0
+				}
+				assertFalse(reader.isBookmarkAdded.value)
+				assertEquals(mainBookmark.pageId, reader.getCurrentPage()?.id)
+				scenario.onActivity { reader.toggleBookmark() }
+				awaitCondition("Gekko bookmark inserted") { bookmarks.findAll(gekko.id).size == 1 }
+				val gekkoBookmark = bookmarks.findAll(gekko.id).single()
+				assertEquals(mainBookmark.pageId, gekkoBookmark.pageId)
+				assertEquals(gekkoRow.chapter.id, gekkoBookmark.chapterId)
+				assertEquals(listOf(mainBookmark), bookmarks.findAll(main.id))
+				awaitCondition("Gekko observes its own bookmark") { reader.isBookmarkAdded.value }
+				scenario.onActivity { reader.toggleBookmark() }
+				awaitCondition("Gekko bookmark removed") { bookmarks.findAll(gekko.id).isEmpty() }
+				assertEquals(listOf(mainBookmark), bookmarks.findAll(main.id))
+			}
+			val finalMain = requireNotNull(history.find(main.id))
+			val finalGekko = requireNotNull(history.find(gekko.id))
+			assertEquals(mainHistory.chapterId, finalMain.chapterId)
+			assertEquals(7, finalMain.page)
+			assertEquals(1f, finalMain.percent)
+			assertEquals(gekkoRow.chapter.id, finalGekko.chapterId)
+			assertEquals(0, finalGekko.page)
+			assertEquals(0f, finalGekko.percent)
+			assertEquals(mainProgress, chapterProgress.get(main.id, space, mainRow.personalKey, mainRow.chapter.id))
+			assertEquals(0, chapterProgress.get(gekko.id, space, gekkoRow.personalKey, gekkoRow.chapter.id)?.page)
+			assertEquals(listOf(mainBookmark), bookmarks.findAll(main.id))
+			assertTrue(bookmarks.findAll(gekko.id).isEmpty())
+			assertEquals(all.map { it.id }.toSet(), classifier.getDownloadedIds(space, all.map { it.id }))
+			assertArrayEquals(originalBytes, file.readBytes())
+		} finally {
+			database.getMangaDao().delete(all.mapNotNull { database.getMangaDao().find(it.id)?.manga })
+		}
+	}
+
 	private suspend fun loadVersionFixtureDetails(manga: Manga, space: FavouriteSpace): MangaDetails =
 		detailsLoader(
 			intent = MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_MANGA to ParcelableManga(manga)))),
