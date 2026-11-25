@@ -52,6 +52,7 @@ import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersSelectionDecoration
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.showExhentaiPhysicalDeleteConfirmation
 import org.koitharu.kotatsu.details.ui.showChapterPersonalNote
 import org.koitharu.kotatsu.details.ui.showSearchNoteResultChooser
 import org.koitharu.kotatsu.details.ui.pager.ChapterSortMode
@@ -110,12 +111,20 @@ class ChaptersFragment :
 			},
 			onDeleteClick = { item ->
 				val manga = viewModel.getMangaOrNull()
-				if (viewModel.isSmartLocal) {
-					org.koitharu.kotatsu.local.ui.confirmLocalChapterDeletion(requireContext()) {
-						viewModel.deleteSmartLocalChapters(setOf(item.chapter.id))
-					}
-				} else if (manga != null) {
-					LocalChaptersRemoveService.start(requireContext(), manga, setOf(item.chapter.id), viewModel.favouriteSpace)
+				val source = viewModel.mangaDetails.value?.sourceManga?.source?.name ?: manga?.source?.name
+				val protectedExhentai = source == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+					source == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
+				when {
+					viewModel.isSmartLocal ->
+						org.koitharu.kotatsu.local.ui.confirmLocalChapterDeletion(requireContext()) {
+							viewModel.deleteSmartLocalChapters(setOf(item.chapter.id))
+						}
+					protectedExhentai -> showExhentaiPhysicalDeleteConfirmation(
+						requireContext(), viewLifecycleOwner.lifecycleScope, viewModel,
+					)
+					manga != null -> LocalChaptersRemoveService.start(
+						requireContext(), manga, setOf(item.chapter.id), viewModel.favouriteSpace,
+					)
 				}
 			},
 		)

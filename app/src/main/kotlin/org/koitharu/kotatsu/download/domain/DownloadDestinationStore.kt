@@ -77,6 +77,47 @@ class DownloadDestinationStore @Inject constructor(
 	 * change the virtual Lokal shelf instead of merging old and new destinations. Both `local`
 	 * and `lokal` are accepted case-insensitively.
 	 */
+	/**
+	 * ExHentai Main/Gekko Details and their local-availability views use only the selected
+	 * destination. Legacy roots remain registered for storage management, not for downloaded
+	 * status after the user changes the destination.
+	 */
+	fun activeExhentaiRoots(space: FavouriteSpace): List<File> =
+		listOfNotNull(effectiveRoot(space))
+
+	/**
+	 * Two spaces share a file only when their effective destinations are identical.
+	 * With nested destinations, the most specific active destination owns its subtree.
+	 * This is read visibility, not evidence of file ownership or permission to delete.
+	 */
+	fun isVisibleInActiveExhentaiDestination(space: FavouriteSpace, file: File): Boolean {
+		val active = effectiveRoot(space)?.canonicalOrAbsolute() ?: return false
+		val target = file.canonicalOrAbsolute()
+		if (!target.isAtOrBelow(active)) return false
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val other = effectiveRoot(otherSpace)?.canonicalOrAbsolute() ?: return true
+		return other == active || !other.isAtOrBelow(active) || !target.isAtOrBelow(other)
+	}
+
+	/**
+	 * Index-only projection for Favorites cards and counters. Do NOT resolve canonicalPath
+	 * here: it can access an unmounted SD card during an interactive list refresh.
+	 * Actual Reader/Delete authorization uses isVisibleInActiveExhentaiDestination().
+	 */
+	fun isVisibleInActiveExhentaiIndex(space: FavouriteSpace, file: File): Boolean {
+		val active = effectiveRoot(space)?.absoluteFile?.normalize()?.path ?: return false
+		val target = file.absoluteFile.normalize().path
+		if (!target.isAtOrBelow(active)) return false
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val other = effectiveRoot(otherSpace)?.absoluteFile?.normalize()?.path ?: return true
+		return other == active || !other.isAtOrBelow(active) || !target.isAtOrBelow(other)
+	}
+
+	private fun String.isAtOrBelow(root: String): Boolean {
+		val cleanRoot = root.trimEnd(File.separatorChar)
+		return this == cleanRoot || startsWith(cleanRoot + File.separator)
+	}
+
 	fun localRoots(space: FavouriteSpace): List<File> {
 		val destination = effectiveRoot(space) ?: return emptyList()
 		if (!destination.isDirectory || !destination.canRead()) return emptyList()
@@ -84,6 +125,10 @@ class DownloadDestinationStore @Inject constructor(
 			?.filter { child -> child.isDirectory && child.name.isLocalFolderName() }
 			.orEmpty()
 	}
+
+	/** Only non-suspending operations may run under this shared root-publication lock. */
+	internal fun <T> withDestinationMutationLock(block: () -> T): T =
+		synchronized(settings.downloadDestinationMutationLock, block)
 
 	fun setRoot(space: FavouriteSpace, root: File?) {
 		// Validate/create the new target first. If this fails, neither the active preference nor the
@@ -93,20 +138,22 @@ class DownloadDestinationStore @Inject constructor(
 			check(downloads.isDirectory || downloads.mkdirs()) { "Cannot create downloads directory under $root" }
 		}
 
-		val previousEffective = effectiveRoot(space)
-		if (previousEffective != null && !previousEffective.samePathAs(root)) {
-			rememberLegacyRoot(space, previousEffective)
-		}
-		if (root != null) {
-			// Keep custom roots in Local Storage's configured/readable set so downloads remain indexed
-			// after restart and legacy lookup can still find files without a special scanner.
-			settings.userSpecifiedMangaDirectories += root
-			forgetLegacyRoot(space, root)
-		}
-		when (space) {
-			FavouriteSpace.NORMAL -> settings.mangaStorageDir = root
-			FavouriteSpace.PRIVATE -> prefs.edit {
-				if (root == null) remove(KEY_PRIVATE_DOWNLOAD_ROOT) else putString(KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+		withDestinationMutationLock {
+			val previousEffective = effectiveRoot(space)
+			if (previousEffective != null && !previousEffective.samePathAs(root)) {
+				rememberLegacyRoot(space, previousEffective)
+			}
+			if (root != null) {
+				// Keep custom roots in Local Storage's configured/readable set so downloads remain indexed
+				// after restart and legacy lookup can still find files without a special scanner.
+				settings.userSpecifiedMangaDirectories += root
+				forgetLegacyRoot(space, root)
+			}
+			when (space) {
+				FavouriteSpace.NORMAL -> settings.mangaStorageDir = root
+				FavouriteSpace.PRIVATE -> prefs.edit {
+					if (root == null) remove(KEY_PRIVATE_DOWNLOAD_ROOT) else putString(KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
+				}
 			}
 		}
 	}

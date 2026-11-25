@@ -3,4 +3,6 @@
 	<exclude domain="file" path="logs" />
 	<exclude domain="sharedpref" path="miyorare_discord_credentials.xml" />
 	<exclude domain="sharedpref" path="miyorare_discord_credentials.xml.bak" />
+	<!-- Keep private read association metadata out of Android Auto Backup. -->
+	<exclude domain="sharedpref" path="exhentai_read_choices.xml" />
 </full-backup-content>

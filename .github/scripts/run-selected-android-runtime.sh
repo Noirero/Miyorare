@@ -18,6 +18,7 @@ if [[ "${1:-}" == --self-test ]]; then
   if reject_history_perf_class "test.A,$HISTORY_PERF_CLASS,test.B" 2>/dev/null; then exit 1; fi
   if reject_history_perf_class "$HISTORY_PERF_CLASS" 2>/dev/null; then exit 1; fi
   echo 'History benchmark exclusion guard: PASS'
+  python3 .github/scripts/check-exhentai-external-race.py --self-test
   exit 0
 fi
 
@@ -85,6 +86,37 @@ if [[ "$launcher_anr" == true ]]; then
   fi
 elif [[ -z "$focus_lines" ]]; then
   echo 'Preflight: focus record unavailable; no Launcher ANR event found (not proof of healthy focus).' | tee -a "$preflight_dir/preflight-status.txt"
+fi
+
+# Run the original T01 separately whenever the required compatibility class is selected.
+# Only its exact approved failure signature can be accepted; required suite exit remains unchanged.
+EXHENTAI_REQUIRED_CLASS=org.koitharu.kotatsu.local.domain.ExhentaiTitleDownloadCompatibilityTest
+EXHENTAI_DIAGNOSTIC=org.koitharu.kotatsu.local.domain.ExhentaiExternalRemovalRaceDiagnosticTest
+if [[ ",${RUNTIME_CLASSES:-}," == *",$EXHENTAI_REQUIRED_CLASS,"* ]]; then
+  diagnostic_dir="$preflight_dir/exhentai-external-race"
+  mkdir -p "$diagnostic_dir"
+  git rev-parse HEAD > "$diagnostic_dir/commit.txt"
+  results=app/build/outputs/androidTest-results/connected
+  # Preserve preflight results, and never classify stale XML.
+  if [[ -e "$results" ]]; then mv "$results" "$diagnostic_dir/preflight-xml"; fi
+  set +e
+  ./gradlew connectedDebugAndroidTest --max-workers=4 --no-daemon --stacktrace \
+    "-Pandroid.testInstrumentationRunnerArguments.class=$EXHENTAI_DIAGNOSTIC#confirmedDeleteRejectsReplacementAtRemovalBoundary" \
+    2>&1 | tee "$diagnostic_dir/gradle.log"
+  diagnostic_status=("${PIPESTATUS[@]}")
+  set -e
+  printf "%s\n" "${diagnostic_status[0]}" > "$diagnostic_dir/exit-status.txt"
+  [[ "${diagnostic_status[1]}" == 0 ]]
+  [[ -d "$results" ]]
+  mv "$results" "$diagnostic_dir/xml"
+  python3 .github/scripts/check-exhentai-external-race.py "$diagnostic_dir" "$(git rev-parse HEAD)"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      echo "## T01 external replacement diagnostic - actual outcome"
+      cat "$diagnostic_dir/outcome.txt"
+      echo "Raw XML, exact HEAD and Gradle exit are retained in android-runtime-evidence."
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
 fi
 
 if [[ -n "${RUNTIME_CLASSES:-}" ]]; then

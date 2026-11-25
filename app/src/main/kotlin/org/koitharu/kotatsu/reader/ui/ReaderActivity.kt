@@ -28,6 +28,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.transition.Fade
 import androidx.transition.Slide
 import androidx.transition.Transition
@@ -63,6 +64,7 @@ import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseFullscreenActivity
 import org.koitharu.kotatsu.core.ui.dialog.setCheckbox
+import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.widgets.ZoomControl
 import org.koitharu.kotatsu.core.util.IdlingDetector
@@ -132,6 +134,28 @@ class ReaderActivity :
     @Inject
     lateinit var epubBookSettingsStore: EpubBookSettingsStore
 
+    @Inject
+    lateinit var privateFavouritesSession: org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
+
+    private var exhentaiDeleteDialog: androidx.appcompat.app.AlertDialog? = null
+    private var exhentaiChoiceDialog: androidx.appcompat.app.AlertDialog? = null
+    internal var exhentaiFileChangeDialog: androidx.appcompat.app.AlertDialog? = null
+        private set
+
+    internal fun canShowExhentaiFileDetails(space: org.koitharu.kotatsu.favourites.data.FavouriteSpace): Boolean {
+        val privateContent = space == org.koitharu.kotatsu.favourites.data.FavouriteSpace.PRIVATE ||
+            entryPoint.screenshotPolicyHelper.isPrivateContent(this)
+        return !privateContent || privateFavouritesSession.isUnlocked.value
+    }
+
+    internal fun trackExhentaiDeleteDialog(dialog: androidx.appcompat.app.AlertDialog) {
+        exhentaiDeleteDialog?.dismiss()
+        exhentaiDeleteDialog = dialog
+        dialog.setOnDismissListener {
+            if (exhentaiDeleteDialog === dialog) exhentaiDeleteDialog = null
+        }
+    }
+
     private val idlingDetector = IdlingDetector(TimeUnit.SECONDS.toMillis(10), this)
 
     private val viewModel: ReaderViewModel by viewModels()
@@ -170,6 +194,36 @@ class ReaderActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(ActivityReaderBinding.inflate(layoutInflater))
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                combine(viewModel.exhentaiChoiceRequest, privateFavouritesSession.isUnlocked) { request, unlocked ->
+                    request to unlocked
+                }.collect { (request, unlocked) ->
+                    exhentaiChoiceDialog?.dismiss()
+                    if (request != null && (!request.privateOnly || unlocked) &&
+                        canShowExhentaiFileDetails(viewModel.favouriteSpace)) {
+                        showExhentaiReadPicker(request)
+                    }
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                launch { viewModel.monitorExhentaiFileChanges() }
+                try {
+                    combine(viewModel.exhentaiFileChange, privateFavouritesSession.isUnlocked) { change, unlocked ->
+                        change to unlocked
+                    }.collect { (change, _) ->
+                        exhentaiFileChangeDialog?.dismiss()
+                        if (change != null && canShowExhentaiFileDetails(viewModel.favouriteSpace)) {
+                            showExhentaiFileChange(change)
+                        }
+                    }
+                } finally {
+                    exhentaiFileChangeDialog?.dismiss()
+                }
+            }
+        }
         // A dialog-only composition keeps the existing editor outside the Reader layout.
         addContentView(
             ComposeView(this).apply {
@@ -343,7 +397,71 @@ class ReaderActivity :
         viewModel.onPause()
     }
 
+    private fun showExhentaiFileChange(change: ReaderViewModel.ExhentaiFileChange) {
+        val dialog = buildAlertDialog(this) {
+            setTitle(R.string.exhentai_reader_file_changed_title)
+            setMessage(when (change) {
+                ReaderViewModel.ExhentaiFileChange.CHANGED -> R.string.exhentai_reader_file_changed_message
+                ReaderViewModel.ExhentaiFileChange.RELOADING -> R.string.exhentai_reader_file_reloading
+                ReaderViewModel.ExhentaiFileChange.UNAVAILABLE -> R.string.exhentai_reader_file_unavailable
+            })
+            setCancelable(false)
+            setPositiveButton(R.string.exhentai_reader_file_reload, null)
+            setNegativeButton(R.string.close) { _, _ -> finish() }
+        }
+        exhentaiFileChangeDialog = dialog
+        dialog.setOnDismissListener {
+            if (exhentaiFileChangeDialog === dialog) exhentaiFileChangeDialog = null
+        }
+        dialog.show()
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).apply {
+            isEnabled = change != ReaderViewModel.ExhentaiFileChange.RELOADING
+            // Keep the existing dialog if a quick failed reload conflates the intermediate
+            // RELOADING state; the standard positive listener would dismiss it automatically.
+            setOnClickListener {
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                    canShowExhentaiFileDetails(viewModel.favouriteSpace)
+                ) viewModel.reloadChangedExhentaiFile()
+            }
+        }
+    }
+
+    private fun showExhentaiReadPicker(request: ReaderViewModel.ExhentaiChoiceRequest) {
+        fun canChoose(): Boolean = viewModel.exhentaiChoiceRequest.value === request &&
+            (!request.privateOnly || privateFavouritesSession.isUnlocked.value) &&
+            canShowExhentaiFileDetails(viewModel.favouriteSpace) &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        fun cancel() {
+            request.answer.complete(null)
+            finish()
+        }
+        val dialog = buildAlertDialog(this) {
+            setTitle(R.string.exhentai_choose_local_title)
+            setItems(request.choices.map { candidate ->
+                val id = candidate.galleryId?.let { getString(R.string.exhentai_choose_local_known_id, it) }
+                    ?: getString(R.string.exhentai_choose_local_unknown_id)
+                val warning = if (candidate.readable) "" else " · " + getString(R.string.exhentai_choose_local_changed)
+                "${java.io.File(candidate.path).name} · $id$warning\n${candidate.path}"
+            }.toTypedArray()) { _, index ->
+                if (canChoose()) {
+                    request.answer.complete(request.choices[index])
+                }
+            }
+            setNegativeButton(android.R.string.cancel) { _, _ -> cancel() }
+            setOnCancelListener { cancel() }
+        }
+        exhentaiChoiceDialog = dialog
+        dialog.setOnDismissListener {
+            if (exhentaiChoiceDialog === dialog) exhentaiChoiceDialog = null
+        }
+        dialog.show()
+    }
+
     override fun onStop() {
+        exhentaiChoiceDialog?.dismiss()
+        // A Reader opened from Private must not keep a physical-file deletion path
+        // visible once the owning process/vault stops.
+        exhentaiDeleteDialog?.dismiss()
         super.onStop()
         viewModel.onStop()
     }

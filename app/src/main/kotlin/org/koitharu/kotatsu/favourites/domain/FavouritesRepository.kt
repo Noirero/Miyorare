@@ -251,13 +251,13 @@ class FavouritesRepository @Inject constructor(
 		).map { Unit }
 
 	fun observeDownloadedChanges(): Flow<Unit> = db.invalidationTracker.createFlow(
-		tables = arrayOf("local_index", "favourite_download_index"),
+		tables = arrayOf("local_index", "favourite_download_index", "exhentai_presence"),
 		emitInitialState = true,
 	).map { Unit }
 
 	fun observeDownloadedShelfChanges(): Flow<Unit> = db.invalidationTracker.createFlow(
 		tables = arrayOf(
-			"local_index", "favourite_download_index", TABLE_PRIVATE_FAVOURITES,
+			"local_index", "favourite_download_index", "exhentai_presence", TABLE_PRIVATE_FAVOURITES,
 			TABLE_FAVOURITE_CATEGORIES, TABLE_MANGA, TABLE_MANGA_TAGS, TABLE_HISTORY, "tracks",
 		),
 		emitInitialState = true,

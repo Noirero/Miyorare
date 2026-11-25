@@ -55,6 +55,7 @@ import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
@@ -91,6 +92,8 @@ class DownloadMaintenanceRegressionTest {
 	@Inject lateinit var mangaRepositories: MangaRepository.Factory
 	@Inject lateinit var sizeResolver: DownloadSizeResolver
 	@Inject lateinit var maintenance: DownloadMaintenanceUseCase
+	@Inject lateinit var exhentaiPresenceDiscovery: ExhentaiPresenceDiscovery
+	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var db: MangaDatabase
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var index: LocalMangaIndex
@@ -721,7 +724,7 @@ class DownloadMaintenanceRegressionTest {
 		val store = androidx.lifecycle.ViewModelStore()
 		val factory = object : androidx.lifecycle.ViewModelProvider.Factory {
 			@Suppress("UNCHECKED_CAST")
-			override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T = org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel(maintenance) as T
+			override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T = org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel(maintenance, exhentaiPresenceDiscovery) as T
 		}
 		val first = androidx.lifecycle.ViewModelProvider(store, factory)[org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel::class.java]
 		val recreated = androidx.lifecycle.ViewModelProvider(store, factory)[org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel::class.java]
@@ -988,6 +991,11 @@ class DownloadMaintenanceRegressionTest {
 		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
 		assertNull(resolver.findSavedManga(gallery, space))
 		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(gallery.id, space.dbValue, cbz.canonicalPath))
+		// A matching receipt and persisted row do not make files outside the selected
+		// active destination visible. Selecting that destination restores the exact copy.
+		assertNull(resolver.findSavedManga(gallery, space))
+		assertLocalCbzReadable(cbz)
+		destinationStore.setRoot(space, selected)
 		assertExhentaiLocalRead(gallery, cbz, space)
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 	}
@@ -999,7 +1007,8 @@ class DownloadMaintenanceRegressionTest {
 		val normalReceipt = ExhentaiChapterOwnership.Receipt(normal, UUID.randomUUID())
 		val privateReceipt = ExhentaiChapterOwnership.Receipt(privateSpace, UUID.randomUUID())
 		val normalFile = writeGalleryFixture(gallery, false, byteArrayOf(1), DownloadFormat.SINGLE_CBZ, normalReceipt)
-		val privateFile = writeGalleryFixture(gallery, false, byteArrayOf(2), DownloadFormat.SINGLE_CBZ, privateReceipt)
+		val privateFile = writeGalleryFixture(gallery, false, byteArrayOf(2), DownloadFormat.SINGLE_CBZ,
+			privateReceipt, destination = File(root, "private"))
 		data.storeManga(gallery, replaceExisting = true, detailsFetched = true)
 		val dao = db.getFavouriteDownloadIndexDao()
 		val normalRow = FavouriteDownloadIndexEntity(gallery.id, normal.dbValue, normalFile.canonicalPath)
@@ -1115,7 +1124,7 @@ class DownloadMaintenanceRegressionTest {
 	@Test fun unmarkedExhentaiWithSharedActiveRootNeedsSpaceOwnership() = runBlocking {
 		// Private follows Normal, so both lookups can see the same candidate path.
 		prefs.edit(commit = true) { remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT) }
-		assertOverlappingExhentaiRequiresOwnership(812307L)
+		assertOverlappingExhentaiRequiresOwnership(812307L, sharedActiveDestination = true)
 	}
 
 	@Test fun unmarkedExhentaiWithOverlappingHistoricalRootNeedsSpaceOwnership() = runBlocking {
@@ -1123,10 +1132,10 @@ class DownloadMaintenanceRegressionTest {
 		prefs.edit(commit = true) {
 			putStringSet("private_download_legacy_roots", setOf(root.path))
 		}
-		assertOverlappingExhentaiRequiresOwnership(812308L)
+		assertOverlappingExhentaiRequiresOwnership(812308L, sharedActiveDestination = false)
 	}
 
-	private suspend fun assertOverlappingExhentaiRequiresOwnership(gid: Long) {
+	private suspend fun assertOverlappingExhentaiRequiresOwnership(gid: Long, sharedActiveDestination: Boolean) {
 		val gallery = offlineExhentaiGallery(gid)
 		val directory = folder("downloads/ExHentai (OTHER)/Offline gallery × Fixture")
 		val cbz = chapterFile(directory, "Chapter.cbz")
@@ -1141,12 +1150,32 @@ class DownloadMaintenanceRegressionTest {
 		// A matching Local alias and a readable archive do not establish space ownership.
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		// Read-only Details can discover a valid CBZ in the active destination without
+		// creating a space ownership row. A historical root must stay invisible.
+		assertEquals(cbz.canonicalFile,
+			resolver.findSavedManga(gallery, FavouriteSpace.NORMAL, forExhentaiDetails = true)?.file?.canonicalFile)
+		if (sharedActiveDestination) {
+			assertEquals(cbz.canonicalFile,
+				resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE, forExhentaiDetails = true)?.file?.canonicalFile)
+		} else {
+			assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE, forExhentaiDetails = true))
+		}
 		assertTrue(dao.findEntries(listOf(gallery.id)).isEmpty())
 
 		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.PRIVATE.dbValue, cbz.canonicalPath))
-		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		// An ownership row does not override the active destination. A shared active
+		// root may be read; an isolated Private root must not see the Normal CBZ.
+		if (sharedActiveDestination) {
+			assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		} else {
+			assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
+		}
 		assertNull(resolver.findSavedManga(gallery, null))
 		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.NORMAL))
+		destinationStore.setRoot(FavouriteSpace.PRIVATE, root)
+		assertExhentaiLocalRead(gallery, cbz, FavouriteSpace.PRIVATE)
+		destinationStore.setRoot(FavouriteSpace.PRIVATE, File(root, "private"))
+		assertNull(resolver.findSavedManga(gallery, FavouriteSpace.PRIVATE))
 
 		dao.delete(FavouriteSpace.PRIVATE.dbValue, gallery.id)
 		dao.upsert(FavouriteDownloadIndexEntity(gallery.id, FavouriteSpace.NORMAL.dbValue, cbz.canonicalPath))

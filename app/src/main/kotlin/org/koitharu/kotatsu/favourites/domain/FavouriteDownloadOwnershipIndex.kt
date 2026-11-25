@@ -106,6 +106,19 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 		db.getFavouriteDownloadIndexDao().deleteByPath(file.canonicalOrAbsolute())
 	}
 
+	/**
+	 * A confirmed physical CBZ delete can leave an old gallery-specific index row
+	 * pointing to its parent directory. Remove only the deleted gallery's rows,
+	 * not other galleries sharing the physical directory.
+	 */
+	suspend fun removeMangaPaths(mangaId: Long, files: Collection<File>) {
+		val paths = files.mapTo(HashSet()) { it.canonicalOrAbsolute() }
+		val dao = db.getFavouriteDownloadIndexDao()
+		for (entry in dao.findEntries(listOf(mangaId))) {
+			if (entry.path in paths) dao.deleteIfPath(entry.space, entry.mangaId, entry.path)
+		}
+	}
+
 	private fun File.isInside(root: File): Boolean {
 		val rootPath = root.canonicalOrAbsolute().trimEnd(File.separatorChar)
 		val filePath = canonicalOrAbsolute()

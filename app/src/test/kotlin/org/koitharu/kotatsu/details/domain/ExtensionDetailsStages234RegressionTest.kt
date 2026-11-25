@@ -38,7 +38,12 @@ class ExtensionDetailsStages234RegressionTest {
 
 		assertTrue(loader.contains("deferLocalLookup=!preferLocalBeforeInitialSnapshot"))
 		assertTrue(loader.contains("vallocalLookup=async{"))
-		assertTrue(loader.contains("downloadedMangaResolver.findSavedManga(manga,favouriteSpace,forExhentaiDetails=true)"))
+		// The shared lookup accepts either the initial manga or freshly fetched metadata.
+		assertTrue(loader.contains("suspendfunfindLocal(target:Manga=manga):LocalManga?="))
+		assertTrue(loader.contains("downloadedMangaResolver.findSavedManga(target,favouriteSpace,forExhentaiDetails=true)"))
+		// A fresh Reader snapshot must resolve the explicit picker before publication.
+		assertTrue(loader.contains("localLookup.await()?:resolveFreshReaderLocal(remoteDetails)"))
+		assertTrue(loader.contains("{target:Manga->findLocal(target)}"))
 		assertTrue(loader.contains("downloadedMangaResolver.findSavedManga(remoteDetails,favouriteSpace,forExhentaiDetails=true)"))
 		// Only Details opts into this read-only path; other resolver callers remain strict.
 		val resolver = source("org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt")
@@ -47,6 +52,16 @@ class ExtensionDetailsStages234RegressionTest {
 		assertTrue(loader.contains("initialSavedManga?:findSavedManga()"))
 		assertTrue(loader.contains("if(preferLocalBeforeCached){"))
 		assertTrue(loader.contains("valsavedManga=findSavedManga()"))
+	}
+
+	@Test
+	fun `ExHentai local callbacks only trust active destination`() {
+		val source = source("org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
+		val callback = source.substringAfter("privatesuspendfunonDownloadComplete(")
+			.substringBefore("privatefunFile.isInside(")
+		assertTrue(callback.contains("activeExhentaiRoots(favouriteSpace)"))
+		assertTrue(callback.contains("isVisibleInActiveExhentaiDestination(favouriteSpace,downloadedManga.file)"))
+		assertTrue(callback.contains("isVisibleInActiveExhentaiDestination(favouriteSpace,local.file)"))
 	}
 
 	@Test

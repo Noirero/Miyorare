@@ -1610,4 +1610,26 @@
     <string name="icon_model_other">Other packs</string>
     <string name="reader_tools">Tools</string>
     <string name="reader_advanced_options">Advanced reader options</string>
+    <string name="exhentai_delete_shared_source_warning">ExHentai Main and ExHentai Gekko can share this CBZ. Deleting this file removes its offline availability for both sources. Other CBZ files and reading history are kept.</string>
+    <string name="exhentai_delete_choose_target">Choose the CBZ to delete</string>
+    <string name="exhentai_delete_physical_title">Delete local ExHentai file?</string>
+    <string name="exhentai_delete_target_description">Delete this physical CBZ file?\n\nManga: %1$s\nFile: %2$s\nLocation: %3$s\n\nThis cannot be undone. The manga remains in Favorites and may be downloaded again.</string>
+    <string name="exhentai_delete_shared_space_warning">Normal and Private both use this file. Deleting it makes the chapter unavailable offline in both Favorites spaces.</string>
+    <string name="exhentai_delete_target_unavailable">The selected local CBZ could not be verified. No file was deleted.</string>
+    <string name="exhentai_choose_local_title">Choose local ExHentai CBZ</string>
+    <string name="exhentai_choose_local_description">More than one chapter file matches this gallery, or the file contains a different gallery ID. Choose the file you want to read. This does not change ownership or download history.</string>
+    <string name="exhentai_choose_local_known_id">Gallery ID: %1$d</string>
+    <string name="exhentai_choose_local_unknown_id">No gallery ID</string>
+    <string name="exhentai_choose_local_changed">The selected CBZ changed or is no longer available. No association was saved.</string>
+    <string name="exhentai_reader_file_changed_title">File changed</string>
+    <string name="exhentai_reader_file_changed_message">This CBZ has changed. Reload to read the new version from the first page. Your previous reading progress is kept.</string>
+    <string name="exhentai_reader_file_reload">Reload</string>
+    <string name="exhentai_reader_file_reloading">Checking and reloading the selected CBZ…</string>
+    <string name="exhentai_reader_file_unavailable">The selected CBZ is unavailable or cannot be opened. Your previous reading progress is kept. Restore the file and reload, or close the reader.</string>
+    <string name="exhentai_presence_resume_scan">Scan ExHentai CBZ when returning to the app</string>
+    <string name="exhentai_presence_resume_scan_summary">Incrementally check local ExHentai Main and Gekko files. Startup scanning stays enabled.</string>
+    <string name="exhentai_presence_full_scan">Full scan of ExHentai CBZ files</string>
+    <string name="exhentai_presence_full_scan_summary">Check active download folders without changing download ownership.</string>
+    <string name="exhentai_presence_progress">Checking %1$d of %2$d entries</string>
+    <string name="exhentai_presence_unavailable">Some download storage is unavailable; last known status was preserved.</string>
 </resources>

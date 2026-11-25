@@ -21,6 +21,18 @@ data class LibrarySourceUsage(
 	val mangaCount: Int,
 )
 
+/** Source-only projection for index-backed, space-aware downloaded classification. */
+data class MangaIdSource(
+	val mangaId: Long,
+	val source: String,
+)
+
+data class ExhentaiPresenceCandidate(
+	val mangaId: Long,
+	val source: String,
+	val title: String,
+)
+
 data class MangaMigrationRef(
 	val id: Long,
 	val sourceName: String,
@@ -36,6 +48,14 @@ abstract class MangaDao {
 	@Transaction
 	@Query("SELECT * FROM manga WHERE manga_id IN (:ids)")
 	abstract suspend fun findByIds(ids: Collection<Long>): List<MangaWithTags>
+
+	/** No tag materialization or filesystem work for downloaded-card batches. */
+	@Query("SELECT manga_id AS mangaId, source FROM manga WHERE manga_id IN (:ids)")
+	abstract suspend fun findSourceNamesByIds(ids: Collection<Long>): List<MangaIdSource>
+
+	/** Lightweight title projection, for manual ExHentai file presence only. */
+	@Query("SELECT manga_id AS mangaId, source, title FROM manga WHERE source IN (:sources)")
+	abstract suspend fun findExhentaiPresenceCandidates(sources: Collection<String>): List<ExhentaiPresenceCandidate>
 
 	/** Keyset batches for the prediction sheet; no tags, descriptions or full library snapshot. */
 	@Query(

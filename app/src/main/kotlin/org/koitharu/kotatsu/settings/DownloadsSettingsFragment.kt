@@ -54,6 +54,8 @@ import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceScanState
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
@@ -123,6 +125,8 @@ class DownloadsSettingsFragment :
 					onIgnoreDoze = ::startIgnoreDoseActivity,
 					maintenanceState = maintenanceViewModel.state,
 					onRebuildDownloadsIndex = maintenanceViewModel::start,
+					presenceState = maintenanceViewModel.presenceState,
+					onFullExhentaiScan = maintenanceViewModel::scanExhentaiPresenceFull,
 				)
 			}
 		}
@@ -254,6 +258,8 @@ private fun DownloadsScreen(
 	onIgnoreDoze: () -> Unit,
 	maintenanceState: StateFlow<DownloadMaintenanceState>,
 	onRebuildDownloadsIndex: () -> Unit,
+	presenceState: StateFlow<ExhentaiPresenceScanState>,
+	onFullExhentaiScan: () -> Unit,
 ) {
 	val ctx = LocalContext.current
 	val storage by storageSummary.collectAsState()
@@ -279,6 +285,8 @@ private fun DownloadsScreen(
 	)
 	var pagesDirAsk by rememberBooleanPref(AppSettings.KEY_PAGES_SAVE_ASK, true)
 	var privateNotificationDetails by rememberBooleanPref(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)
+	var scanExhentaiOnResume by rememberBooleanPref(ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME, true)
+	val presence by presenceState.collectAsState()
 
 	LaunchedEffect(metered) { onMeteredChanged() }
 
@@ -384,6 +392,32 @@ private fun DownloadsScreen(
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.settings_download_maintenance)) {
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.exhentai_presence_resume_scan),
+						subtitle = stringResource(R.string.exhentai_presence_resume_scan_summary),
+						checked = scanExhentaiOnResume,
+						onCheckedChange = { scanExhentaiOnResume = it },
+						icon = R.drawable.ic_sync,
+						shape = pos.shape,
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.exhentai_presence_full_scan),
+						subtitle = if (presence.running) {
+							stringResource(R.string.exhentai_presence_progress, presence.scanned, presence.total)
+						} else if (presence.unavailableSpaces.isNotEmpty()) {
+							stringResource(R.string.exhentai_presence_unavailable)
+						} else {
+							stringResource(R.string.exhentai_presence_full_scan_summary)
+						},
+						icon = R.drawable.ic_sync,
+						shape = pos.shape,
+						enabled = !presence.running,
+						onClick = onFullExhentaiScan,
+					)
+				}
 				item { pos ->
 					DownloadMaintenanceSettingsItem(maintenanceState, pos.shape, onRebuildDownloadsIndex)
 				}
