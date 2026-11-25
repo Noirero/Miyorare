@@ -16,6 +16,8 @@ import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
 import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 
 fun MangaDetails.mapChapters(
 	currentChapterId: Long,
@@ -126,6 +128,12 @@ internal fun resolveChapterPersonalKey(
 	// A sidecar-free download may be reparsed with a different local id, especially in an isolated
 	// Private root. Recover the unique source chapter with the same bounded equivalence rules used by
 	// download reconciliation so a transient local snapshot cannot hide an existing note/rating.
+	// Main/Gekko's separate local chapter must not be re-associated by chapter number/title.
+	val singleSource = sourceChapters.singleOrNull()
+	if (chapter.source == LocalMangaSource && singleSource != null && chapter.id != singleSource.id &&
+		(singleSource.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+			singleSource.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")
+	) return ChapterPersonalKey(singleSource.source.name, chapter.url)
 	val canonical = sourceChaptersById[chapter.id]?.singleOrNull()
 		?: sourceChapters.singleOrNull { source -> source.isEquivalentDownloadOf(chapter) }
 		?: chapter

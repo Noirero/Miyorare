@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.local.domain
 
 import android.content.Context
 import android.util.Base64
+import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -20,6 +21,7 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
+import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -27,8 +29,10 @@ import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.EhentaiComicInfo
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
+import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.util.longHashCode
 import java.io.File
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -78,10 +82,12 @@ class DownloadedMangaResolver @Inject constructor(
 				manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME)
 		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
 			return resolveSavedManga(manga, favouriteSpace, detailsTitleRead)
+				?.let { if (detailsTitleRead) projectExhentaiChapterIdentity(manga, it) else it }
 		}
 		val trace = LegacyCbzTrace()
 		return withContext(trace) {
 			val saved = resolveSavedManga(manga, favouriteSpace, detailsTitleRead)
+				?.let { if (detailsTitleRead) projectExhentaiChapterIdentity(manga, it) else it }
 			val result = when {
 				saved == null && trace.hasCandidate -> "REJECTED"
 				saved == null -> "NOT_FOUND"
@@ -290,7 +296,45 @@ class DownloadedMangaResolver @Inject constructor(
 		val candidate = loadActiveExhentaiTitleCandidates(manga, space)
 			.firstOrNull { it.first == selection.candidate.copy(sha256 = null) } ?: return null
 		if (candidate.second == null || fingerprintOfChoice(candidate.first) != selection.sha256) return null
-		return candidate.second
+		return candidate.second?.let { projectExhentaiChapterIdentity(manga, it) }
+	}
+
+	/**
+	 * A readable file is not necessarily the online chapter. Preserve the standard download
+	 * names (including legacy variants and gallery-ID filenames), but expose a differently
+	 * named chapter in the matched gallery folder as a separate local chapter.
+	 * This is only a Details/Reader projection; never persist ownership or rewrite source rows.
+	 */
+	private fun projectExhentaiChapterIdentity(manga: Manga, local: LocalManga): LocalManga {
+		if (!supportsActiveExhentaiChoice(manga)) return local
+		val remote = manga.chapters?.singleOrNull() ?: return local
+		val physical = local.file
+		val chapter = local.manga.chapters?.singleOrNull() ?: return local
+		val parent = physical.parentFile ?: return local
+		val sourceDirectory = parent.parentFile ?: return local
+		if (!physical.extension.equals("cbz", ignoreCase = true) ||
+			!EhentaiLegacyDownloadResolver.titlesMatch(manga.title, parent.name) ||
+			!(sourceDirectory.name.equals("ExHentai (OTHER)", ignoreCase = true) ||
+				EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(sourceDirectory.name))
+		) return local // Outer SINGLE_CBZ containers and other layouts keep their existing mapping.
+		val name = physical.name
+		val stem = physical.nameWithoutExtension
+		if (EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(name) ||
+			ExhentaiChapterFileName.explicitGalleryId(name) != null
+		) return local
+		// Generic Gekko downloads can use a source chapter basename and a numeric collision suffix.
+		val base = stem.replace(Regex(" \\([0-9]+\\)$"), "")
+		val namedChapter = chapter.copy(url = Uri.fromFile(File(parent, "$base.cbz")).toString())
+		if (base.equals("Chapter", ignoreCase = true) ||
+			LegacyChapterDownloadCompat.artifactMatchScore(namedChapter, remote) > 0
+		) return local
+
+		// Scope the stable chapter ID to the source, manga and physical path. The original source
+		// chapter remains present and its personal state must never be migrated to this ID.
+		val hash = ("exhentai-local-chapter:${manga.source.name}:${manga.id}:${physical.path}").longHashCode() and Long.MAX_VALUE
+		val id = if (hash == 0L || hash == remote.id) (if (remote.id == 1L) 2L else 1L) else hash
+		val independent = chapter.copy(id = id, title = stem)
+		return local.copy(manga = local.manga.copy(chapters = listOf(independent)))
 	}
 
 	private fun supportsActiveExhentaiChoice(manga: Manga) =

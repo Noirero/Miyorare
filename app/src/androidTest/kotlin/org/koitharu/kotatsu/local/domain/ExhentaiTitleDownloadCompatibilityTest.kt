@@ -1915,6 +1915,42 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun readerChoiceKeepsRenamedCbzSeparateFromOnlineChapter() = runBlocking {
+		val original = archive("Legacy Gallery", "Chapter.cbz")
+		val renamed = original.copyTo(File(original.parentFile, "Chapter_Baru.cbz"))
+		for ((index, source) in listOf(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, GEKKO_SOURCE).withIndex()) {
+			val manga = gallery(990114L + index, source)
+			val remoteChapter = requireNotNull(manga.chapters).single()
+			val space = FavouriteSpace.NORMAL
+			val choices = resolver.getExhentaiReadChoices(manga, space)
+			assertEquals(setOf(original.canonicalPath, renamed.canonicalPath), choices.map { it.path }.toSet())
+			assertNull(resolver.findSavedManga(manga, space, forExhentaiDetails = true))
+			val selected = requireNotNull(resolver.selectExhentaiReadChoice(manga, space,
+				choices.single { it.path == renamed.canonicalPath }))
+			val copy = requireNotNull(resolver.resolveExhentaiSessionChoice(manga, space, selected))
+			val again = requireNotNull(resolver.resolveExhentaiSessionChoice(manga, space, selected))
+			val localChapter = requireNotNull(copy.manga.chapters).single()
+			assertEquals(localChapter, again.manga.chapters!!.single())
+			assertTrue(localChapter.id != remoteChapter.id)
+			val rows = MangaDetails(manga).copy(localManga = copy)
+				.mapChapters(remoteChapter.id, 0, null, emptyList(), false, false, currentPage = 7)
+			assertEquals(2, rows.size)
+			assertFalse(rows.single { it.chapter.id == remoteChapter.id }.isDownloaded)
+			val localRow = rows.single { it.chapter.id == localChapter.id }
+			assertEquals("Chapter_Baru", localRow.chapter.title)
+			assertTrue(localRow.isDownloaded)
+			assertTrue(localRow.isUnread)
+			assertNull(localRow.lastReadPage)
+			assertEquals(source, localRow.personalKey.source)
+			assertEquals(1, localRepository.getPages(localChapter).size)
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
+			val canonicalSelection = requireNotNull(resolver.selectExhentaiReadChoice(manga, space,
+				choices.single { it.path == original.canonicalPath }))
+			val canonical = requireNotNull(resolver.resolveExhentaiSessionChoice(manga, space, canonicalSelection))
+			assertEquals(remoteChapter.id, canonical.manga.chapters!!.single().id)
+		}
+	}
+
 	@Test fun permissiveDetailsReadIsLimitedToMainAndGekkoSources() = runBlocking {
 		prefs.edit(commit = true) {
 			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
