@@ -816,6 +816,11 @@
     <string name="exhentai_choose_local_known_id">ID gallery: %1$d</string>
     <string name="exhentai_choose_local_unknown_id">Tanpa ID gallery</string>
     <string name="exhentai_choose_local_changed">CBZ yang dipilih berubah atau tidak lagi tersedia. Asosiasi tidak disimpan.</string>
+    <string name="exhentai_reader_file_changed_title">File berubah</string>
+    <string name="exhentai_reader_file_changed_message">CBZ ini telah berubah. Muat ulang untuk membaca versi baru dari halaman pertama. Riwayat baca sebelumnya tetap disimpan.</string>
+    <string name="exhentai_reader_file_reload">Muat Ulang</string>
+    <string name="exhentai_reader_file_reloading">Memeriksa dan memuat ulang CBZ yang dipilih…</string>
+    <string name="exhentai_reader_file_unavailable">CBZ yang dipilih tidak tersedia atau tidak dapat dibuka. Riwayat baca sebelumnya tetap disimpan. Pulihkan file dan muat ulang, atau tutup Reader.</string>
     <string name="exhentai_presence_resume_scan">Pindai CBZ ExHentai saat kembali ke aplikasi</string>
     <string name="exhentai_presence_resume_scan_summary">Periksa file lokal ExHentai Main dan Gekko secara incremental. Pemindaian startup tetap aktif.</string>
     <string name="exhentai_presence_full_scan">Pindai lengkap file CBZ ExHentai</string>

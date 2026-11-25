@@ -2489,6 +2489,179 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun foregroundCbzByteChangeRequiresExplicitReaderReloadFromFirstPage() = runBlocking {
+		verifyReaderFileChange(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, 990126L, unavailableOnResume = false)
+	}
+
+	@Test fun resumedReaderRejectsMissingAndCorruptCbzWithoutSwitchingToSibling() = runBlocking {
+		verifyReaderFileChange(GEKKO_SOURCE, 990127L, unavailableOnResume = true)
+	}
+
+	private suspend fun verifyReaderFileChange(source: String, id: Long, unavailableOnResume: Boolean) {
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(id, source)
+		val space = FavouriteSpace.NORMAL
+		val bitmap = android.graphics.Bitmap.createBitmap(64, 96, android.graphics.Bitmap.Config.ARGB_8888)
+		val png = try {
+			java.io.ByteArrayOutputStream().use { output ->
+				check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+				output.toByteArray()
+			}
+		} finally { bitmap.recycle() }
+		fun archiveBytes(prefix: String): ByteArray = java.io.ByteArrayOutputStream().use { output ->
+			ZipOutputStream(output).use { zip ->
+				for (page in 1..8) {
+					zip.putNextEntry(ZipEntry("$prefix$page.png").apply { time = 1700000000000L })
+					zip.write(png)
+					zip.closeEntry()
+				}
+			}
+			output.toByteArray()
+		}
+		val original = archiveBytes("a")
+		val replacement = archiveBytes("b")
+		assertEquals(original.size, replacement.size)
+		assertFalse(original.contentEquals(replacement))
+		file.writeBytes(original)
+		val mtime = file.lastModified()
+		val history = database.getHistoryDao()
+		val bookmarks = database.getBookmarksDao()
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		suspend fun awaitCondition(stage: String, condition: suspend () -> Boolean) {
+			assertTrue("Timed out: $stage", withTimeoutOrNull(30000) {
+				while (!condition()) kotlinx.coroutines.delay(25)
+				true
+			} == true)
+		}
+		try {
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			val initial = loadVersionFixtureDetails(manga, space)
+			val old = initial.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			val oldVersion = requireNotNull(initial.local?.exhentaiContentVersion)
+			val intent = ReaderIntent.Builder(context)
+				.mangaForRead(initial.toManga(), initial.sourceManga)
+				.favouriteSpace(space.dbValue)
+				.incognito(false)
+				.build().intent
+			ActivityScenario.launch<ReaderActivity>(intent).use { scenario ->
+				lateinit var reader: ReaderViewModel
+				scenario.onActivity { reader = ViewModelProvider(it)[ReaderViewModel::class.java] }
+				awaitCondition("original Reader pages") {
+					reader.content.value.pages.count { it.chapterId == old.chapter.id } == 8 &&
+						reader.getCurrentState() == ReaderState(old.chapter.id, 0, 0)
+				}
+				scenario.onActivity { reader.switchChapter(old.chapter.id, 5) }
+				awaitCondition("original reading state persisted") {
+					reader.getCurrentState() == ReaderState(old.chapter.id, 5, 0) &&
+						history.find(id)?.let { it.chapterId == old.chapter.id && it.page == 5 } == true &&
+						chapterProgress.get(id, space, old.personalKey, old.chapter.id)?.page == 5
+				}
+				scenario.onActivity { reader.toggleBookmark() }
+				awaitCondition("original bookmark persisted") { bookmarks.findAll(id).size == 1 }
+				val originalBookmark = bookmarks.findAll(id).single()
+				assertEquals(5, originalBookmark.page)
+				val originalProgress = requireNotNull(chapterProgress.get(id, space, old.personalKey, old.chapter.id))
+				suspend fun assertOldState() {
+					assertEquals(ReaderState(old.chapter.id, 5, 0), reader.getCurrentState())
+					assertEquals(oldVersion, reader.mangaDetails.value?.local?.exhentaiContentVersion)
+					assertEquals(8, reader.content.value.pages.count { it.chapterId == old.chapter.id })
+					assertEquals(old.chapter.id, history.find(id)?.chapterId)
+					assertEquals(5, history.find(id)?.page)
+					assertEquals(originalProgress, chapterProgress.get(id, space, old.personalKey, old.chapter.id))
+					assertEquals(listOf(originalBookmark), bookmarks.findAll(id))
+				}
+				suspend fun awaitDialog(change: ReaderViewModel.ExhentaiFileChange) {
+					awaitCondition("Reader dialog $change") {
+						var shown = false
+						scenario.onActivity { activity ->
+							val dialog = activity.exhentaiFileChangeDialog
+							shown = dialog?.isShowing == true &&
+								dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)?.isEnabled == true
+						}
+						shown && reader.exhentaiFileChange.value == change
+					}
+					scenario.onActivity { activity ->
+						val dialog = requireNotNull(activity.exhentaiFileChangeDialog)
+						assertEquals(activity.getString(org.koitharu.kotatsu.R.string.exhentai_reader_file_changed_title),
+							dialog.findViewById<android.widget.TextView>(androidx.appcompat.R.id.alertTitle)?.text?.toString())
+						assertTrue(activity.getString(org.koitharu.kotatsu.R.string.exhentai_reader_file_reload).equals(
+							dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).text.toString(), ignoreCase = true))
+						val expectedMessage = if (change == ReaderViewModel.ExhentaiFileChange.UNAVAILABLE)
+							org.koitharu.kotatsu.R.string.exhentai_reader_file_unavailable
+						else org.koitharu.kotatsu.R.string.exhentai_reader_file_changed_message
+						assertEquals(activity.getString(expectedMessage),
+							dialog.findViewById<android.widget.TextView>(android.R.id.message)?.text?.toString())
+					}
+				}
+				fun clickReload() {
+					scenario.onActivity { activity ->
+						val button = requireNotNull(activity.exhentaiFileChangeDialog)
+							.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
+						assertTrue(button.isEnabled)
+						assertTrue(button.performClick())
+					}
+				}
+				var sibling: File? = null
+				if (unavailableOnResume) {
+					// A different valid CBZ must not become an implicit reload target.
+					val siblingFolder = File(file.parentFile!!.parentFile, "Legacy Gallery_1")
+					check(siblingFolder.mkdir())
+					sibling = File(siblingFolder, "Chapter.cbz").apply { writeBytes(original) }
+					assertEquals(setOf(file.canonicalPath, sibling.canonicalPath),
+						resolver.getExhentaiReadChoices(manga, space).map { it.path }.toSet())
+					scenario.moveToState(Lifecycle.State.STARTED)
+					assertTrue(file.delete())
+					scenario.moveToState(Lifecycle.State.RESUMED)
+					awaitDialog(ReaderViewModel.ExhentaiFileChange.CHANGED)
+					assertOldState()
+					clickReload()
+					awaitDialog(ReaderViewModel.ExhentaiFileChange.UNAVAILABLE)
+					assertOldState()
+					assertArrayEquals(original, sibling.readBytes())
+					file.writeBytes(byteArrayOf(1, 2, 3, 4))
+					clickReload()
+					awaitDialog(ReaderViewModel.ExhentaiFileChange.UNAVAILABLE)
+					assertOldState()
+					assertArrayEquals(original, sibling.readBytes())
+				}
+				file.writeBytes(replacement)
+				assertTrue(file.setLastModified(mtime))
+				assertEquals(original.size.toLong(), file.length())
+				assertEquals(mtime, file.lastModified())
+				assertFalse(original.contentEquals(file.readBytes()))
+				awaitDialog(if (unavailableOnResume) ReaderViewModel.ExhentaiFileChange.UNAVAILABLE
+					else ReaderViewModel.ExhentaiFileChange.CHANGED)
+				// No automatic state/cursor publication, even though the new bytes are readable.
+				assertOldState()
+				clickReload()
+				awaitCondition("explicit new CBZ version at first page") {
+					val next = reader.mangaDetails.value?.local?.exhentaiContentVersion
+					next != null && next.chapterId != oldVersion.chapterId && next.sha256 != oldVersion.sha256 &&
+						reader.exhentaiFileChange.value == null &&
+						reader.getCurrentState() == ReaderState(next.chapterId, 0, 0) &&
+						reader.content.value.pages.count { it.chapterId == next.chapterId } == 8 &&
+						reader.getCurrentPage()?.url?.contains("b1.png") == true
+				}
+				val nextDetails = requireNotNull(reader.mangaDetails.value)
+				val nextVersion = requireNotNull(nextDetails.local?.exhentaiContentVersion)
+				val next = nextDetails.mapChapters(0L, 0, null, emptyList(), false, false).single { it.isDownloaded }
+				assertEquals(file.canonicalPath, nextVersion.path)
+				assertFalse(next.personalKey == old.personalKey)
+				awaitCondition("new version persisted at first page") {
+					history.find(id)?.let { it.chapterId == next.chapter.id && it.page == 0 } == true &&
+						chapterProgress.get(id, space, next.personalKey, next.chapter.id)?.page == 0
+				}
+				assertEquals(originalProgress, chapterProgress.get(id, space, old.personalKey, old.chapter.id))
+				assertEquals(listOf(originalBookmark), bookmarks.findAll(id))
+				assertArrayEquals(replacement, file.readBytes())
+				sibling?.let { assertArrayEquals(original, it.readBytes()) }
+				scenario.onActivity { assertNull(it.exhentaiFileChangeDialog) }
+			}
+		} finally {
+			database.getMangaDao().delete(listOfNotNull(database.getMangaDao().find(id)?.manga))
+		}
+	}
+
 	private suspend fun loadVersionFixtureDetails(manga: Manga, space: FavouriteSpace): MangaDetails =
 		detailsLoader(
 			intent = MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_MANGA to ParcelableManga(manga)))),

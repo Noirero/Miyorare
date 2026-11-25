@@ -11,6 +11,7 @@ import java.security.MessageDigest
 import java.util.zip.ZipFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.logs.LegacyCbzDiagnosticExport
@@ -36,6 +37,7 @@ import org.koitharu.kotatsu.sources.compat.ExhentaiChapterFileName
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.longHashCode
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -304,6 +306,47 @@ class DownloadedMangaResolver @Inject constructor(
 		return candidate.second?.let { projectExhentaiContentVersion(manga, space, it, selection.sha256) }
 	}
 
+	/** Read-only check of the current Reader snapshot; never advances a version or changes ownership. */
+	suspend fun isExhentaiReaderVersionCurrent(
+		space: FavouriteSpace,
+		version: ExhentaiContentVersion,
+	): Boolean = withContext(Dispatchers.IO) {
+		runCatchingCancellable {
+			val file = File(version.path)
+			file.isFile && file.canonicalPath == version.path &&
+				downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file) &&
+				fingerprintOfChoice(ExhentaiReadChoice(version.path, null, file.length(), file.lastModified())) == version.sha256
+		}.getOrDefault(false)
+	}
+
+	/** Explicit reload of the SAME selected CBZ, never an automatic picker/online fallback. */
+	suspend fun reloadExhentaiReaderVersion(
+		manga: Manga,
+		space: FavouriteSpace,
+		previous: ExhentaiContentVersion,
+	): Pair<LocalManga, ExhentaiSessionChoice>? = withContext(Dispatchers.IO) {
+		if (!supportsActiveExhentaiChoice(manga)) return@withContext null
+		runCatchingCancellable {
+			val file = File(previous.path)
+			if (!file.isFile || file.canonicalPath != previous.path ||
+				!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, file)
+			) return@runCatchingCancellable null
+			val candidate = loadActiveExhentaiTitleCandidates(manga, space)
+				.singleOrNull { it.first.path == previous.path && it.first.readable }
+				?: return@runCatchingCancellable null
+			val local = candidate.second ?: return@runCatchingCancellable null
+			val digest = fingerprintOfChoice(candidate.first) ?: return@runCatchingCancellable null
+			val projected = projectExhentaiContentVersion(manga, space, local, digest)
+				?: return@runCatchingCancellable null
+			if (projected.exhentaiContentVersion?.let { next ->
+					next.path == previous.path && next.logicalChapterId == previous.logicalChapterId
+				} != true
+			) return@runCatchingCancellable null
+			projected to ExhentaiSessionChoice(manga.id, manga.source.name, space,
+				candidate.first.copy(sha256 = digest), digest)
+		}.getOrNull()
+	}
+
 	/**
 	 * A readable file is not necessarily the online chapter. Preserve the standard download
 	 * names (including legacy variants and gallery-ID filenames), but expose a differently
@@ -429,11 +472,12 @@ class DownloadedMangaResolver @Inject constructor(
 		if (!file.isFile || file.canonicalPath != choice.path ||
 			file.length() != choice.length || file.lastModified() != choice.lastModified
 		) return@withContext null
-		val hash = runCatching {
+		val hash = runCatchingCancellable {
 			val digest = MessageDigest.getInstance("SHA-256")
 			file.inputStream().buffered(65536).use { input ->
 				val buffer = ByteArray(65536)
 				while (true) {
+					currentCoroutineContext().ensureActive()
 					val count = input.read(buffer)
 					if (count < 0) break
 					if (count > 0) digest.update(buffer, 0, count)

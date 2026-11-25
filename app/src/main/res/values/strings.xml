@@ -1621,6 +1621,11 @@
     <string name="exhentai_choose_local_known_id">Gallery ID: %1$d</string>
     <string name="exhentai_choose_local_unknown_id">No gallery ID</string>
     <string name="exhentai_choose_local_changed">The selected CBZ changed or is no longer available. No association was saved.</string>
+    <string name="exhentai_reader_file_changed_title">File changed</string>
+    <string name="exhentai_reader_file_changed_message">This CBZ has changed. Reload to read the new version from the first page. Your previous reading progress is kept.</string>
+    <string name="exhentai_reader_file_reload">Reload</string>
+    <string name="exhentai_reader_file_reloading">Checking and reloading the selected CBZ…</string>
+    <string name="exhentai_reader_file_unavailable">The selected CBZ is unavailable or cannot be opened. Your previous reading progress is kept. Restore the file and reload, or close the reader.</string>
     <string name="exhentai_presence_resume_scan">Scan ExHentai CBZ when returning to the app</string>
     <string name="exhentai_presence_resume_scan_summary">Incrementally check local ExHentai Main and Gekko files. Startup scanning stays enabled.</string>
     <string name="exhentai_presence_full_scan">Full scan of ExHentai CBZ files</string>

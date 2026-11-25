@@ -78,6 +78,17 @@ class DetailsLoadUseCase @Inject constructor(
 		choice: DownloadedMangaResolver.ExhentaiReadChoice,
 	) = downloadedMangaResolver.selectExhentaiReadChoice(manga, space, choice)
 
+	suspend fun isExhentaiReaderVersionCurrent(
+		space: FavouriteSpace,
+		version: org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion,
+	) = downloadedMangaResolver.isExhentaiReaderVersionCurrent(space, version)
+
+	suspend fun reloadExhentaiReaderVersion(
+		manga: Manga,
+		space: FavouriteSpace,
+		previous: org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion,
+	) = downloadedMangaResolver.reloadExhentaiReaderVersion(manga, space, previous)
+
 	operator fun invoke(
 		intent: MangaIntent,
 		force: Boolean,

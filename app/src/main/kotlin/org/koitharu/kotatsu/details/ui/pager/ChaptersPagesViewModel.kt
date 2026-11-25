@@ -472,7 +472,8 @@ abstract class ChaptersPagesViewModel(
 		launchJob(Dispatchers.Default) {
 			interactor.exhentaiDownloads.collect { event ->
 				if (this@ChaptersPagesViewModel is ReaderViewModel &&
-					this@ChaptersPagesViewModel.hasExhentaiSessionChoice) return@collect
+					(this@ChaptersPagesViewModel.hasExhentaiSessionChoice ||
+						this@ChaptersPagesViewModel.hasPinnedExhentaiVersion)) return@collect
 				if (event.space != favouriteSpace || isSmartLocal || !event.local.file.exists()) return@collect
 				mangaDetails.update { current ->
 					if (current == null || current.id != event.mangaId || !current.isOfficialExhentai) {
@@ -959,6 +960,9 @@ abstract class ChaptersPagesViewModel(
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		if (isSmartLocal) return
+		// A versioned Reader owns its displayed CBZ until an explicit reload or close.
+		// Publication/removal signals must not silently replace that projection.
+		if (this is ReaderViewModel && hasPinnedExhentaiVersion) return
 		if (downloadedManga != null && this is ReaderViewModel && hasExhentaiSessionChoice) return
 		val current = mangaDetails.value ?: return
 		// Official ExHentai publications carry an explicit space; the generic signal is for Local.

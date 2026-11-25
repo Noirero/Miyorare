@@ -51,6 +51,10 @@ class ChaptersLoader @Inject constructor(
             chapterPages.clear()
             initializedMangaId = mangaId
         }
+        updateChapterMetadata(manga)
+	}
+
+    private fun updateChapterMetadata(manga: MangaDetails) {
 		exhentaiContentVersion = manga.local?.exhentaiContentVersion
 		chapters.clear()
 		sourceChapters.clear()
@@ -107,6 +111,41 @@ class ChaptersLoader @Inject constructor(
             true
         } finally {
             if (owners[chapterId] !== token) releaseLease(token)
+        }
+    }
+
+    /**
+     * Stage the explicitly reloaded CBZ before replacing the visible chapter/leases.
+     * Unlike ordinary local-first loading, a missing/corrupt replacement must never fall back online.
+     */
+    suspend fun reloadExhentaiVersion(
+        manga: MangaDetails,
+        verify: suspend () -> Boolean,
+    ): Boolean = mutex.withLock {
+        val version = manga.local?.exhentaiContentVersion ?: return@withLock false
+        if (initializedMangaId != manga.id) return@withLock false
+        val chapter = manga.allChapters.singleOrNull { it.id == version.chapterId }
+            ?.takeIf { it.source == LocalMangaSource } ?: return@withLock false
+        val token = Any()
+        try {
+            val pages = withContext(ReaderBackingLeaseContext(token)) {
+                mangaRepositoryFactory.create(chapter.source).getPages(chapter).mapIndexed { index, page ->
+                    val id = version.pageId(chapter.id, page.id)
+                    ReaderPage(if (id == page.id) page else page.copy(id = id), index, chapter.id)
+                }
+            }
+            if (pages.isEmpty() || !verify()) return@withLock false
+            updateChapterMetadata(manga)
+            chapterPages.clear()
+            chapterPages.addLast(chapter.id, pages)
+            val oldOwners = owners.values.toList() + previewOwners.values.toList()
+            owners.clear()
+            previewOwners.clear()
+            owners[chapter.id] = token
+            oldOwners.forEach { releaseLease(it) }
+            true
+        } finally {
+            if (owners[chapter.id] !== token) releaseLease(token)
         }
     }
 
