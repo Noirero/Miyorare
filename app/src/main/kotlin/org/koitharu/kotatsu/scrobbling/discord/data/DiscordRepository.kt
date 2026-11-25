@@ -14,6 +14,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.internal.closeQuietly
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics.DiscordEvent
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.network.CommonHeaders
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -33,7 +35,7 @@ class DiscordRepository @Inject constructor(
 
 	private val appId = context.getString(R.string.discord_app_id)
 
-	suspend fun getMediaProxyUrl(url: String): String? {
+	suspend fun getMediaProxyUrl(url: String, recording: String? = null): String? {
 		if (isMediaProxyUrl(url)) {
 			return url
 		}
@@ -45,7 +47,9 @@ class DiscordRepository @Inject constructor(
 			.header(CommonHeaders.AUTHORIZATION, token)
 			.post("{\"urls\":[\"${url}\"]}".toRequestBody("application/json".toMediaType()))
 			.build()
-		val body = httpClient.newCall(request).await().parseRaw()
+		val response = httpClient.newCall(request).await()
+		PerformanceDiagnostics.discord(recording, DiscordEvent.COVER_PROXY, response.code)
+		val body = response.parseRaw()
 		when (val json = Json.parseToJsonElement(body)) {
 			is JsonObject -> throw RuntimeException(json.jsonObject["message"]?.jsonPrimitive?.content)
 			is JsonArray -> {
@@ -68,6 +72,9 @@ class DiscordRepository @Inject constructor(
 			.header(CommonHeaders.AUTHORIZATION, token)
 			.get()
 			.build()
-		httpClient.newCall(request).await().ensureSuccess().closeQuietly()
+		val recording = PerformanceDiagnostics.recordingId()
+		val response = httpClient.newCall(request).await()
+		PerformanceDiagnostics.discord(recording, DiscordEvent.TOKEN_CHECK, response.code)
+		response.ensureSuccess().closeQuietly()
 	}
 }
