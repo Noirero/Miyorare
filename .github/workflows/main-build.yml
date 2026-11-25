@@ -211,7 +211,7 @@ jobs:
           echo "Manifest, logical packs, GitHub SHA-256 metadata, compatibility snapshot, release lock, and compatibility range validated."
         } >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Provision the pinned Android Discord SDK
+    - name: Require the official Discord SDK for the stable release
       shell: bash
       env:
         DISCORD_SDK_AAR_URL: ${{ secrets.AMAIN2_DISCORD_SDK_AAR_URL }}
@@ -313,7 +313,7 @@ jobs:
           cp "$apk" "$target"
         done
 
-    - name: Verify Discord SDK, stable identity, and permanent APK signature
+    - name: Verify Discord SDK and the signed stable APKs
       shell: bash
       env:
         RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
@@ -321,7 +321,7 @@ jobs:
       run: |
         set -euo pipefail
         for apk in release/*.apk; do
-          bash .github/scripts/discord-sdk-apk.sh verify "$apk" org.noirero.miyorare
+          bash .github/scripts/discord-sdk-apk.sh verify "$apk" org.noirero.miyorare sdk
         done
 
     - name: Upload release APK artifact

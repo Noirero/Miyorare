@@ -3,25 +3,14 @@ run-name: Amain2 Staging APK · ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
-    inputs:
-      include_discord_sdk:
-        description: Include the official Discord SDK in the staging APK
-        type: boolean
-        default: true
-      discord_application_id:
-        description: Discord Application ID for the SDK-enabled staging build
-        type: string
-        required: false
 
 concurrency:
-  group: amain2-staging-build${{ inputs.include_discord_sdk && '-discord-sdk' || '' }}
+  group: amain2-staging-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    if: >-
-      github.ref == 'refs/heads/Amain2' ||
-      (inputs.include_discord_sdk && github.ref == 'refs/heads/fix/shared-discord-sdk-build')
+    if: github.ref == 'refs/heads/Amain2' || github.ref == 'refs/heads/fix/shared-discord-sdk-build'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,13 +31,24 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Provision the pinned Android Discord SDK
-        if: inputs.include_discord_sdk
+      - name: Select Discord SDK or legacy mode
+        id: discord
         shell: bash
         env:
           DISCORD_SDK_AAR_URL: ${{ secrets.AMAIN2_DISCORD_SDK_AAR_URL }}
-          DISCORD_APPLICATION_ID: ${{ inputs.discord_application_id || vars.MIYORARE_DISCORD_APPLICATION_ID }}
-        run: bash .github/scripts/discord-sdk-apk.sh provision
+          DISCORD_APPLICATION_ID: ${{ vars.MIYORARE_DISCORD_APPLICATION_ID }}
+        run: |
+          set -euo pipefail
+          if bash .github/scripts/discord-sdk-apk.sh provision; then
+            echo 'mode=sdk' >> "$GITHUB_OUTPUT"
+            echo 'apk=Miyorare-Amain2-Discord-SDK.apk' >> "$GITHUB_OUTPUT"
+            echo 'Discord mode: official SDK' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '::warning::Discord SDK unavailable. Building Amain2 with legacy Discord.'
+            echo 'mode=legacy' >> "$GITHUB_OUTPUT"
+            echo 'apk=Miyorare-Amain2-Legacy-Discord.apk' >> "$GITHUB_OUTPUT"
+            echo 'Discord mode: legacy. The official SDK could not be provisioned.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Require permanent signing key
         env:
@@ -128,7 +128,6 @@ jobs:
           grep -F "applicationId = 'org.noirero.miyorare.amain2'" app/build.gradle
 
       - name: Build permanently signed Amain2 APK
-        shell: bash
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
@@ -141,31 +140,29 @@ jobs:
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
             -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
-      - name: Collect APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifact
-          shopt -s nullglob
-          apks=(app/build/outputs/apk/release/*.apk)
-          if [[ ${#apks[@]} -ne 1 ]]; then
-            echo "::error::Expected one universal staging APK, found ${#apks[@]}."
-            exit 1
-          fi
-          cp "${apks[0]}" artifact/Miyorare-Amain2.apk
-
-      - name: Verify Discord SDK, staging identity, and permanent APK signature
-        if: inputs.include_discord_sdk
+      - name: Collect and verify the signed Amain2 APK
         shell: bash
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-        run: bash .github/scripts/discord-sdk-apk.sh verify artifact/Miyorare-Amain2.apk org.noirero.miyorare.amain2
+          DISCORD_MODE: ${{ steps.discord.outputs.mode }}
+          APK_NAME: ${{ steps.discord.outputs.apk }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/release/*.apk)
+          if [[ ${#apks[@]} -ne 1 ]]; then
+            echo '::error::Expected one universal Amain2 APK.'
+            exit 1
+          fi
+          bash .github/scripts/discord-sdk-apk.sh verify "${apks[0]}" org.noirero.miyorare.amain2 "$DISCORD_MODE"
+          mkdir -p artifact
+          cp "${apks[0]}" "artifact/$APK_NAME"
 
       - name: Upload Amain2 staging APK
         uses: actions/upload-artifact@v7
         with:
-          path: artifact/Miyorare-Amain2.apk
+          path: artifact/${{ steps.discord.outputs.apk }}
           archive: false
           if-no-files-found: error
           retention-days: 3
