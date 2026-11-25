@@ -2128,6 +2128,105 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun changedCbzOpensNormalReaderAtFirstPageAndRetainsPreviousCursorAndBookmark() = runBlocking {
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990122L, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val bitmap = android.graphics.Bitmap.createBitmap(64, 96, android.graphics.Bitmap.Config.ARGB_8888)
+		val png = try {
+			java.io.ByteArrayOutputStream().use { output ->
+				check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+				output.toByteArray()
+			}
+		} finally { bitmap.recycle() }
+		fun writeVersion(comment: String) {
+			ZipOutputStream(file.outputStream()).use { zip ->
+				zip.setComment(comment)
+				for (page in 1..8) {
+					zip.putNextEntry(ZipEntry("$page.png").apply { time = 1700000000000L })
+					zip.write(png)
+					zip.closeEntry()
+				}
+			}
+		}
+		val historyDao = database.getHistoryDao()
+		val progressDao = database.getChapterProgressDao()
+		val bookmarkDao = database.getBookmarksDao()
+		try {
+			writeVersion("version-A")
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			val first = loadVersionFixtureDetails(manga, space)
+			val old = first.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			val oldPage = localRepository.getPages(old.chapter).first()
+			val oldHistory = HistoryEntity(manga.id, 100L, 200L, old.chapter.id,
+				7, 0f, 1f, 0L, 1, space.dbValue)
+			historyDao.upsert(oldHistory)
+			// Simulate a pre-versioning installation with only a latest History cursor.
+			assertTrue(progressDao.findAll(listOf(manga.id), space.dbValue).isEmpty())
+			val oldBookmark = BookmarkEntity(
+				mangaId = manga.id, pageId = oldPage.id, chapterId = old.chapter.id, page = 0,
+				scroll = 0, imageUrl = oldPage.url, createdAt = 300L, percent = 0f,
+				note = "keep the old version bookmark",
+			)
+			bookmarkDao.insert(oldBookmark)
+			val length = file.length()
+			val mtime = file.lastModified()
+			val oldBytes = file.readBytes()
+			writeVersion("version-B")
+			assertTrue(file.setLastModified(mtime))
+			assertEquals(length, file.length())
+			assertEquals(mtime, file.lastModified())
+			assertFalse(oldBytes.contentEquals(file.readBytes()))
+			presence.run(full = true)
+			val details = loadVersionFixtureDetails(manga, space)
+			val next = details.mapChapters(0L, 0, null, emptyList(), false, false).single { it.isDownloaded }
+			assertTrue(old.chapter.id != next.chapter.id)
+			assertEquals(listOf(oldBookmark), bookmarkDao.findAll(manga.id))
+			assertEquals(oldHistory, historyDao.find(manga.id))
+			val context = InstrumentationRegistry.getInstrumentation().targetContext
+			val intent = ReaderIntent.Builder(context)
+				.mangaForRead(details.toManga(), details.sourceManga)
+				.favouriteSpace(space.dbValue)
+				.incognito(false)
+				.build().intent
+			ActivityScenario.launch<ReaderActivity>(intent).use { scenario ->
+				lateinit var reader: ReaderViewModel
+				scenario.onActivity { reader = ViewModelProvider(it)[ReaderViewModel::class.java] }
+				val content = withTimeout(30000) {
+					reader.content.first { it.pages.isNotEmpty() && it.state != null }
+				}
+				assertEquals(ReaderState(next.chapter.id, 0, 0), content.state)
+				assertEquals(8, content.pages.count { it.chapterId == next.chapter.id })
+				assertTrue(content.pages.first().id != oldPage.id)
+				withTimeout(30000) {
+					while (historyDao.find(manga.id)?.chapterId != next.chapter.id ||
+						chapterProgress.get(manga.id, space, next.personalKey, next.chapter.id)?.page != 0) {
+						kotlinx.coroutines.delay(25)
+					}
+				}
+				assertEquals(7, chapterProgress.get(manga.id, space, old.personalKey, old.chapter.id)?.page)
+				assertEquals(0, historyDao.find(manga.id)?.page)
+				assertEquals(listOf(oldBookmark), bookmarkDao.findAll(manga.id))
+				scenario.onActivity { reader.toggleBookmark() }
+				withTimeout(15000) {
+					while (bookmarkDao.findAll(manga.id).size != 2) kotlinx.coroutines.delay(25)
+				}
+				val newBookmark = bookmarkDao.findAll(manga.id).single { it.chapterId == next.chapter.id }
+				assertTrue(newBookmark.pageId != oldBookmark.pageId)
+				assertEquals(0, newBookmark.page)
+				assertTrue(oldBookmark in bookmarkDao.findAll(manga.id))
+				withTimeout(15000) { reader.isBookmarkAdded.first { it } }
+				scenario.onActivity { reader.toggleBookmark() }
+				withTimeout(15000) {
+					while (bookmarkDao.findAll(manga.id).size != 1) kotlinx.coroutines.delay(25)
+				}
+				assertEquals(listOf(oldBookmark), bookmarkDao.findAll(manga.id))
+			}
+		} finally {
+			database.getMangaDao().delete(listOfNotNull(database.getMangaDao().find(manga.id)?.manga))
+		}
+	}
+
 	@Test fun movingCbzBetweenGalleriesAndSharingWithGekkoDoesNotTransferProgress() = runBlocking {
 		val file = archive("Legacy Gallery", "Chapter.cbz")
 		val bytes = file.readBytes()

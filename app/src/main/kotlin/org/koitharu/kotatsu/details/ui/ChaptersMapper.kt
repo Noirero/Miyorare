@@ -133,7 +133,7 @@ internal fun resolveChapterPersonalKey(
 	if (chapter.source == LocalMangaSource && singleSource != null && chapter.id != singleSource.id &&
 		(singleSource.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
 			singleSource.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")
-	) return ChapterPersonalKey(singleSource.source.name, chapter.url)
+	) return ChapterPersonalKey(singleSource.source.name, "miyorare-exhentai-chapter:${chapter.id}")
 	val canonical = sourceChaptersById[chapter.id]?.singleOrNull()
 		?: sourceChapters.singleOrNull { source -> source.isEquivalentDownloadOf(chapter) }
 		?: chapter

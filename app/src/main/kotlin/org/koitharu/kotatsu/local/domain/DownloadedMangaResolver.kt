@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.local.domain
 import android.content.Context
 import android.util.Base64
 import android.net.Uri
+import androidx.preference.PreferenceManager
+import java.nio.ByteBuffer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -25,6 +27,7 @@ import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion
 import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.EhentaiComicInfo
@@ -56,6 +59,8 @@ class DownloadedMangaResolver @Inject constructor(
 	private val mihonExtensionManager: MihonExtensionManager,
 	@ApplicationContext private val context: Context,
 ) {
+	private val contentVersionPreferences = PreferenceManager.getDefaultSharedPreferences(context)
+	private val contentVersionLock = Any()
 
 	suspend fun resolveCanonicalManga(manga: Manga): Manga {
 		if (!manga.isLocal) return manga
@@ -82,12 +87,12 @@ class DownloadedMangaResolver @Inject constructor(
 				manga.source.name == GEKKO_EXHENTAI_SOURCE_NAME)
 		if (!BuildConfig.DEBUG || !ExhentaiDownloadedCopy.isOfficial(manga)) {
 			return resolveSavedManga(manga, favouriteSpace, detailsTitleRead)
-				?.let { if (detailsTitleRead) projectExhentaiChapterIdentity(manga, it) else it }
+				?.let { if (detailsTitleRead) projectExhentaiContentVersion(manga, favouriteSpace ?: FavouriteSpace.NORMAL, it) else it }
 		}
 		val trace = LegacyCbzTrace()
 		return withContext(trace) {
 			val saved = resolveSavedManga(manga, favouriteSpace, detailsTitleRead)
-				?.let { if (detailsTitleRead) projectExhentaiChapterIdentity(manga, it) else it }
+				?.let { if (detailsTitleRead) projectExhentaiContentVersion(manga, favouriteSpace ?: FavouriteSpace.NORMAL, it) else it }
 			val result = when {
 				saved == null && trace.hasCandidate -> "REJECTED"
 				saved == null -> "NOT_FOUND"
@@ -296,7 +301,7 @@ class DownloadedMangaResolver @Inject constructor(
 		val candidate = loadActiveExhentaiTitleCandidates(manga, space)
 			.firstOrNull { it.first == selection.candidate.copy(sha256 = null) } ?: return null
 		if (candidate.second == null || fingerprintOfChoice(candidate.first) != selection.sha256) return null
-		return candidate.second?.let { projectExhentaiChapterIdentity(manga, it) }
+		return candidate.second?.let { projectExhentaiContentVersion(manga, space, it, selection.sha256) }
 	}
 
 	/**
@@ -335,6 +340,63 @@ class DownloadedMangaResolver @Inject constructor(
 		val id = if (hash == 0L || hash == remote.id) (if (remote.id == 1L) 2L else 1L) else hash
 		val independent = chapter.copy(id = id, title = stem)
 		return local.copy(manga = local.manga.copy(chapters = listOf(independent)))
+	}
+
+	/**
+	 * Keep the first observed content on the existing logical chapter ID (legacy personal state).
+	 * Other byte versions get distinct deterministic IDs. Store only a hashed scope and digest,
+	 * not a filesystem path or a persisted Reader choice. Never version the discovery/ownership index.
+	 */
+	private suspend fun projectExhentaiContentVersion(
+		manga: Manga,
+		space: FavouriteSpace,
+		local: LocalManga,
+		approvedDigest: String? = null,
+	): LocalManga? = withContext(Dispatchers.IO) {
+		if (!supportsActiveExhentaiChoice(manga)) return@withContext local
+		val projected = projectExhentaiChapterIdentity(manga, local)
+		val chapter = projected.manga.chapters?.singleOrNull() ?: return@withContext projected
+		val uri = Uri.parse(chapter.url)
+		val physical = if (projected.file.isDirectory) {
+			val root = projected.file.canonicalFile
+			val base = uri.path?.let(::File) ?: return@withContext projected
+			val candidate = if (base.isDirectory) uri.fragment?.let { File(base, it) } else base
+			candidate?.canonicalFile?.takeIf { it.parentFile == root } ?: return@withContext projected
+		} else projected.file
+		if (!physical.extension.equals("cbz", ignoreCase = true) || !physical.isFile) return@withContext projected
+		val path = physical.canonicalPath
+		if (!downloadDestinationStore.isVisibleInActiveExhentaiDestination(space, physical)) return@withContext null
+		val digest = approvedDigest ?: fingerprintOfChoice(
+			ExhentaiReadChoice(path, null, physical.length(), physical.lastModified()),
+		) ?: return@withContext null
+		val scope = "${manga.source.name}:${manga.id}:${space.dbValue}:${chapter.id}"
+		val key = "exhentai_content_baseline_" + Base64.encodeToString(
+			MessageDigest.getInstance("SHA-256").digest(scope.toByteArray(Charsets.UTF_8)),
+			Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
+		)
+		val baseline = synchronized(contentVersionLock) {
+			contentVersionPreferences.getString(key, null) ?: digest.takeIf {
+				contentVersionPreferences.edit().putString(key, it).commit()
+			}
+		} ?: return@withContext null
+		val id = if (baseline == digest) chapter.id else {
+			// Distinct from both the original logical chapter and the online source chapter.
+			val sourceId = manga.chapters!!.single().id
+			var salt = 0
+			var candidate: Long
+			do {
+				val bytes = MessageDigest.getInstance("SHA-256").digest(
+					"exhentai-content-version:$scope:$digest:$salt".toByteArray(Charsets.UTF_8),
+				)
+				candidate = ByteBuffer.wrap(bytes).long and Long.MAX_VALUE
+				salt++
+			} while (candidate == 0L || candidate == chapter.id || candidate == sourceId)
+			candidate
+		}
+		projected.copy(
+			manga = projected.manga.copy(chapters = listOf(chapter.copy(id = id))),
+			exhentaiContentVersion = ExhentaiContentVersion(chapter.id, id, path, digest),
+		)
 	}
 
 	private fun supportsActiveExhentaiChoice(manga: Manga) =

@@ -602,7 +602,12 @@ class ReaderViewModel @Inject constructor(
             val manga = requireManga()
             val existingBookmark = currentBookmark(manga, state, readerBookmarks.value)
             if (existingBookmark != null) {
-                bookmarksRepository.removeBookmarks(setOf(existingBookmark.pageId))
+                if (mangaDetails.value?.local?.exhentaiContentVersion != null) {
+                    // A legacy page ID may also be present in the other ExHentai source.
+                    bookmarksRepository.removeBookmark(existingBookmark)
+                } else {
+                    bookmarksRepository.removeBookmarks(setOf(existingBookmark.pageId))
+                }
                 onShowToast.call(R.string.bookmark_removed)
             } else {
                 val isEpub = manga.isEpub
@@ -733,7 +738,7 @@ class ReaderViewModel @Inject constructor(
                         val manga = details.toManga()
                         // obtain state
                         if (readingState.value == null) {
-                            val newState = getStateFromIntent(manga, details.isLoaded)
+                            val newState = getStateFromIntent(details)
                             if (newState == null) {
                                 return@collect // manga not loaded yet if cannot get state
                             }
@@ -1050,7 +1055,9 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private suspend fun getStateFromIntent(manga: Manga, isLoaded: Boolean): ReaderState? {
+    private suspend fun getStateFromIntent(details: MangaDetails): ReaderState? {
+        val manga = details.toManga()
+        val isLoaded = details.isLoaded
         // check if we have at least some chapters loaded
         if (manga.chapters.isNullOrEmpty()) {
             return null
@@ -1063,6 +1070,27 @@ class ReaderViewModel @Inject constructor(
 
         // specific state is requested
         val requestedState: ReaderState? = savedStateHandle[ReaderIntent.EXTRA_STATE]
+        val selectedVersion = details.local?.exhentaiContentVersion
+        val selectedChapter = selectedVersion?.let { version -> manga.findChapterById(version.chapterId) }
+        if (selectedChapter != null && (
+            requestedState == null ||
+                savedStateHandle.get<Boolean>(ReaderIntent.EXTRA_HISTORY_RESUME) == true ||
+                (isLoaded && manga.findChapterById(requestedState.chapterId) == null)
+            )) {
+            // Resume the selected physical version, never a cursor from another version or source.
+            // An explicit valid chapter/page tap remains authoritative below.
+            val chapterId = selectedChapter.id
+            if (settings.getChapterReadOverrides(manga.id)[chapterId] == false ||
+                settings.getChapterPageResetStamp(manga.id, chapterId, favouriteSpace.dbValue) < 0
+            ) return ReaderState(chapterId, 0, 0)
+            val key = resolveChapterPersonalKey(selectedChapter, details.sourceManga.chapters.orEmpty())
+            val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key, chapterId)
+            if (saved != null) return ReaderState(chapterId, saved.page, saved.scroll)
+            val history = database.getHistoryDao().find(manga.id)
+            return if (history?.chapterId == chapterId && history.space == favouriteSpace.dbValue) {
+                ReaderState(chapterId, history.page, history.scroll.toInt())
+            } else ReaderState(chapterId, 0, 0)
+        }
         if (requestedState != null) {
             when {
                 manga.findChapterById(requestedState.chapterId) != null -> {

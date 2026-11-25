@@ -732,7 +732,7 @@ abstract class ChaptersPagesViewModel(
                 )
                 val bookmark = Bookmark(
                     manga = manga,
-                    pageId = page.id,
+                    pageId = details.local?.exhentaiContentVersion?.pageId(chapter.id, page.id) ?: page.id,
                     chapterId = chapter.id,
                     page = pageIndex,
                     scroll = if (pageIndex == state.page) state.scroll else 0,

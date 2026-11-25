@@ -7,11 +7,13 @@ import org.koitharu.kotatsu.core.util.ext.contains
 import org.koitharu.kotatsu.core.util.ext.creationTime
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
+import org.koitharu.kotatsu.parsers.util.longHashCode
 import java.io.File
 
 data class LocalManga(
 	val manga: Manga,
 	val file: File = manga.url.toUri().toFile(),
+	val exhentaiContentVersion: ExhentaiContentVersion? = null,
 ) {
 
 	var createdAt: Long = -1L
@@ -46,4 +48,17 @@ data class LocalManga(
 	override fun toString(): String {
 		return "LocalManga(${file.path}: ${manga.title})"
 	}
+}
+
+/** Read-only projection metadata for a single selected Main/Gekko CBZ. */
+data class ExhentaiContentVersion(
+	val logicalChapterId: Long,
+	val chapterId: Long,
+	val path: String,
+	val sha256: String,
+) {
+	fun pageId(chapterId: Long, originalPageId: Long): Long =
+		if (chapterId == this.chapterId && chapterId != logicalChapterId) {
+			"exhentai-version-page:$chapterId:$originalPageId".longHashCode() and Long.MAX_VALUE
+		} else originalPageId
 }
