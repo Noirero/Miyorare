@@ -1824,6 +1824,97 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		}
 	}
 
+	@Test fun renamedMainCbzKeepsOnlineChapterAndCreatesUnreadLocalChapter() = runBlocking {
+		verifyRenamedCbzHasIndependentChapterIdentity(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, 990112L)
+	}
+
+	@Test fun renamedGekkoCbzKeepsOnlineChapterAndCreatesUnreadLocalChapter() = runBlocking {
+		verifyRenamedCbzHasIndependentChapterIdentity(GEKKO_SOURCE, 990113L)
+	}
+
+	private suspend fun verifyRenamedCbzHasIndependentChapterIdentity(source: String, id: Long) {
+		val chapter = archive("Legacy Gallery", "Chapter.cbz")
+		val originalBytes = chapter.readBytes()
+		val online = gallery(id, source)
+		val original = requireNotNull(online.chapters).single()
+		val space = FavouriteSpace.NORMAL
+		val progressDao = database.getChapterProgressDao()
+		val historyDao = database.getHistoryDao()
+		val bookmarkDao = database.getBookmarksDao()
+		try {
+			data.storeManga(online, replaceExisting = true, detailsFetched = true)
+			val intent = MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_MANGA to ParcelableManga(online))))
+			suspend fun details() = detailsLoader(
+				intent = intent, force = false, favouriteSpace = space,
+				preferLocalBeforeInitialSnapshot = true,
+			).first()
+			presence.run(full = true)
+			val before = details()
+			val initial = before.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			assertEquals(original.id, initial.chapter.id)
+			assertTrue(initial.isDownloaded)
+			assertEquals(chapter.canonicalFile, before.local?.file?.canonicalFile)
+			val progress = ChapterProgressEntity(
+				mangaId = id, source = initial.personalKey.source, url = initial.personalKey.url,
+				space = space.dbValue, page = 7, scroll = 0, totalPages = 8,
+			)
+			progressDao.upsert(progress)
+			historyDao.upsert(HistoryEntity(
+				mangaId = id, createdAt = 100L, updatedAt = 200L, chapterId = original.id,
+				page = 7, scroll = 0f, percent = 1f, deletedAt = 0L, chaptersCount = 1, space = space.dbValue,
+			))
+			bookmarkDao.insert(BookmarkEntity(
+				mangaId = id, pageId = id + 1000000L, chapterId = original.id, page = 7,
+				scroll = 0, imageUrl = online.url, createdAt = 300L, percent = 1f, note = "keep original bookmark",
+			))
+			settings.setChapterReadOverride(id, original.id, true)
+			val bookmark = org.koitharu.kotatsu.bookmarks.domain.Bookmark(
+				manga = online, pageId = id + 1000000L, chapterId = original.id, page = 7,
+				scroll = 0, imageUrl = online.url, createdAt = java.time.Instant.ofEpochMilli(300L),
+				percent = 1f, note = "keep original bookmark",
+			)
+			val savedHistory = requireNotNull(historyDao.find(id))
+			val savedBookmarks = bookmarkDao.findAll(id)
+			val savedOverrides = settings.getChapterReadOverrides(id)
+			assertEquals(1, savedBookmarks.size)
+			val renamed = File(chapter.parentFile, "Chapter_Baru.cbz")
+			assertTrue(chapter.renameTo(renamed))
+			assertArrayEquals(originalBytes, renamed.readBytes())
+			presence.run(full = true)
+			assertEquals(setOf(id), classifier.getDownloadedIds(space, listOf(id)))
+			val after = details()
+			val rows = after.mapChapters(
+				original.id, 0, null, listOf(bookmark), false, false,
+				readOverrides = savedOverrides,
+				progressByKey = progressDao.findAll(listOf(id), space.dbValue).associateBy { it.key() },
+				currentPage = savedHistory.page,
+			)
+			assertEquals("Renaming a CBZ must keep the online row and add a distinct local row", 2, rows.size)
+			val oldRow = rows.single { it.chapter.id == original.id }
+			val newRow = rows.single { it.chapter.id != original.id }
+			assertEquals(original.title, oldRow.chapter.title)
+			assertFalse("The original online chapter must no longer be downloaded", oldRow.isDownloaded)
+			assertTrue(oldRow.isBookmarked)
+			assertFalse(oldRow.isUnread)
+			assertEquals(7, oldRow.lastReadPage)
+			assertEquals("Chapter_Baru", newRow.chapter.title)
+			assertTrue(newRow.isDownloaded)
+			assertTrue("Renamed chapter must start unread", newRow.isUnread)
+			assertFalse(newRow.isBookmarked)
+			assertFalse(newRow.isCurrent)
+			assertNull(newRow.lastReadPage)
+			assertFalse("Renamed chapter must have a distinct personal key", oldRow.personalKey == newRow.personalKey)
+			assertEquals(renamed.canonicalFile, after.local?.file?.canonicalFile)
+			assertEquals(savedHistory, historyDao.find(id))
+			assertEquals(savedBookmarks, bookmarkDao.findAll(id))
+			assertEquals(savedOverrides, settings.getChapterReadOverrides(id))
+			assertEquals(listOf(progress), progressDao.findAll(listOf(id), space.dbValue))
+			assertNull(database.getFavouriteDownloadIndexDao().findEntry(space.dbValue, id))
+		} finally {
+			database.getMangaDao().delete(listOfNotNull(database.getMangaDao().find(id)?.manga))
+		}
+	}
+
 	@Test fun permissiveDetailsReadIsLimitedToMainAndGekkoSources() = runBlocking {
 		prefs.edit(commit = true) {
 			putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
