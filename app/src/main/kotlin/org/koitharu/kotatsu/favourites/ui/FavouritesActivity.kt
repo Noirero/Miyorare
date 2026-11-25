@@ -256,9 +256,11 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	internal fun refreshSanctuaryHeader() {
 		val workspace = supportFragmentManager.findFragmentById(R.id.container) as? PrivateWorkspaceFragment
-		if (workspace?.hasActivePrivateSettings() == true || (appBar.background as? MiyorarePrivateFavouritesHeaderDrawable)?.hasSanctuaryFade == true) {
-			applyPrivateAppBarChrome()
-		}
+		val shouldFade = workspace?.hasActivePrivateSettings() == true &&
+			entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			privateFavouritesVisualSpecFromPreferences() != null
+		val hasFade = (appBar.background as? MiyorarePrivateFavouritesHeaderDrawable)?.hasSanctuaryFade == true
+		if (shouldFade != hasFade) applyPrivateAppBarChrome()
 	}
 
 	internal fun applyPrivateAppBarChrome() {
