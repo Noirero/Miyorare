@@ -6,6 +6,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ActivityScenario
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -39,6 +41,7 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.history.data.HistoryEntity
@@ -49,6 +52,7 @@ import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
+import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP
 import org.koitharu.kotatsu.details.data.MangaDetails
@@ -65,6 +69,9 @@ import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceLifecycleObserver
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.reader.ui.ReaderActivity
+import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership
 import java.io.File
@@ -96,6 +103,7 @@ class ExhentaiTitleDownloadCompatibilityTest {
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var detailsLoader: DetailsLoadUseCase
+	@Inject lateinit var chapterProgress: ChapterProgressRepository
 	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var classifier: DownloadedContentClassifier
 	@Inject lateinit var presence: ExhentaiPresenceDiscovery
@@ -1950,6 +1958,228 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			assertEquals(remoteChapter.id, canonical.manga.chapters!!.single().id)
 		}
 	}
+
+	@Test fun renamedChapterOpensRealReaderAtFirstPageWithOldHistoryPresent() = runBlocking {
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val bitmap = android.graphics.Bitmap.createBitmap(64, 96, android.graphics.Bitmap.Config.ARGB_8888)
+		val png = try {
+			java.io.ByteArrayOutputStream().use { output ->
+				check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+				output.toByteArray()
+			}
+		} finally {
+			bitmap.recycle()
+		}
+		ZipOutputStream(file.outputStream()).use { zip ->
+			for (page in 1..8) {
+				zip.putNextEntry(ZipEntry("$page.png"))
+				zip.write(png)
+				zip.closeEntry()
+			}
+		}
+		val manga = gallery(990116L, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		val online = requireNotNull(manga.chapters).single()
+		try {
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			val before = loadVersionFixtureDetails(manga, space)
+			val oldRow = before.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			val oldProgress = ChapterProgressEntity(manga.id, oldRow.personalKey.source,
+				oldRow.personalKey.url, space.dbValue, 7, 0, 8)
+			database.getChapterProgressDao().upsert(oldProgress)
+			val oldHistory = HistoryEntity(manga.id, 100L, 200L, online.id,
+				7, 0f, 1f, 0L, 1, space.dbValue)
+			database.getHistoryDao().upsert(oldHistory)
+			val renamed = File(file.parentFile, "Chapter_Baru.cbz")
+			assertTrue(file.renameTo(renamed))
+			presence.run(full = true)
+			val after = loadVersionFixtureDetails(manga, space)
+			val local = after.mapChapters(online.id, 0, null, emptyList(), false, false)
+				.single { it.isDownloaded }
+			assertTrue(local.chapter.id != online.id)
+			assertNull(chapterProgress.get(manga.id, space, local.personalKey, local.chapter.id))
+			val context = InstrumentationRegistry.getInstrumentation().targetContext
+			// Exercise the actual Reader Activity/ViewModel initial-load path with an explicit
+			// chapter tap. Incognito isolates the initial resume check from asynchronous saves.
+			val intent = ReaderIntent.Builder(context)
+				.mangaForRead(after.toManga(), after.sourceManga)
+				.favouriteSpace(space.dbValue)
+				.state(ReaderState(local.chapter.id, 0, 0))
+				.incognito()
+				.build().intent
+			ActivityScenario.launch<ReaderActivity>(intent).use { scenario ->
+				lateinit var reader: ReaderViewModel
+				scenario.onActivity { reader = ViewModelProvider(it)[ReaderViewModel::class.java] }
+				val content = withTimeout(30000) {
+					reader.content.first { it.pages.isNotEmpty() && it.state != null }
+				}
+				assertEquals(ReaderState(local.chapter.id, 0, 0), content.state)
+				assertEquals(8, content.pages.count { it.chapterId == local.chapter.id })
+			}
+			assertEquals(oldHistory, database.getHistoryDao().find(manga.id))
+			assertEquals(listOf(oldProgress), database.getChapterProgressDao().findAll(listOf(manga.id), space.dbValue))
+		} finally {
+			database.getMangaDao().delete(listOfNotNull(database.getMangaDao().find(manga.id)?.manga))
+		}
+	}
+
+	@Test fun samePathSameSizeSameMtimeImageChangeStartsNewContentVersion() = runBlocking {
+		verifyChangedCbzVersion(EhentaiSourceFamily.OFFICIAL_SOURCE_NAME, 990117L, metadataOnly = false)
+	}
+
+	@Test fun samePathSameSizeSameMtimeArchiveMetadataChangeStartsNewContentVersion() = runBlocking {
+		verifyChangedCbzVersion(GEKKO_SOURCE, 990118L, metadataOnly = true)
+	}
+
+	private suspend fun verifyChangedCbzVersion(source: String, id: Long, metadataOnly: Boolean) {
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(id, source)
+		val space = FavouriteSpace.NORMAL
+		val progressDao = database.getChapterProgressDao()
+		val historyDao = database.getHistoryDao()
+		val bookmarkDao = database.getBookmarksDao()
+		fun writeVersion(target: File, payload: ByteArray, comment: String) {
+			ZipOutputStream(target.outputStream()).use { zip ->
+				zip.setComment(comment)
+				for (page in 1..8) {
+					zip.putNextEntry(ZipEntry("$page.webp").apply { time = 1700000000000L })
+					zip.write(payload)
+					zip.closeEntry()
+				}
+			}
+		}
+		writeVersion(file, byteArrayOf(1, 2, 3), "fixture-A")
+		val original = file.readBytes()
+		val originalModified = file.lastModified()
+		try {
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			presence.run(full = true)
+			val initial = loadVersionFixtureDetails(manga, space)
+			val row = initial.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			assertTrue(row.isDownloaded)
+			assertEquals(8, localRepository.getPages(row.chapter).size)
+			val state = ReaderState(row.chapter.id, 7, 0)
+			chapterProgress.record(manga, space, row.personalKey, state, 8, isNewVisit = true)
+			val oldProgress = requireNotNull(chapterProgress.get(id, space, row.personalKey, row.chapter.id))
+			val oldHistory = HistoryEntity(id, 100L, 200L, row.chapter.id, 7, 0f, 1f, 0L, 1, space.dbValue)
+			historyDao.upsert(oldHistory)
+			val bookmark = org.koitharu.kotatsu.bookmarks.domain.Bookmark(
+				manga = manga, pageId = id + 1000000L, chapterId = row.chapter.id, page = 7,
+				scroll = 0, imageUrl = row.chapter.url, createdAt = java.time.Instant.ofEpochMilli(300L),
+				percent = 1f, note = "previous CBZ version",
+			)
+			bookmarkDao.insert(BookmarkEntity(
+				mangaId = id, pageId = bookmark.pageId, chapterId = bookmark.chapterId,
+				page = bookmark.page, scroll = bookmark.scroll, imageUrl = bookmark.imageUrl,
+				createdAt = 300L, percent = bookmark.percent, note = bookmark.note,
+			))
+			settings.setChapterReadOverride(id, row.chapter.id, true)
+			val oldBookmarks = bookmarkDao.findAll(id)
+			val oldOverrides = settings.getChapterReadOverrides(id)
+			suspend fun currentDownloadedRow() = loadVersionFixtureDetails(manga, space).mapChapters(
+				oldHistory.chapterId, 0, null, listOf(bookmark), false, false,
+				readOverrides = settings.getChapterReadOverrides(id),
+				progressByKey = progressDao.findAll(listOf(id), space.dbValue).associateBy { it.key() },
+				currentPage = oldHistory.page,
+			).single { it.isDownloaded }
+
+			val unchanged = currentDownloadedRow()
+			assertEquals(row.personalKey, unchanged.personalKey)
+			assertEquals(7, unchanged.lastReadPage)
+			assertTrue(unchanged.isBookmarked)
+			assertFalse(unchanged.isUnread)
+
+			val replacement = File(root, "detached-version.cbz")
+			writeVersion(replacement, if (metadataOnly) byteArrayOf(1, 2, 3) else byteArrayOf(3, 2, 1),
+				if (metadataOnly) "fixture-B" else "fixture-A")
+			assertEquals(file.length(), replacement.length())
+			replacement.copyTo(file, overwrite = true)
+			assertTrue(file.setLastModified(originalModified))
+			assertEquals(original.size.toLong(), file.length())
+			assertEquals(originalModified, file.lastModified())
+			assertFalse(original.contentEquals(file.readBytes()))
+			ZipFile(file).use { archive ->
+				assertEquals(if (metadataOnly) "fixture-B" else "fixture-A", archive.comment)
+				assertArrayEquals(if (metadataOnly) byteArrayOf(1, 2, 3) else byteArrayOf(3, 2, 1),
+					archive.getInputStream(archive.getEntry("1.webp")).use { it.readBytes() })
+			}
+			presence.run(full = true)
+			assertEquals(setOf(id), classifier.getDownloadedIds(space, listOf(id)))
+			val changed = currentDownloadedRow()
+			assertEquals(8, localRepository.getPages(changed.chapter).size)
+			assertFalse("New CBZ bytes must not reuse the previous progress identity", changed.personalKey == row.personalKey)
+			assertNull("New CBZ version must not inherit the old page", changed.lastReadPage)
+			assertTrue("New CBZ version must be unread", changed.isUnread)
+			assertFalse("New CBZ version must not inherit the old bookmark", changed.isBookmarked)
+			assertNull(chapterProgress.get(id, space, changed.personalKey, changed.chapter.id))
+			assertEquals(oldHistory, historyDao.find(id))
+			assertEquals(oldBookmarks, bookmarkDao.findAll(id))
+			assertEquals(oldOverrides, settings.getChapterReadOverrides(id))
+			assertTrue(oldProgress in progressDao.findAll(listOf(id), space.dbValue))
+
+			chapterProgress.record(manga, space, changed.personalKey, ReaderState(changed.chapter.id, 2, 0),
+				8, isNewVisit = true)
+			assertEquals(2, chapterProgress.get(id, space, changed.personalKey, changed.chapter.id)?.page)
+			assertTrue("Recording new progress must retain the previous version",
+				oldProgress in progressDao.findAll(listOf(id), space.dbValue))
+			assertEquals(oldBookmarks, bookmarkDao.findAll(id))
+		} finally {
+			database.getMangaDao().delete(listOfNotNull(database.getMangaDao().find(id)?.manga))
+		}
+	}
+
+	@Test fun movingCbzBetweenGalleriesAndSharingWithGekkoDoesNotTransferProgress() = runBlocking {
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val bytes = file.readBytes()
+		val original = gallery(990119L, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME)
+		val movedMain = gallery(990120L, EhentaiSourceFamily.OFFICIAL_SOURCE_NAME).copy(title = "Another Gallery")
+		val movedGekko = gallery(990121L, GEKKO_SOURCE).copy(title = movedMain.title)
+		val space = FavouriteSpace.NORMAL
+		val all = listOf(original, movedMain, movedGekko)
+		try {
+			for (manga in all) data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			val oldRow = loadVersionFixtureDetails(original, space)
+				.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			assertTrue(oldRow.isDownloaded)
+			chapterProgress.record(original, space, oldRow.personalKey, ReaderState(oldRow.chapter.id, 0, 0),
+				1, isNewVisit = true)
+			val saved = requireNotNull(chapterProgress.get(original.id, space, oldRow.personalKey, oldRow.chapter.id))
+			val folder = File(file.parentFile!!.parentFile, movedMain.title)
+			check(folder.mkdir())
+			val moved = File(folder, file.name)
+			assertTrue(file.renameTo(moved))
+			assertArrayEquals(bytes, moved.readBytes())
+			presence.run(full = true)
+			assertEquals(setOf(movedMain.id, movedGekko.id),
+				classifier.getDownloadedIds(space, all.map { it.id }))
+			for (manga in listOf(movedMain, movedGekko)) {
+				val details = loadVersionFixtureDetails(manga, space)
+				assertEquals(moved.canonicalFile, details.local?.file?.canonicalFile)
+				val row = details.mapChapters(0L, 0, null, emptyList(), false, false).single()
+				assertTrue(row.isDownloaded)
+				assertTrue(row.isUnread)
+				assertNull(chapterProgress.get(manga.id, space, row.personalKey, row.chapter.id))
+			}
+			val main = loadVersionFixtureDetails(movedMain, space)
+				.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			chapterProgress.record(movedMain, space, main.personalKey, ReaderState(main.chapter.id, 0, 0),
+				1, isNewVisit = true)
+			val gekko = loadVersionFixtureDetails(movedGekko, space)
+				.mapChapters(0L, 0, null, emptyList(), false, false).single()
+			assertNull(chapterProgress.get(movedGekko.id, space, gekko.personalKey, gekko.chapter.id))
+			assertEquals(saved, chapterProgress.get(original.id, space, oldRow.personalKey, oldRow.chapter.id))
+			assertFalse(loadVersionFixtureDetails(original, space)
+				.mapChapters(0L, 0, null, emptyList(), false, false).single().isDownloaded)
+		} finally {
+			database.getMangaDao().delete(all.mapNotNull { database.getMangaDao().find(it.id)?.manga })
+		}
+	}
+
+	private suspend fun loadVersionFixtureDetails(manga: Manga, space: FavouriteSpace): MangaDetails =
+		detailsLoader(
+			intent = MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_MANGA to ParcelableManga(manga)))),
+			force = false, favouriteSpace = space, preferLocalBeforeInitialSnapshot = true,
+		).first()
 
 	@Test fun permissiveDetailsReadIsLimitedToMainAndGekkoSources() = runBlocking {
 		prefs.edit(commit = true) {
