@@ -2192,36 +2192,123 @@ class ExhentaiTitleDownloadCompatibilityTest {
 			ActivityScenario.launch<ReaderActivity>(intent).use { scenario ->
 				lateinit var reader: ReaderViewModel
 				scenario.onActivity { reader = ViewModelProvider(it)[ReaderViewModel::class.java] }
-				val content = withTimeout(30000) {
-					reader.content.first { it.pages.isNotEmpty() && it.state != null }
-				}
-				assertEquals(ReaderState(next.chapter.id, 0, 0), content.state)
-				assertEquals(8, content.pages.count { it.chapterId == next.chapter.id })
-				assertTrue(content.pages.first().id != oldPage.id)
-				withTimeout(30000) {
-					while (historyDao.find(manga.id)?.chapterId != next.chapter.id ||
-						chapterProgress.get(manga.id, space, next.personalKey, next.chapter.id)?.page != 0) {
-						kotlinx.coroutines.delay(25)
+				var stage = "initial Reader content"
+				try {
+					val content = withTimeout(30000) {
+						reader.content.first { it.pages.isNotEmpty() && it.state != null }
 					}
+					assertEquals(ReaderState(next.chapter.id, 0, 0), content.state)
+					assertEquals(8, content.pages.count { it.chapterId == next.chapter.id })
+					assertTrue(content.pages.first().id != oldPage.id)
+					stage = "normal history and progress persistence"
+					withTimeout(30000) {
+						while (historyDao.find(manga.id)?.chapterId != next.chapter.id ||
+							chapterProgress.get(manga.id, space, next.personalKey, next.chapter.id)?.page != 0) {
+							kotlinx.coroutines.delay(25)
+						}
+					}
+					stage = "previous cursor and bookmark preservation"
+					assertEquals(7, chapterProgress.get(manga.id, space, old.personalKey, old.chapter.id)?.page)
+					assertEquals(0, historyDao.find(manga.id)?.page)
+					assertEquals(listOf(oldBookmark), bookmarkDao.findAll(manga.id))
+					scenario.onActivity { reader.toggleBookmark() }
+					stage = "new-version bookmark insertion"
+					withTimeout(15000) {
+						while (bookmarkDao.findAll(manga.id).size != 2) kotlinx.coroutines.delay(25)
+					}
+					val newBookmark = bookmarkDao.findAll(manga.id).single { it.chapterId == next.chapter.id }
+					assertTrue(newBookmark.pageId != oldBookmark.pageId)
+					assertEquals(0, newBookmark.page)
+					assertTrue(oldBookmark in bookmarkDao.findAll(manga.id))
+					stage = "new-version bookmark observation"
+					withTimeout(15000) { reader.isBookmarkAdded.first { it } }
+					scenario.onActivity { reader.toggleBookmark() }
+					stage = "new-version bookmark removal"
+					withTimeout(15000) {
+						while (bookmarkDao.findAll(manga.id).size != 1) kotlinx.coroutines.delay(25)
+					}
+					assertEquals(listOf(oldBookmark), bookmarkDao.findAll(manga.id))
+				} catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+					// Only synthetic fixture IDs/positions, never archive paths or user content.
+					val durable = withTimeoutOrNull(2000) {
+						val history = historyDao.find(manga.id)
+						val progress = progressDao.findAll(listOf(manga.id), space.dbValue)
+						"historyId=${history?.chapterId}, historyPage=${history?.page}, " +
+							"oldProgress=${progress.singleOrNull { it.key() == old.personalKey }?.page}, " +
+							"newProgress=${progress.singleOrNull { it.key() == next.personalKey }?.page}, " +
+							"progressCount=${progress.size}, bookmarks=${bookmarkDao.findAll(manga.id).size}"
+					}
+					throw AssertionError(
+						"Reader acceptance timed out at $stage; expectedId=${next.chapter.id}, " +
+							"current=${reader.getCurrentState()}, contentState=${reader.content.value.state}, " +
+							"pages=${reader.content.value.pages.size}, incognito=${reader.isIncognitoMode.value}, " +
+							"peek=${reader.isPeekMode.value}, globalIncognito=${settings.isIncognitoModeEnabled}, " +
+							"nsfwIncognito=${settings.incognitoModeForNsfw}, " +
+							"pickerPending=${reader.exhentaiChoiceRequest.value != null}; " +
+							(durable ?: "database snapshot timed out"),
+						timeout,
+					)
 				}
-				assertEquals(7, chapterProgress.get(manga.id, space, old.personalKey, old.chapter.id)?.page)
-				assertEquals(0, historyDao.find(manga.id)?.page)
-				assertEquals(listOf(oldBookmark), bookmarkDao.findAll(manga.id))
-				scenario.onActivity { reader.toggleBookmark() }
-				withTimeout(15000) {
-					while (bookmarkDao.findAll(manga.id).size != 2) kotlinx.coroutines.delay(25)
-				}
-				val newBookmark = bookmarkDao.findAll(manga.id).single { it.chapterId == next.chapter.id }
-				assertTrue(newBookmark.pageId != oldBookmark.pageId)
-				assertEquals(0, newBookmark.page)
-				assertTrue(oldBookmark in bookmarkDao.findAll(manga.id))
-				withTimeout(15000) { reader.isBookmarkAdded.first { it } }
-				scenario.onActivity { reader.toggleBookmark() }
-				withTimeout(15000) {
-					while (bookmarkDao.findAll(manga.id).size != 1) kotlinx.coroutines.delay(25)
-				}
-				assertEquals(listOf(oldBookmark), bookmarkDao.findAll(manga.id))
 			}
+		} finally {
+			database.getMangaDao().delete(listOfNotNull(database.getMangaDao().find(manga.id)?.manga))
+		}
+	}
+
+	@Test fun observedCbzByteRestorationStartsAnotherUnreadVersionWithoutReusingHistory() = runBlocking {
+		val file = archive("Legacy Gallery", "Chapter.cbz")
+		val manga = gallery(990123L, GEKKO_SOURCE)
+		val space = FavouriteSpace.NORMAL
+		fun writeArchive(comment: String) {
+			ZipOutputStream(file.outputStream()).use { zip ->
+				zip.setComment(comment)
+				for (page in 1..8) {
+					zip.putNextEntry(ZipEntry("$page.webp").apply { time = 1700000000000L })
+					zip.write(byteArrayOf(1, 2, 3))
+					zip.closeEntry()
+				}
+			}
+		}
+		writeArchive("version-A")
+		val bytesA = file.readBytes()
+		val mtime = file.lastModified()
+		val dao = database.getChapterProgressDao()
+		try {
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			suspend fun downloadedRow() = loadVersionFixtureDetails(manga, space)
+				.mapChapters(
+					0L, 0, null, emptyList(), false, false,
+					readOverrides = settings.getChapterReadOverrides(manga.id),
+					progressByKey = dao.findAll(listOf(manga.id), space.dbValue).associateBy { it.key() },
+				).single { it.isDownloaded }
+			val a = downloadedRow()
+			chapterProgress.record(manga, space, a.personalKey, ReaderState(a.chapter.id, 7, 0), 8, isNewVisit = true)
+			val savedA = requireNotNull(chapterProgress.get(manga.id, space, a.personalKey, a.chapter.id))
+			writeArchive("version-B")
+			assertTrue(file.setLastModified(mtime))
+			assertEquals(bytesA.size.toLong(), file.length())
+			assertFalse(bytesA.contentEquals(file.readBytes()))
+			val b = downloadedRow()
+			assertFalse(a.personalKey == b.personalKey)
+			assertTrue(b.isUnread)
+			chapterProgress.record(manga, space, b.personalKey, ReaderState(b.chapter.id, 2, 0), 8, isNewVisit = true)
+			val savedB = requireNotNull(chapterProgress.get(manga.id, space, b.personalKey, b.chapter.id))
+			file.writeBytes(bytesA)
+			assertTrue(file.setLastModified(mtime))
+			assertArrayEquals(bytesA, file.readBytes())
+			assertEquals(mtime, file.lastModified())
+			presence.run(full = true)
+			val restored = downloadedRow()
+			// Q22: every observed byte change must start a new version, even when the
+			// content returns to a previous digest. Old positions must remain intact.
+			assertFalse("Restored bytes must not reuse the first observed version", restored.personalKey == a.personalKey)
+			assertFalse("Restored bytes must not reuse the immediately preceding version", restored.personalKey == b.personalKey)
+			assertTrue(restored.isUnread)
+			assertNull(restored.lastReadPage)
+			assertNull(chapterProgress.get(manga.id, space, restored.personalKey, restored.chapter.id))
+			assertTrue(savedA in dao.findAll(listOf(manga.id), space.dbValue))
+			assertTrue(savedB in dao.findAll(listOf(manga.id), space.dbValue))
+			assertEquals(restored.personalKey, downloadedRow().personalKey)
 		} finally {
 			database.getMangaDao().delete(listOfNotNull(database.getMangaDao().find(manga.id)?.manga))
 		}
