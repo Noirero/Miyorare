@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -106,7 +107,8 @@ internal class PrivateSanctuaryTreatment(
 		val start = lerp(high, edge, (if (signature) 0.13f else 0.04f) * strength)
 		val end = lerp(background, base, 0.55f)
 		val selected = highlight.coerceIn(0f, 1f)
-		val fill = Brush.linearGradient(listOf(lerp(start, high, selected), base, end))
+		val selectedSurface = lerp(high, primary, 0.23f)
+		val fill = Brush.linearGradient(listOf(lerp(start, selectedSurface, selected), lerp(base, selectedSurface, selected * 0.65f), end))
 		val outline = Brush.linearGradient(
 			listOf(edge.copy(alpha = (if (signature) 0.86f else 0.62f) * strength),
 				edge.copy(alpha = (0.24f + selected * 0.45f) * strength),
@@ -122,8 +124,8 @@ internal class PrivateSanctuaryTreatment(
 			}
 			val imageWidth = when (role) {
 				SanctuaryRole.PROTECTION -> size.width * 0.60f
-				SanctuaryRole.APPEARANCE -> (size.width * 0.28f).coerceAtMost(96.dp.toPx())
-				else -> 48.dp.toPx()
+				SanctuaryRole.APPEARANCE -> (size.width * 0.28f).coerceAtMost(96.dp.toPx()).coerceAtMost(size.height)
+				else -> 48.dp.toPx().coerceAtMost(size.height)
 			}.roundToInt().coerceAtLeast(1)
 			val imageHeight = if (role == SanctuaryRole.PROTECTION) size.height.roundToInt().coerceAtLeast(1)
 				else imageWidth.coerceAtMost(size.height.roundToInt().coerceAtLeast(1))
@@ -145,18 +147,26 @@ internal class PrivateSanctuaryTreatment(
 				drawRect(fill)
 				if (role != SanctuaryRole.DESTRUCTIVE) drawRect(glow)
 				if (decorative && image != null) {
-					drawImage(
-						image = image,
-						srcOffset = IntOffset(if (role == SanctuaryRole.PROTECTION) image.width - srcWidth else 0, (image.height - srcHeight) / 2),
-						srcSize = IntSize(srcWidth, srcHeight),
-						dstOffset = IntOffset(x, y),
-						dstSize = IntSize(imageWidth, imageHeight),
-						alpha = (when (role) {
-							SanctuaryRole.PROTECTION -> 0.90f
-							SanctuaryRole.APPEARANCE -> 0.76f
-							else -> 0.16f
-						}) * strength,
-					)
+					// Ornaments are authored in the top-left corner: mirror to the trailing edge.
+					val ornamentRole = role != SanctuaryRole.PROTECTION
+					scale(
+						scaleX = if (ornamentRole && !rtl) -1f else 1f,
+						scaleY = if (role == SanctuaryRole.ACCENTED_STANDARD) -1f else 1f,
+						pivot = Offset(x + imageWidth / 2f, y + imageHeight / 2f),
+					) {
+						drawImage(
+							image = image,
+							srcOffset = IntOffset(if (role == SanctuaryRole.PROTECTION) image.width - srcWidth else 0, (image.height - srcHeight) / 2),
+							srcSize = IntSize(srcWidth, srcHeight),
+							dstOffset = IntOffset(x, y),
+							dstSize = IntSize(imageWidth, imageHeight),
+							alpha = (when (role) {
+								SanctuaryRole.PROTECTION -> 0.90f
+								SanctuaryRole.APPEARANCE -> 1f
+								else -> 0.23f
+							}) * strength,
+						)
+					}
 					if (role == SanctuaryRole.PROTECTION) {
 						drawRect(scrim, topLeft = Offset(x.toFloat(), 0f), size = androidx.compose.ui.geometry.Size(imageWidth.toFloat(), size.height))
 					}

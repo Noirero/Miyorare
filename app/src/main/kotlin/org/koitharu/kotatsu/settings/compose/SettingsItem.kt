@@ -71,9 +71,9 @@ fun SettingsItem(
 	// Specialized content shares the card surface, click behavior and Settings Search highlight.
 	contentOverride: @Composable (() -> Unit)? = null,
 	leading: @Composable (() -> Unit)? = null,
-	trailing: @Composable (() -> Unit)? = null,
-	// Opt-in surface replacement; default shared Settings treatment is unchanged.
+	// Opt-in surface replacement; keep trailing as the last parameter for existing callers.
 	surfaceOverride: ((Modifier, Shape, Float) -> Modifier)? = null,
+	trailing: @Composable (() -> Unit)? = null,
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
 	val modern = visualPalette.isModern

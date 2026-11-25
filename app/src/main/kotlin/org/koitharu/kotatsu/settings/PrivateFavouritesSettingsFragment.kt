@@ -395,7 +395,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 }
 
 @Composable
-private fun PrivateFavouritesSettingsScreen(
+internal fun PrivateFavouritesSettingsScreen(
 	protection: PrivateFavouritesProtection,
 	hasPin: Boolean,
 	includeBackup: Boolean,
@@ -421,7 +421,7 @@ private fun PrivateFavouritesSettingsScreen(
 	}
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_appearance_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_appearance_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_theme_title),
@@ -440,7 +440,7 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_security_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_security_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_security),
@@ -481,7 +481,7 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_privacy_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_privacy_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.private_favourites_allow_screenshots),
@@ -498,7 +498,7 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_saved_pages_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_saved_pages_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_saved_pages_directory),
@@ -515,7 +515,7 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_backup_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_backup_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.private_favourites_include_backup),
@@ -532,7 +532,7 @@ private fun PrivateFavouritesSettingsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = stringResource(R.string.private_favourites_disable_group)) {
+			SettingsGroup(title = stringResource(R.string.private_favourites_disable_group), headingDecoration = sanctuary != null) {
 				item { pos ->
 					SettingsItem(
 						title = stringResource(R.string.private_favourites_disable_all),

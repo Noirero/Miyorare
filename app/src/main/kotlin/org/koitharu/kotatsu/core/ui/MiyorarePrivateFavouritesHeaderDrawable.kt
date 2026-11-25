@@ -29,6 +29,7 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 
 	internal fun clearSanctuaryFade() {
 		sanctuaryBottomColor = null
+		updateSanctuaryFade()
 		invalidateSelf()
 	}
 
@@ -42,10 +43,21 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 	private var artworkScale = 1f
 	private var artworkX = 0f
 	private var artworkY = 0f
+	private var sanctuaryFadeShader: LinearGradient? = null
+
+	private fun updateSanctuaryFade() {
+		val color = sanctuaryBottomColor
+		val height = bounds.height().toFloat()
+		sanctuaryFadeShader = if (color != null && height > 0f) LinearGradient(
+			0f, height * 0.48f, 0f, height,
+			intArrayOf(android.graphics.Color.TRANSPARENT, withDrawableAlpha(color)), null, Shader.TileMode.CLAMP,
+		) else null
+	}
 
 	override fun onBoundsChange(bounds: Rect) {
 		super.onBoundsChange(bounds)
 		recalculateArtworkTransform(bounds.width().toFloat())
+		updateSanctuaryFade()
 	}
 
 	override fun draw(canvas: Canvas) {
@@ -76,9 +88,8 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 
 		drawArtwork(canvas)
 		drawReadabilityScrim(canvas, width, height)
-		sanctuaryBottomColor?.let { color ->
-			scrimPaint.shader = LinearGradient(0f, height * 0.48f, 0f, height,
-				intArrayOf(android.graphics.Color.TRANSPARENT, withDrawableAlpha(color)), null, Shader.TileMode.CLAMP)
+		sanctuaryFadeShader?.let { shader ->
+			scrimPaint.shader = shader
 			canvas.drawRect(0f, 0f, width, height, scrimPaint)
 			scrimPaint.shader = null
 		}
@@ -157,6 +168,7 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 
 	override fun setAlpha(alpha: Int) {
 		drawableAlpha = alpha.coerceIn(0, 255)
+		updateSanctuaryFade()
 		invalidateSelf()
 	}
 
