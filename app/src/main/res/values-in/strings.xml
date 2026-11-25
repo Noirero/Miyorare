@@ -811,6 +811,10 @@
     <string name="exhentai_delete_target_description">Hapus file CBZ fisik ini?\n\nManga: %1$s\nFile: %2$s\nLokasi: %3$s\n\nTindakan ini tidak dapat dibatalkan. Manga tetap berada di Favorites dan dapat diunduh kembali.</string>
     <string name="exhentai_delete_shared_space_warning">Normal dan Private menggunakan file yang sama. Penghapusan akan membuat chapter tidak tersedia offline di kedua Favorites.</string>
     <string name="exhentai_delete_target_unavailable">File CBZ lokal yang dipilih tidak dapat diverifikasi. Tidak ada file yang dihapus.</string>
+    <string name="exhentai_picker_show_details">Detail file</string>
+    <string name="exhentai_picker_hide_details">Sembunyikan detail file</string>
+    <string name="exhentai_picker_full_path">Lokasi file: %1$s</string>
+    <string name="exhentai_picker_unreadable">Tidak dapat dibaca atau tidak tersedia</string>
     <string name="exhentai_choose_local_title">Pilih CBZ ExHentai lokal</string>
     <string name="exhentai_choose_local_description">Ada beberapa file chapter yang cocok, atau file berisi ID gallery berbeda. Pilih file yang ingin dibaca. Pilihan ini tidak mengubah kepemilikan maupun riwayat download.</string>
     <string name="exhentai_choose_local_known_id">ID gallery: %1$d</string>
