@@ -344,7 +344,8 @@ class DownloadedMangaResolver @Inject constructor(
 
 	/**
 	 * Keep the first observed content on the existing logical chapter ID (legacy personal state).
-	 * Other byte versions get distinct deterministic IDs. Store only a hashed scope and digest,
+	 * Each observed byte transition gets a new generation, including a return to earlier bytes.
+	 * Store only a hashed scope, latest digest and generation,
 	 * not a filesystem path or a persisted Reader choice. Never version the discovery/ownership index.
 	 */
 	private suspend fun projectExhentaiContentVersion(
@@ -374,19 +375,37 @@ class DownloadedMangaResolver @Inject constructor(
 			MessageDigest.getInstance("SHA-256").digest(scope.toByteArray(Charsets.UTF_8)),
 			Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
 		)
-		val baseline = synchronized(contentVersionLock) {
-			contentVersionPreferences.getString(key, null) ?: digest.takeIf {
-				contentVersionPreferences.edit().putString(key, it).commit()
+		// Persist the last observation and its generation together. A single digest as the
+		// legacy value represents generation zero. Do not overwrite an invalid record.
+		val generation = synchronized(contentVersionLock) {
+			val stored = contentVersionPreferences.getString(key, null)
+			val separator = stored?.indexOf(':') ?: -1
+			val previousGeneration = if (separator < 0) 0L else
+				stored!!.substring(0, separator).toLongOrNull()?.takeIf { it >= 0L }
+					?: return@synchronized null
+			val previousDigest = if (separator < 0) stored else stored!!.substring(separator + 1)
+			if (previousDigest == digest) {
+				previousGeneration
+			} else {
+				val nextGeneration = if (stored == null) 0L else {
+					if (previousGeneration == Long.MAX_VALUE) return@synchronized null
+					previousGeneration + 1L
+				}
+				nextGeneration.takeIf {
+					contentVersionPreferences.edit().putString(key, "$nextGeneration:$digest").commit()
+				}
 			}
 		} ?: return@withContext null
-		val id = if (baseline == digest) chapter.id else {
+		val id = if (generation == 0L) chapter.id else {
 			// Distinct from both the original logical chapter and the online source chapter.
 			val sourceId = manga.chapters!!.single().id
 			var salt = 0
 			var candidate: Long
 			do {
 				val bytes = MessageDigest.getInstance("SHA-256").digest(
-					"exhentai-content-version:$scope:$digest:$salt".toByteArray(Charsets.UTF_8),
+					// Keep the first transition compatible with the previous development build.
+					(if (generation == 1L) "exhentai-content-version:$scope:$digest:$salt"
+					else "exhentai-content-version:$scope:$generation:$digest:$salt").toByteArray(Charsets.UTF_8),
 				)
 				candidate = ByteBuffer.wrap(bytes).long and Long.MAX_VALUE
 				salt++

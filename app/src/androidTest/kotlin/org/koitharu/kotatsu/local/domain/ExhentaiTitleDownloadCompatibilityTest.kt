@@ -2195,9 +2195,11 @@ class ExhentaiTitleDownloadCompatibilityTest {
 				var stage = "initial Reader content"
 				try {
 					val content = withTimeout(30000) {
-						reader.content.first { it.pages.isNotEmpty() && it.state != null }
+						// Prefetch deliberately emits content with state=null (no scroll command).
+						reader.content.first { it.pages.isNotEmpty() && reader.getCurrentState() != null }
 					}
-					assertEquals(ReaderState(next.chapter.id, 0, 0), content.state)
+					assertEquals(ReaderState(next.chapter.id, 0, 0), content.state ?: reader.getCurrentState())
+					assertEquals(ReaderState(next.chapter.id, 0, 0), reader.getCurrentState())
 					assertEquals(8, content.pages.count { it.chapterId == next.chapter.id })
 					assertTrue(content.pages.first().id != oldPage.id)
 					stage = "normal history and progress persistence"
