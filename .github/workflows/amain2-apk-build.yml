@@ -36,7 +36,7 @@ jobs:
         shell: bash
         env:
           DISCORD_SDK_AAR_URL: ${{ secrets.AMAIN2_DISCORD_SDK_AAR_URL }}
-          DISCORD_APPLICATION_ID: ${{ vars.MIYORARE_DISCORD_APPLICATION_ID }}
+          DISCORD_APPLICATION_ID: ${{ vars.MIYORARE_DISCORD_TEST_APPLICATION_ID || vars.MIYORARE_DISCORD_APPLICATION_ID }}
         run: |
           set -euo pipefail
           if bash .github/scripts/discord-sdk-apk.sh provision; then
