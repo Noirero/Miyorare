@@ -4,12 +4,14 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -23,10 +25,19 @@ class DiscordSettingsViewModel @Inject constructor(
 	private val repository: DiscordRepository,
 ) : BaseViewModel() {
 
-	val tokenState: StateFlow<TokenState> = settings.observe(AppSettings.KEY_DISCORD_RPC)
-		.combine(settings.observeDiscordTokenChanges()) { _, _ -> Unit }
+	private val tokenCheckRevision = MutableStateFlow(0L)
+
+	val tokenState: StateFlow<TokenState> = combine(
+		settings.observe(AppSettings.KEY_DISCORD_RPC),
+		settings.observeDiscordTokenChanges(),
+		tokenCheckRevision,
+	) { _, _, _ -> Unit }
 		.flatMapLatest { checkToken() }
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, TokenState.CHECKING)
+
+	fun refreshTokenState() {
+		tokenCheckRevision.update { it + 1 }
+	}
 
 	fun saveToken(value: String?) {
 		settings.discordToken = value
