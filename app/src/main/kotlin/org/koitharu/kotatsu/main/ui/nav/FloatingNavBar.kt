@@ -127,6 +127,7 @@ fun FloatingNavBar(
 	previewId: Int? = null,
 	indicatorMoving: Boolean = false,
 	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
+	motionDecoration: Modifier = Modifier,
 ) {
 	if (items.isEmpty()) return
 	val context = LocalContext.current
@@ -375,6 +376,7 @@ fun FloatingNavBar(
 							Modifier
 						},
 					)
+					.then(motionDecoration)
 					.padding(
 						horizontal = if (isMiyorareModern) 6.dp else 8.dp,
 						vertical = if (isMiyorareModern) 6.dp else 8.dp,

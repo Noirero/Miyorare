@@ -15,6 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -57,6 +63,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val previewIdState = MutableStateFlow<Int?>(null)
 	private val tabBounds = mutableMapOf<Int, Rect>()
 	private val movingIndicator = MutableStateFlow(false)
+	private val motionFrame = mutableIntStateOf(0)
 	private val labeledState = MutableStateFlow(true)
 	private val navColorsState = MutableStateFlow(readNavColors())
 	private val continueVisibleState = MutableStateFlow(false)
@@ -88,6 +95,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 			else context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
 		},
 		onIndicatorChanged = { movingIndicator.value = it },
+		onVisualFrameChanged = { motionFrame.intValue++ },
+		surfaceColor = { navColorsState.value.container },
 	)
 
 	private val composeView: ComposeView = ComposeView(context).apply {
@@ -108,6 +117,15 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				// Normal navigation keeps the approved Favourites glass/geometry on every destination.
 				// selectedId still moves the active indicator; only the container style remains stable.
 				val emphasizeFavourites = !privateFavouritesHost
+				// Draw the enhanced material behind icons in the existing Surface, not as an opaque overlay.
+				val motionDecoration = Modifier.onGloballyPositioned { coordinates ->
+					val position = coordinates.positionInWindow()
+					tabDrag.setMotionViewport(Rect(position.x, position.y,
+						position.x + coordinates.size.width, position.y + coordinates.size.height))
+				}.drawBehind {
+					motionFrame.intValue // invalidate just drawing, not layout/composition
+					drawIntoCanvas { tabDrag.drawInMotionViewport(it.nativeCanvas) }
+				}
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
@@ -140,6 +158,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							emphasizeFavourites = emphasizeFavourites,
 							previewId = previewId,
 							indicatorMoving = indicatorMoving,
+							motionDecoration = motionDecoration,
 							onTabBounds = { id, bounds -> if (useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					} else {
@@ -161,6 +180,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onContinueLongClick = { continueLongClickListener?.invoke() },
 							previewId = previewId,
 							indicatorMoving = indicatorMoving,
+							motionDecoration = motionDecoration,
 							onTabBounds = { id, bounds -> if (!useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					}
@@ -269,6 +289,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		if (useLegacyNavigation == value) return
 		cancelTabDrag()
 		tabBounds.clear()
+		tabDrag.setMotionViewport(null)
 		useLegacyNavigation = value
 		legacyNavigationState.value = value
 		updateNavigationMode()

@@ -72,6 +72,7 @@ fun LegacyGlowNavBar(
 	previewId: Int? = null,
 	indicatorMoving: Boolean = false,
 	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
+	motionDecoration: Modifier = Modifier,
 ) {
 	val visibleItems = items.take(MAX_LEGACY_ITEMS)
 	if (visibleItems.isEmpty()) return
@@ -224,6 +225,7 @@ fun LegacyGlowNavBar(
 					.then(
 						if (favouritesGlass != null) Modifier.background(favouritesGlass, barShape) else Modifier,
 					)
+					.then(motionDecoration)
 					.then(
 						if (emphasizeFavourites) {
 							Modifier

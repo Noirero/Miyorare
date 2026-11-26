@@ -5,6 +5,13 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Matrix
+import android.graphics.Shader
+import androidx.core.graphics.ColorUtils
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import com.google.android.material.R as materialR
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
@@ -25,6 +32,8 @@ internal class NavigationTabDrag(
 	private val accent: () -> Int,
 	private val onIndicatorChanged: (Boolean) -> Unit,
 	private val canStart: (Float, Rect) -> Boolean = { _, _ -> true },
+	private val onVisualFrameChanged: () -> Unit = {},
+	private val surfaceColor: () -> Int = { host.context.getThemeColor(materialR.attr.colorSurface) },
 ) {
 	var preview: ((Int?) -> Boolean)? = null
 	var commit: ((Int) -> Unit)? = null
@@ -43,6 +52,23 @@ internal class NavigationTabDrag(
 	private var motion = NavigationMotion.CLASSIC_GLIDE
 	private var motionEnabled = true
 	private var pressed = false
+	private var stretch = 0f
+	private var motionViewport: Rect? = null // window coordinates of the actual tab strip, not Continue Reading
+	private val lensMatrix = Matrix()
+	private var lensShader: LinearGradient? = null
+	private var lensTop = 0
+	private var lensBottom = 0
+
+	fun setMotionViewport(bounds: Rect?) {
+		if (motionViewport == bounds) return
+		motionViewport = bounds
+		invalidateIndicator()
+	}
+
+	private fun invalidateIndicator() {
+		host.invalidate()
+		if (motion != NavigationMotion.CLASSIC_GLIDE) onVisualFrameChanged()
+	}
 
 	fun setMotion(value: NavigationMotion) {
 		if (motion == value) return
@@ -184,10 +210,14 @@ internal class NavigationTabDrag(
 	}
 
 	private fun setIndicator(rect: Rect) {
-		val wasIdle = indicatorBounds == null
+		val previous = indicatorBounds
+		val wasIdle = previous == null
+		if (motion != NavigationMotion.CLASSIC_GLIDE) {
+			stretch = previous?.let { ((center(rect) - center(it)) / (18f * density)).coerceIn(-1f, 1f) } ?: 0f
+		}
 		indicatorBounds = rect
 		if (wasIdle) onIndicatorChanged(true)
-		host.invalidate()
+		invalidateIndicator()
 	}
 
 	private fun settleToSelection(targetId: Int = selectedId()) {
@@ -198,8 +228,8 @@ internal class NavigationTabDrag(
 		settle = ValueAnimator.ofFloat(0f, 1f).apply {
 			duration = when (motion) {
 				NavigationMotion.CLASSIC_GLIDE -> 210L
-				NavigationMotion.ELASTIC_GLIDE -> 260L
-				NavigationMotion.FLUID_LENS -> 240L
+				NavigationMotion.ELASTIC_GLIDE -> 310L
+				NavigationMotion.FLUID_LENS -> 285L
 			}
 			interpolator = when (motion) {
 				NavigationMotion.CLASSIC_GLIDE -> OvershootInterpolator(0.8f)
@@ -208,7 +238,7 @@ internal class NavigationTabDrag(
 			}
 			addUpdateListener {
 				progress = it.animatedValue as Float
-				host.invalidate()
+				invalidateIndicator()
 			}
 			addListener(object : AnimatorListenerAdapter() {
 				override fun onAnimationEnd(animation: Animator) = clearIndicator()
@@ -225,55 +255,130 @@ internal class NavigationTabDrag(
 		animation?.cancel()
 		settleId = null
 		pressed = false
+		stretch = 0f
 		progress = 0f
 		if (indicatorBounds == null) return
 		indicatorBounds = null
 		onIndicatorChanged(false)
-		host.invalidate()
+		invalidateIndicator()
 	}
 
+	/**
+	 * Classic keeps the original overlay exactly. Enhanced bottom-bar material is drawn behind
+	 * Compose icons; only the part above/below the strip is drawn by the host. The rail has no
+	 * Compose underlay, so its enhanced material stays translucent and inside native bounds.
+	 */
 	fun draw(canvas: Canvas) {
 		val from = indicatorBounds ?: return
+		if (motionEnabled && motion != NavigationMotion.CLASSIC_GLIDE) {
+			val viewport = motionViewport
+			if (viewport != null && !vertical) {
+				host.getLocationInWindow(origin)
+				val top = viewport.top - origin[1]
+				val bottom = viewport.bottom - origin[1]
+				for (range in 0..1) {
+					val saved = canvas.save()
+					if (range == 0) canvas.clipRect(0f, 0f, host.width.toFloat(), top.coerceAtLeast(0f))
+					else canvas.clipRect(0f, bottom.coerceAtMost(host.height.toFloat()), host.width.toFloat(), host.height.toFloat())
+					drawEnhanced(canvas, underlay = true)
+					canvas.restoreToCount(saved)
+				}
+			} else {
+				drawEnhanced(canvas, underlay = false)
+			}
+			return
+		}
 		val to = settleId?.let { id -> visibleSlots().firstOrNull { it.first == id }?.second } ?: from
 		fun blend(a: Float, b: Float) = a + (b - a) * progress
 		host.getLocationInWindow(origin)
 		val x = blend(from.center.x, to.center.x) - origin[0]
-		var y = blend(from.center.y, to.center.y) - origin[1]
-		var halfWidth = (blend(from.width, to.width) * 0.5f - 3f * density).coerceIn(4f * density, 29f * density)
-		var halfHeight = (blend(from.height, to.height) * 0.5f - 4f * density).coerceIn(4f * density, 24f * density)
-		val deformation = if (motionEnabled && pressed) (1f - progress).coerceIn(0f, 1f) else 0f
-		if (motion != NavigationMotion.CLASSIC_GLIDE && deformation > 0f) {
-			val elastic = motion == NavigationMotion.ELASTIC_GLIDE
-			halfWidth *= 1f + (if (elastic) 0.08f else 0.18f) * deformation
-			halfHeight *= 1f + (if (elastic) 0.28f else 0.18f) * deformation
-			if (!vertical && !elastic) y -= 4f * density * deformation
-			// Contain the drawing, not the hit area. No parent-wide clipping or remeasurement.
-			halfWidth = minOf(halfWidth, x.coerceAtLeast(1f), (host.width - x).coerceAtLeast(1f))
-			halfHeight = minOf(halfHeight, (host.height * 0.5f).coerceAtLeast(1f))
-			y = y.coerceIn(halfHeight, (host.height - halfHeight).coerceAtLeast(halfHeight))
-		}
+		val y = blend(from.center.y, to.center.y) - origin[1]
+		val halfWidth = (blend(from.width, to.width) * 0.5f - 3f * density).coerceIn(4f * density, 29f * density)
+		val halfHeight = (blend(from.height, to.height) * 0.5f - 4f * density).coerceIn(4f * density, 24f * density)
 		shape.set(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight)
 		val radius = minOf(halfHeight, halfWidth, (if (vertical) 16f else 23f) * density)
+		paint.shader = null
 		paint.color = accent()
 		paint.style = Paint.Style.FILL
-		paint.alpha = when (motion) {
-			NavigationMotion.CLASSIC_GLIDE -> 48
-			NavigationMotion.ELASTIC_GLIDE -> (48 + 68 * deformation).toInt()
-			NavigationMotion.FLUID_LENS -> (48 + 8 * deformation).toInt()
-		}
+		paint.alpha = 48
 		canvas.drawRoundRect(shape, radius, radius, paint)
 		paint.style = Paint.Style.STROKE
-		if (motionEnabled && motion != NavigationMotion.CLASSIC_GLIDE) {
-			paint.strokeWidth = (if (motion == NavigationMotion.FLUID_LENS) 1.7f else 1.4f) * density
-			paint.alpha = if (motion == NavigationMotion.FLUID_LENS) 130 else 168
-			canvas.drawRoundRect(shape, radius, radius, paint)
-			return
-		}
 		for (layer in 0..2) {
 			paint.strokeWidth = (if (layer == 0) 9f else if (layer == 1) 4f else 1.4f) * density
 			paint.alpha = if (layer == 0) 24 else if (layer == 1) 52 else 168
 			canvas.drawRoundRect(shape, radius, radius, paint)
 		}
+	}
+
+	/** Draw-only bridge for both Compose renderers, without changing their layout or hit areas. */
+	fun drawInMotionViewport(canvas: Canvas) {
+		val viewport = motionViewport ?: return
+		if (vertical || !motionEnabled || motion == NavigationMotion.CLASSIC_GLIDE || indicatorBounds == null) return
+		host.getLocationInWindow(origin)
+		val saved = canvas.save()
+		canvas.translate(origin[0] - viewport.left, origin[1] - viewport.top)
+		drawEnhanced(canvas, underlay = true)
+		canvas.restoreToCount(saved)
+	}
+
+	private fun drawEnhanced(canvas: Canvas, underlay: Boolean) {
+		val from = indicatorBounds ?: return
+		val to = settleId?.let { id -> visibleSlots().firstOrNull { it.first == id }?.second } ?: from
+		fun blend(a: Float, b: Float) = a + (b - a) * progress
+		host.getLocationInWindow(origin)
+		val viewport = motionViewport
+		val active = if (pressed) (1f - progress).coerceIn(0f, 1f) else 0f
+		val geometry = EnhancedNavigationMotionGeometry.calculate(
+			motion = motion,
+			centerX = (blend(from.center.x, to.center.x) - origin[0]) / density,
+			centerY = (blend(from.center.y, to.center.y) - origin[1]) / density,
+			slotWidth = blend(from.width, to.width) / density,
+			slotHeight = blend(from.height, to.height) / density,
+			hostWidth = host.width / density,
+			hostHeight = host.height / density,
+			stripLeft = viewport?.let { (it.left - origin[0]) / density } ?: 0f,
+			stripRight = viewport?.let { (it.right - origin[0]) / density } ?: host.width / density,
+			stripHeight = viewport?.height?.div(density) ?: blend(from.height, to.height) / density,
+			active = active,
+			stretch = stretch,
+			vertical = vertical,
+		) ?: return
+		shape.set(geometry.left * density, geometry.top * density, geometry.right * density, geometry.bottom * density)
+		val radius = geometry.radius * density
+		val tint = accent()
+		val surface = surfaceColor()
+		val light = ColorUtils.calculateLuminance(surface) >= 0.5
+		val contrastBase = if (light) Color.WHITE else Color.BLACK
+		val elastic = motion == NavigationMotion.ELASTIC_GLIDE
+		paint.style = Paint.Style.FILL
+		if (elastic) {
+			// Saturated, near-solid shape beneath icons. Native rail overlay remains see-through.
+			paint.shader = null
+			paint.color = ColorUtils.blendARGB(tint, contrastBase, if (light) 0.55f else 0.38f)
+			paint.alpha = (48 + (if (underlay) 198 else 92) * active).toInt()
+		} else {
+			// Single translucent lens, with a soft directional sheen, no backdrop blur or extra glow rings.
+			val glass = ColorUtils.blendARGB(surface, tint, 0.18f)
+			val top = ColorUtils.setAlphaComponent(ColorUtils.blendARGB(glass, if (light) Color.BLACK else Color.WHITE, 0.26f), 125)
+			val bottom = ColorUtils.setAlphaComponent(glass, 52)
+			if (lensShader == null || lensTop != top || lensBottom != bottom) {
+				lensTop = top
+				lensBottom = bottom
+				lensShader = LinearGradient(0f, 0f, 0f, 1f, top, bottom, Shader.TileMode.CLAMP)
+			}
+			lensMatrix.setScale(1f, shape.height().coerceAtLeast(1f))
+			lensMatrix.postTranslate(0f, shape.top)
+			lensShader?.setLocalMatrix(lensMatrix)
+			paint.shader = lensShader
+			paint.alpha = (110 + 145 * active).toInt()
+		}
+		canvas.drawRoundRect(shape, radius, radius, paint)
+		paint.shader = null
+		paint.style = Paint.Style.STROKE
+		paint.color = if (elastic) tint else ColorUtils.blendARGB(tint, if (light) Color.BLACK else Color.WHITE, 0.55f)
+		paint.alpha = (120 + (if (elastic) 75 else 105) * active).toInt()
+		paint.strokeWidth = (if (elastic) 1.3f else 1.7f) * density
+		canvas.drawRoundRect(shape, radius, radius, paint)
 	}
 
 	private fun center(rect: Rect) = if (vertical) rect.center.y else rect.center.x
