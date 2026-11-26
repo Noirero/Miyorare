@@ -37,7 +37,9 @@ internal object EnhancedNavigationMotionGeometry {
 			else if (elastic) (slotWidth * 1.28f + abs(velocity) * 14f).coerceIn(64f, 112f)
 			else (slotWidth * 1.42f).coerceIn(78f, 124f)
 		val activeH = if (vertical) minOf(slotHeight, if (elastic) 64f else 72f)
-			else stripHeight + if (elastic) 8f else 12f
+			// A lens as tall as the entire host cannot lift: clamping would center it again.
+			// Reserve the existing margin for its upward movement instead of growing into it.
+			else stripHeight + if (elastic) 8f else 0f
 		val width = (baseW + (activeW - baseW) * amount).coerceIn(4f, rightLimit - leftLimit)
 		val height = (baseH + (activeH - baseH) * amount).coerceIn(4f, hostHeight - 4f)
 		val halfW = width * 0.5f

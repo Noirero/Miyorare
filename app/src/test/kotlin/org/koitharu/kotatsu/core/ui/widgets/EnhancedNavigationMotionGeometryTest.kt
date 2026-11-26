@@ -16,7 +16,8 @@ class EnhancedNavigationMotionGeometryTest {
 			val rest = shape(motion, active = 0f)
 			val active = shape(motion)
 			assertTrue(active.right - active.left >= (rest.right - rest.left) * 1.7f)
-			assertTrue(active.bottom - active.top >= (rest.bottom - rest.top) * 1.5f)
+			val heightRatio = if (motion == NavigationMotion.ELASTIC_GLIDE) 1.5f else 1.4f
+			assertTrue(active.bottom - active.top >= (rest.bottom - rest.top) * heightRatio)
 		}
 	}
 
@@ -29,6 +30,9 @@ class EnhancedNavigationMotionGeometryTest {
 		assertTrue(forward.left < backward.left)
 		assertTrue(fluid.radius < held.radius)
 		assertTrue(fluid.top < held.top)
+		// Top-edge movement alone can be caused by growth; the actual center must lift.
+		assertTrue(43f - (fluid.top + fluid.bottom) / 2f >= 6f)
+		assertEquals(43f, (held.top + held.bottom) / 2f, 0.01f)
 	}
 
 	@Test fun edgesKeepFullShapeInsideTabStripAndHostNotContinueButton() {

@@ -370,7 +370,14 @@ internal class NavigationTabDrag(
 		if (elastic) {
 			// Saturated, near-solid shape beneath icons. Native rail overlay remains see-through.
 			paint.shader = null
-			paint.color = ColorUtils.blendARGB(tint, contrastBase, if (light) 0.55f else 0.38f)
+			// The approved pure-black identity uses white glyphs and a white motion accent.
+			// Mixing only 38% black here produces a light gray fill beneath white content.
+			val baseMix = when {
+				surface == Color.BLACK && tint == Color.WHITE -> 0.78f
+				light -> 0.55f
+				else -> 0.38f
+			}
+			paint.color = ColorUtils.blendARGB(tint, contrastBase, baseMix)
 			paint.alpha = (48 + (if (underlay) 198 else 92) * active).toInt()
 		} else {
 			// Single translucent lens, with a soft directional sheen, no backdrop blur or extra glow rings.

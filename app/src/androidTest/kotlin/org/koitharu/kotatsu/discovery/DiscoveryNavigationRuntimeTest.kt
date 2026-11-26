@@ -263,6 +263,146 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	/**
+	 * The general emulator workflow disables animations. Exercise the real enabled path
+	 * explicitly and restore the setting before the next test. Screenshots contain only
+	 * CI fixture data and are collected by the existing runtime evidence artifact.
+	 */
+	@Test fun animationEnabledGestureFramesAndOwnerVisualEvidence() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		val previousNight = androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode()
+		try {
+			shell("settings put global animator_duration_scale 1")
+			assertEquals(1f, android.provider.Settings.Global.getFloat(app.contentResolver,
+				android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f), 0.01f)
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+			PreferenceManager.getDefaultSharedPreferences(app).edit()
+				.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+				.putBoolean(AppSettings.KEY_NAV_LABELS, true).commit()
+			for (night in listOf(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES,
+				androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO)) {
+				instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(night) }
+				for (motion in NavigationMotion.entries) {
+					NavigationTransitionPreferences(app).setMotion(motion)
+					captureNavigationGesture(motion, night)
+				}
+			}
+		} finally {
+			instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(previousNight) }
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
+	private fun captureNavigationGesture(motion: NavigationMotion, night: Int) {
+		launch().use { scenario ->
+			compose.waitForIdle()
+			val prefix = "${motion.name.lowercase()}-night-$night"
+			fun capture(stage: String) {
+				compose.waitForIdle()
+				writeNavigationCapture("$prefix-$stage")
+			}
+			val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val direction = if (to.x > from.x) 1f else -1f
+			val down = SystemClock.uptimeMillis()
+			fun point(fraction: Float) = Offset(from.x + (to.x - from.x) * fraction, from.y)
+			fun send(action: Int, fraction: Float, elapsed: Long) = scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+				val position = point(fraction)
+				val event = MotionEvent.obtain(down, down + elapsed, action,
+					position.x - origin[0], position.y - origin[1], 0)
+				try {
+					val handled = bar.dispatchTouchEvent(event)
+					if (action != MotionEvent.ACTION_CANCEL) assertTrue(handled)
+				} finally { event.recycle() }
+			}
+			fun assertProgress(fraction: Float) = scenario.onActivity { activity ->
+				val fragments = activity.supportFragmentManager.fragments
+				val current = fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				val target = fragments.filterIsInstance<LocalListFragment>().single()
+				val source = current.requireView()
+				val incoming = target.requireView()
+				val width = (source.parent as View).width.toFloat()
+				assertTrue(width > 0f)
+				assertEquals(-direction * width * fraction, source.translationX, 2f)
+				assertEquals(direction * width * (1f - fraction), incoming.translationX, 2f)
+				assertEquals(View.VISIBLE, source.visibility)
+				assertEquals(View.VISIBLE, incoming.visibility)
+				assertEquals(Lifecycle.State.RESUMED, current.lifecycle.currentState)
+				assertEquals(Lifecycle.State.STARTED, target.lifecycle.currentState)
+				assertTrue(target.isHidden)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			capture("idle")
+			send(MotionEvent.ACTION_DOWN, 0f, 0)
+			capture("hold")
+			try {
+				send(MotionEvent.ACTION_MOVE, 0.35f, 32)
+				capture("drag-35")
+				assertProgress(0.35f)
+				send(MotionEvent.ACTION_MOVE, 0.65f, 64)
+				capture("drag-65")
+				assertProgress(0.65f)
+				send(MotionEvent.ACTION_MOVE, 0.35f, 96)
+				capture("reverse-35")
+				assertProgress(0.35f)
+				send(MotionEvent.ACTION_MOVE, 0.75f, 128)
+				send(MotionEvent.ACTION_UP, 0.75f, 160)
+				compose.waitUntil(5000) {
+					var settled = false
+					scenario.onActivity { activity ->
+						val fragments = activity.supportFragmentManager.fragments
+						val current = fragments.filterIsInstance<FavouritesContainerFragment>().single()
+						val target = fragments.filterIsInstance<LocalListFragment>().single()
+						settled = activity.bottomNav!!.selectedItemId == R.id.nav_local &&
+							current.isHidden && current.requireView().visibility == View.GONE &&
+							target.lifecycle.currentState == Lifecycle.State.RESUMED &&
+							target.requireView().visibility == View.VISIBLE &&
+							kotlin.math.abs(current.requireView().translationX) < 0.01f &&
+							kotlin.math.abs(target.requireView().translationX) < 0.01f
+					}
+					settled
+				}
+				capture("settled")
+			} finally {
+				send(MotionEvent.ACTION_CANCEL, 0f, 192)
+			}
+		}
+	}
+
+	private fun writeNavigationCapture(name: String) {
+		if (android.os.Build.VERSION.SDK_INT < 29) return
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		instrumentation.waitForIdleSync()
+		val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+		try {
+			val resolver = app.contentResolver
+			val path = "Download/miyorare-navigation-motion/"
+			val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+			resolver.delete(collection, "relative_path=? AND _display_name=?", arrayOf(path, "$name.png"))
+			val values = android.content.ContentValues().apply {
+				put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
+				put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+				put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, path)
+			}
+			val uri = checkNotNull(resolver.insert(collection, values))
+			resolver.openOutputStream(uri, "w").use {
+				assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, checkNotNull(it)))
+			}
+		} finally {
+			bitmap.recycle()
+		}
+	}
+
 	@Test fun dragIndicatorMovesWithinOneSlotWithoutRepeatedPreview() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			val host = View(app)
