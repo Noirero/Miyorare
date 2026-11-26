@@ -21,6 +21,8 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -60,6 +62,7 @@ import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.domain.NormalDownloadTaskAdmission
+import org.koitharu.kotatsu.download.domain.NormalDownloadMutationFence
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
@@ -2535,6 +2538,155 @@ class DownloadedLocalStateTest {
 		val (_, routed) = admission.prepare(tasks, FavouriteSpace.NORMAL)
 		assertEquals(next, routed.single().second.destination)
 		assertArrayEquals(bytes, File(copy, "Chapter 1.cbz").readBytes())
+	}
+
+	/** T09: real writer partial-copy window runs under the same mutation wrapper as DownloadWorker. */
+	@Test fun normalWorkerMutationFenceRejectsScanDuringActualDurableFlush() = runBlocking {
+		val manga = remote(810_123L)
+		favourite(manga)
+		val space = FavouriteSpace.NORMAL
+		val store = observationStore()
+		val fence = NormalDownloadMutationFence(normalDownloadScope, store)
+		assertTrue(store.scan(manga, space))
+		val absent = requireNotNull(store.readVisible(listOf(manga), space)[manga.id])
+		assertEquals(NormalObservationStatus.ABSENT, absent.fact.status)
+		val stale = requireNotNull(store.begin(manga, space))
+		val negative = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+		val container = File(root, "downloads/${manga.title}").canonicalFile
+		val image = File(root, "worker-fence.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val target = File(container, "Chapter 1.cbz")
+		var sawPartial = false
+		val writer = LocalMangaDirOutput(container, manga, object : RootFileCommitOps by RealRootFileCommitOps {
+			override fun rename(source: File, targetFile: File) = false
+			override fun copy(source: File, targetFile: File) {
+				val bytes = source.readBytes()
+				targetFile.outputStream().use { stream ->
+					stream.write(bytes, 0, bytes.size / 2)
+					stream.flush()
+					assertEquals(target, targetFile)
+					assertTrue(targetFile.isFile)
+					runBlocking {
+						assertNull(store.begin(manga, space))
+						assertFalse(store.isCurrent(manga, space, absent))
+						assertFalse(store.publish(stale, negative))
+					}
+					sawPartial = true
+					stream.write(bytes, bytes.size / 2, bytes.size - bytes.size / 2)
+				}
+			}
+		})
+		try {
+			val chapter = manga.chapters.orEmpty().single()
+			writer.addPage(IndexedValue(0, chapter), image, 0, MimeType("image/png"))
+			fence.mutate(manga, space) {
+				assertTrue(writer.flushChapter(chapter))
+				db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, space.dbValue, container.path))
+				assertNull(store.begin(manga, space)) // ownership publication remains within intent
+			}
+			assertTrue(sawPartial)
+			assertTrue(store.takeRequests().ids.contains(manga.id))
+			assertTrue(store.scan(manga, space))
+			val present = requireNotNull(store.readVisible(listOf(manga), space)[manga.id])
+			assertEquals(NormalObservationStatus.PRESENT, present.fact.status)
+			assertEquals(container.path, present.fact.path)
+			val committed = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space)?.directoryIdentity?.projection)
+				.manga.chapters.orEmpty().single()
+			assertEquals(chapter.id, committed.id)
+			assertTrue(local.getPages(committed).isNotEmpty())
+			fence.mutate(manga, space) { writer.finish() }
+		} finally { writer.close() }
+	}
+
+	/** T09: old pinned output can finalize on cancellation; never publish its old path into B. */
+	@Test fun normalWorkerMutationFenceOldRootCleanupAndCancellationQueueCurrentRevalidation() = runBlocking {
+		val manga = remote(810_124L)
+		favourite(manga)
+		val space = FavouriteSpace.NORMAL
+		val store = observationStore()
+		val fence = NormalDownloadMutationFence(normalDownloadScope, store)
+		val image = File(root, "worker-cleanup.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val output = LocalMangaOutput.getOrCreate(root, manga, DownloadFormat.SINGLE_CBZ)
+		try {
+			val chapter = manga.chapters.orEmpty().single()
+			output.addPage(IndexedValue(0, chapter), image, 0, MimeType("image/png"))
+			fence.mutate(manga, space) { assertFalse(output.flushChapter(chapter)) }
+			val next = File(root, "active-b").apply { check(mkdirs()) }
+			destinations.setRoot(space, next)
+			assertTrue(store.scan(manga, space))
+			assertEquals(NormalObservationStatus.ABSENT, store.readVisible(listOf(manga), space)[manga.id]?.fact?.status)
+			val stale = requireNotNull(store.begin(manga, space))
+			val negative = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+			store.takeRequests()
+			val entered = CompletableDeferred<Unit>()
+			val running = launch {
+				try {
+					fence.mutate(manga, space) {
+						entered.complete(Unit)
+						awaitCancellation()
+					}
+				} finally {
+					// Same NonCancellable cleanup context as worker; real zip salvages staged chapter.
+					kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+						fence.mutate(manga, space) {
+							output.cleanup()
+							assertTrue(output.rootFile.isFile)
+							assertNull(store.begin(manga, space))
+						}
+					}
+				}
+			}
+			withTimeout(10_000) { entered.await() }
+			assertNull(store.begin(manga, space))
+			running.cancelAndJoin()
+			assertFalse(store.publish(stale, negative))
+			assertTrue(store.takeRequests().ids.contains(manga.id))
+			assertTrue(store.scan(manga, space))
+			assertEquals(NormalObservationStatus.ABSENT, store.readVisible(listOf(manga), space)[manga.id]?.fact?.status)
+			assertTrue(output.rootFile.isFile)
+			val bytes = output.rootFile.readBytes()
+			destinations.setRoot(space, root)
+			assertTrue(store.scan(manga, space))
+			assertEquals(output.rootFile.canonicalPath, store.readVisible(listOf(manga), space)[manga.id]?.fact?.path)
+			assertArrayEquals(bytes, output.rootFile.readBytes())
+		} finally { output.close() }
+	}
+
+	/** Failed operation still releases the fence and requests affected revalidation; protected scope is untouched. */
+	@Test fun normalWorkerMutationFenceFailureAndProtectedScope() = runBlocking {
+		val (manga, _) = observedDownload(810_125L)
+		val space = FavouriteSpace.NORMAL
+		val store = observationStore()
+		val fence = NormalDownloadMutationFence(normalDownloadScope, store)
+		assertTrue(store.scan(manga, space))
+		val before = requireNotNull(store.readVisible(listOf(manga), space)[manga.id])
+		store.takeRequests()
+		val error = java.io.IOException("fixture partial failure")
+		assertSame(error, runCatching {
+			fence.mutate(manga, space) {
+				assertNull(store.readVisible(listOf(manga), space)[manga.id])
+				throw error
+			}
+		}.exceptionOrNull())
+		assertFalse(store.isCurrent(manga, space, before))
+		assertTrue(store.takeRequests().ids.contains(manga.id))
+		assertTrue(store.scan(manga, space))
+		val after = requireNotNull(store.readVisible(listOf(manga), space)[manga.id])
+		store.takeRequests()
+		val changes = store.changes.value
+		fence.mutate(manga, FavouriteSpace.PRIVATE) {
+			assertEquals(after, store.readVisible(listOf(manga), space)[manga.id])
+		}
+		val other = remote(810_126L)
+		data.storeManga(other, replaceExisting = true)
+		fence.mutate(other, space) { assertTrue(store.isCurrent(manga, space, after)) }
+		assertEquals(changes, store.changes.value)
+		assertTrue(store.takeRequests().ids.isEmpty())
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {

@@ -87,6 +87,7 @@ import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.domain.NormalDownloadTaskAdmission
+import org.koitharu.kotatsu.download.domain.NormalDownloadMutationFence
 import org.koitharu.kotatsu.download.domain.NormalDownloadAdmissionPlan
 import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.domain.DownloadProgress
@@ -130,6 +131,7 @@ class DownloadWorker @AssistedInject constructor(
 	private val database: MangaDatabase,
 	private val localMangaRepository: LocalMangaRepository,
 	private val destinationStore: DownloadDestinationStore,
+	private val normalMutationFence: NormalDownloadMutationFence,
 	private val mangaLock: MangaLock,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
@@ -342,23 +344,27 @@ class DownloadWorker @AssistedInject constructor(
 					isCompleted = true
 					return@withLock
 				}
-				output = if (isExhentai) {
+				if (isExhentai) {
 					// Keep the reservation reachable by finally even if cancellation occurs on the IO return.
-					withContext(NonCancellable) {
+					output = withContext(NonCancellable) {
 						LocalMangaOutput.createExhentaiArchive(
 							destination, mangaDetails, format, task.appendGalleryIdToChapterFile,
 							org.koitharu.kotatsu.sources.compat.ExhentaiChapterOwnership.Receipt(task.favouriteSpace, id),
 						)
 					}
 				} else {
-					LocalMangaOutput.getOrCreate(destination, mangaDetails, format)
+					// Preparing an existing directory may remove a legacy sidecar.
+					normalMutationFence.mutate(subject, task.favouriteSpace) {
+						output = LocalMangaOutput.getOrCreate(destination, mangaDetails, format)
+					}
 				}
+				val writer = checkNotNull(output)
 				if (isExhentai) currentCoroutineContext().ensureActive()
 				val coverUrl = mangaDetails.largeCoverUrl.ifNullOrEmpty { mangaDetails.coverUrl }
 				if (!coverUrl.isNullOrEmpty()) {
 					observeDownload { "cover_begin" }
 					downloadFile(coverUrl, destination, repo).let { file ->
-						output.addCover(file, getMediaType(coverUrl, file))
+						writer.addCover(file, getMediaType(coverUrl, file))
 						file.deleteAwait()
 					}
 					observeDownload { "cover_end" }
@@ -520,7 +526,7 @@ class DownloadWorker @AssistedInject constructor(
 									// Materialize each successful page while downloads are still flowing. Waiting
 									// until N/N to copy every page into the CBZ created a second full I/O pass
 									// that looked like the old "stuck at 100%" behaviour on device.
-									checkNotNull(output).addPage(
+									writer.addPage(
 											chapter = chapter,
 											file = downloadedPage.file,
 											pageNumber = pageIndex,
@@ -566,7 +572,7 @@ class DownloadWorker @AssistedInject constructor(
 					if (downloadedPages.any { it == null }) {
 						// Successful pages may already be inside a temporary archive. Explicitly discard
 						// the chapter so finish() can never publish a partial CBZ as complete.
-						output.discardChapter(chapter.value)
+						normalMutationFence.mutate(subject, task.favouriteSpace) { writer.discardChapter(chapter.value) }
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						completedProgressPages += pages.size
 						continue
@@ -584,15 +590,18 @@ class DownloadWorker @AssistedInject constructor(
 							isStuck = false,
 						),
 					)
-					val accounting = accountStagedChapter(output.flushChapter(chapter.value))
+					val accounting = normalMutationFence.mutate(subject, task.favouriteSpace) {
+						accountStagedChapter(writer.flushChapter(chapter.value)).also { staged ->
+							if (staged.durableArtifactAvailable && !isExhentai) {
+								recordDownloadOwnership(mangaDetails.id, task, writer.rootFile)
+							}
+						}
+					}
 					// Completion means every requested page is staged. SINGLE_CBZ/EPUB intentionally
 					// return false until finish(), so flushChapter() is not a success/failure signal.
 					if (accounting.requestedChapterCompleted) {
 						completedRequestedChapters++
 						if (diagnostic != null) expectedArchivePages += pages.size
-					}
-					if (accounting.durableArtifactAvailable && !isExhentai) {
-						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 					}
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 					completedProgressPages += pages.size
@@ -608,28 +617,30 @@ class DownloadWorker @AssistedInject constructor(
 				}
 				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, phase = DownloadPhase.FINALIZING, retryAttempt = 0, eta = -1L, isStuck = false))
 				observeDownload { "finalize_begin" }
-				output.mergeWithExisting()
-				output.finish()
-				observeDownload { "output_finish_return" }
-				val localManga = if (isExhentai) {
-					withContext(NonCancellable) {
-						registerExhentaiArtifact(mangaDetails, task, checkNotNull(output.committedFile)).also {
-							committedExhentaiPath = it.file.canonicalPath
+				val localManga = normalMutationFence.mutate(subject, task.favouriteSpace) {
+					writer.mergeWithExisting()
+					writer.finish()
+					observeDownload { "output_finish_return" }
+					if (isExhentai) {
+						withContext(NonCancellable) {
+							registerExhentaiArtifact(mangaDetails, task, checkNotNull(writer.committedFile)).also {
+								committedExhentaiPath = it.file.canonicalPath
+							}
 						}
+					} else {
+						recordDownloadOwnership(mangaDetails.id, task, writer.rootFile)
+						val localManga = LocalMangaParser(writer.rootFile).getManga(withDetails = false)
+						localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
+						localStorageChanges.emit(localManga)
+						localManga
 					}
-				} else {
-					recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
-					val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
-					localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
-					localStorageChanges.emit(localManga)
-					localManga
 				}
 				observeDownload { "artifact_indexed chapters=$completedRequestedChapters" }
 				if (diagnostic?.active == true &&
 					isPublicForDiagnostics(mangaDetails.id)
 				) {
 					diagnostic.record(DownloadEvent.ARCHIVE_INDEXED, expectedArchivePages, -1)
-					val archive = output as? LocalMangaZipOutput
+					val archive = writer as? LocalMangaZipOutput
 					if (isExhentai && archive != null) {
 						val actual = runCatchingCancellable { archive.readCommittedPageCount() }.getOrNull()
 						diagnostic.archiveCount(expectedArchivePages, actual)
@@ -654,25 +665,33 @@ class DownloadWorker @AssistedInject constructor(
 				throw e
 			} finally {
 				withContext(NonCancellable) {
-					runCatchingCancellable { output?.cleanup() }.onFailure(Throwable::printStackTraceDebug)
-					output?.closeQuietly()
-					val committed = output?.committedFile
-					if (!isCompleted && isExhentai && committed != null) {
-						runCatchingCancellable { registerExhentaiArtifact(manga, task, committed) }
-							.onFailure(Throwable::printStackTraceDebug)
-					} else if (!isCompleted && !isExhentai && output != null && output.rootFile.exists()) {
-						runCatchingCancellable {
-							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
-							// mangaDetails is scoped to the try block; the resolved remote seed keeps the same
-							// stable manga id and is sufficient for identity recovery during cleanup.
-							localMangaRepository.rememberDownloadedIdentity(manga, localManga)
-							localStorageChanges.emit(localManga)
-						}.onFailure(Throwable::printStackTraceDebug)
-					}
-					// The destination can be shared by active workers, including their archive staging.
-					// Cover transfer failures/cancellation must clean only this worker's scratch files.
-					withContext(Dispatchers.IO) {
-						runCatchingCancellable { tempFiles.close() }.onFailure(Throwable::printStackTraceDebug)
+					val opened = output
+					var closed = false
+					try {
+						if (opened != null) normalMutationFence.mutate(subject, task.favouriteSpace) {
+							// ZIP cleanup can finalize completed chapters even after failure/cancellation.
+							runCatchingCancellable { opened.cleanup() }.onFailure(Throwable::printStackTraceDebug)
+							opened.closeQuietly()
+							closed = true
+							val committed = opened.committedFile
+							if (!isCompleted && isExhentai && committed != null) {
+								runCatchingCancellable { registerExhentaiArtifact(manga, task, committed) }
+									.onFailure(Throwable::printStackTraceDebug)
+							} else if (!isCompleted && !isExhentai && opened.rootFile.exists()) {
+								runCatchingCancellable {
+									val localManga = LocalMangaParser(opened.rootFile).getManga(withDetails = false)
+									// Use the resolved remote seed for identity recovery during cleanup.
+									localMangaRepository.rememberDownloadedIdentity(manga, localManga)
+									localStorageChanges.emit(localManga)
+								}.onFailure(Throwable::printStackTraceDebug)
+							}
+						}
+					} finally {
+						// Preserve scratch cleanup even if the scoped fence or finalization fails.
+						if (!closed) opened?.closeQuietly()
+						withContext(Dispatchers.IO) {
+							runCatchingCancellable { tempFiles.close() }.onFailure(Throwable::printStackTraceDebug)
+						}
 					}
 				}
 			}
