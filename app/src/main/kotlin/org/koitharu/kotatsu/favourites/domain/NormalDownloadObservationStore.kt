@@ -52,7 +52,7 @@ internal data class NormalObservationContext(
 	val normalCategories: List<Long>,
 	val privateCategories: List<Long>,
 	val chapterLocators: List<Triple<Long, String, String>>?,
-)
+) : java.io.Serializable
 
 internal data class NormalObservationWork(
 	val manga: Manga,
@@ -161,6 +161,10 @@ internal class NormalDownloadObservationStore(
 			manga.chapters?.map { Triple(it.id, it.source.name, it.url) },
 		)
 	}
+
+	/** Read persisted context even during a registered explicit mutation; no publication authority. */
+	internal suspend fun actionContext(manga: Manga, space: FavouriteSpace?): NormalObservationContext? =
+		db.withTransaction { context(manga, space) }
 
 	suspend fun begin(manga: Manga, space: FavouriteSpace?): NormalObservationWork? = mutex.withLock {
 		val active = refreshRoot() ?: return@withLock null

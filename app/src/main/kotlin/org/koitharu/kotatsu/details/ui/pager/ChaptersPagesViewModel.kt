@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.ui.pager
 
 import android.app.Activity
+import android.content.Context
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
@@ -76,6 +77,8 @@ import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.ExhentaiDeletionApproval
+import org.koitharu.kotatsu.local.domain.NormalDeleteApproval
+import org.koitharu.kotatsu.local.ui.LocalChaptersRemoveService
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaState
@@ -830,6 +833,52 @@ abstract class ChaptersPagesViewModel(
 		return deleteLocalMangaUseCase.previewExhentaiPhysicalDeletion(details.sourceManga, favouriteSpace, file)
 	}
 
+	internal data class ChapterDeleteRequest(
+		val manga: Manga, val ids: Set<Long>, val approval: NormalDeleteApproval?,
+	)
+
+	internal data class WholeNormalDeleteRequest(val manga: Manga, val approval: NormalDeleteApproval)
+
+	/** Called with the rendered Details/Reader snapshot and selected row locators, before confirmation. */
+	internal suspend fun prepareChapterDeletion(
+		details: MangaDetails, ids: Set<Long>, locators: Map<Long, String>,
+	): ChapterDeleteRequest {
+		val remote = details.sourceManga
+		if (!deleteLocalMangaUseCase.appliesNormalDeletion(remote, downloadSpaceProvenance)) {
+			return ChapterDeleteRequest(details.toManga(), ids, null)
+		}
+		check(locators.keys == ids && ids.isNotEmpty()) { "Selected chapter changed; refresh Details" }
+		val container = checkNotNull(details.local?.file) { "Selected download is unavailable" }
+		val approval = deleteLocalMangaUseCase.previewNormalDeletion(remote, downloadSpaceProvenance, container, locators)
+		return ChapterDeleteRequest(remote, ids, approval)
+	}
+
+	internal fun startChapterDeletion(context: Context, request: ChapterDeleteRequest) {
+		val approval = request.approval
+		if (approval != null) {
+			LocalChaptersRemoveService.startVerifiedNormal(context, request.manga, request.ids, favouriteSpace, approval)
+		} else {
+			LocalChaptersRemoveService.start(context, request.manga, request.ids, favouriteSpace, downloadSpaceProvenance)
+		}
+	}
+
+	internal suspend fun prepareWholeNormalDeletion(details: MangaDetails): WholeNormalDeleteRequest? {
+		val remote = details.sourceManga
+		if (!deleteLocalMangaUseCase.appliesNormalDeletion(remote, downloadSpaceProvenance)) return null
+		val container = checkNotNull(details.local?.file) { "Selected download is unavailable" }
+		return WholeNormalDeleteRequest(remote,
+			deleteLocalMangaUseCase.previewNormalDeletion(remote, downloadSpaceProvenance, container))
+	}
+
+	internal fun deleteConfirmedNormal(request: WholeNormalDeleteRequest) {
+		launchLoadingJob(Dispatchers.IO) {
+			check(deleteLocalMangaUseCase.deleteConfirmedNormal(request.manga, downloadSpaceProvenance, request.approval))
+			onMangaRemoved.call(request.manga)
+		}
+	}
+
+	internal fun reportDeletionError(error: Throwable) = errorEvent.call(error)
+
 	fun deleteLocal() = deleteLocal(approvedExhentaiFile = null)
 
 	fun deleteLocal(approvedExhentaiFile: ExhentaiDeletionApproval?) {
@@ -877,6 +926,9 @@ abstract class ChaptersPagesViewModel(
 			} else {
 				if (remote != null && EhentaiSourceFamily.supportsTitleMatchedDownloads(remote.source.name)) {
 					deleteLocalMangaUseCase.requireSourceOwnedExhentaiDeletion(remote, favouriteSpace, local.file)
+				}
+				if (remote != null) check(!deleteLocalMangaUseCase.appliesNormalDeletion(remote, downloadSpaceProvenance)) {
+					"Selected Normal download requires exact confirmation"
 				}
 				deleteLocalMangaUseCase(m)
 			}

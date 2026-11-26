@@ -69,6 +69,14 @@ data class ExhentaiDeletionApproval(
 	data class DirectoryIdentity(val path: String, val fileKey: Any)
 }
 
+/** The final Favorites choice consumes this snapshot, never a newly found scoped copy. */
+internal data class NormalBulkDeleteApproval(
+	val ids: Set<Long>,
+	val space: FavouriteSpace,
+	val normal: Map<Long, NormalDeleteApproval?>,
+	val missing: Set<Long>,
+)
+
 class DeleteLocalMangaUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val localMangaIndex: LocalMangaIndex,
@@ -81,7 +89,18 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	private val favouritesRepository: FavouritesRepository,
 	private val mangaLock: MangaLock,
 	private val exhentaiPresenceDiscovery: ExhentaiPresenceDiscovery,
+	private val normalDelete: NormalDownloadDeleteAction,
 ) {
+
+	internal suspend fun appliesNormalDeletion(manga: Manga, space: FavouriteSpace?) = normalDelete.appliesTo(manga, space)
+
+	internal suspend fun previewNormalDeletion(
+		manga: Manga, space: FavouriteSpace?, container: File, selected: Map<Long, String>? = null,
+	): NormalDeleteApproval = checkNotNull(normalDelete.preview(manga, space, container, selected))
+
+	internal suspend fun deleteConfirmedNormal(
+		manga: Manga, space: FavouriteSpace?, approval: NormalDeleteApproval,
+	): Boolean = normalDelete.execute(manga, space, approval)
 
 	suspend operator fun invoke(manga: Manga) {
 		if (!manga.isLocal && EhentaiSourceFamily.supportsTitleMatchedDownloads(manga.source.name) &&
@@ -578,11 +597,44 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	 * point at either one, so favourites must resolve through the same space-aware ownership boundary
 	 * used by Details before deleting any physical file.
 	 */
-	suspend operator fun invoke(ids: Set<Long>, favouriteSpace: FavouriteSpace): Int {
-		if (ids.isEmpty()) return 0
+	suspend operator fun invoke(ids: Set<Long>, favouriteSpace: FavouriteSpace): Int =
+		deleteApprovedBulk(previewBulkDeletion(ids, favouriteSpace))
+
+	internal suspend fun previewBulkDeletion(ids: Set<Long>, favouriteSpace: FavouriteSpace): NormalBulkDeleteApproval {
+		if (favouriteSpace == FavouriteSpace.PRIVATE) return NormalBulkDeleteApproval(ids.toSet(), favouriteSpace, emptyMap(), emptySet())
+		val normal = linkedMapOf<Long, NormalDeleteApproval?>()
+		val missing = linkedSetOf<Long>()
+		for (id in ids) {
+			val manga = mangaDataRepository.findMangaById(id, withChapters = true)
+			if (manga == null) missing += id
+			else if (normalDelete.appliesTo(manga, favouriteSpace)) {
+				normal[id] = normalDelete.preview(manga, favouriteSpace, container = null)
+			}
+		}
+		return NormalBulkDeleteApproval(ids.toSet(), favouriteSpace, normal, missing)
+	}
+
+	internal suspend fun deleteApprovedBulk(approval: NormalBulkDeleteApproval): Int {
+		val favouriteSpace = approval.space
+		// Fail before starting if a formerly legacy title has entered the scoped policy.
+		for (id in if (favouriteSpace == FavouriteSpace.PRIVATE) emptySet() else approval.ids - approval.missing) {
+			val manga = mangaDataRepository.findMangaById(id, withChapters = true)
+			if (manga != null) check(normalDelete.appliesTo(manga, favouriteSpace) == approval.normal.containsKey(id)) {
+				"Download context changed; refresh selection"
+			}
+		}
 		var removed = 0
-		for (mangaId in ids) {
-			val manga = mangaDataRepository.findMangaById(mangaId, withChapters = true) ?: continue
+		for (mangaId in approval.ids - approval.missing) {
+			val manga = mangaDataRepository.findMangaById(mangaId, withChapters = true)
+			if (approval.normal.containsKey(mangaId)) {
+				// A title confirmed absent must not acquire a newly downloaded substitute.
+				val selected = approval.normal[mangaId] ?: continue
+				checkNotNull(manga) { "Selected manga changed" }
+				if (normalDelete.execute(manga, favouriteSpace, selected)) removed++
+				continue
+			}
+			if (manga == null) continue
+			check(!normalDelete.appliesTo(manga, favouriteSpace)) { "Download context changed; refresh selection" }
 			if (ExhentaiDownloadedCopy.isOfficial(manga)) {
 				if (deleteExhentaiCopy(manga, favouriteSpace)) removed++
 				continue

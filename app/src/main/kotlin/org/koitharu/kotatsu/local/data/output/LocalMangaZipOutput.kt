@@ -187,34 +187,7 @@ class LocalMangaZipOutput private constructor(
 				val subject = LocalMangaZipOutput(file, manga)
 				try {
 					ZipFile(subject.rootFile).use { zip ->
-						val index = MangaIndex(zip.readText(zip.getEntry(ENTRY_NAME_INDEX)))
-						idsToRemove.forEach { id -> index.removeChapter(id) }
-						val patterns = requireNotNull(index.getMangaInfo()?.chapters).map {
-							index.getChapterNamesPattern(it)
-						}
-						val coverEntryName = index.getCoverEntry()
-						for (entry in zip.entries()) {
-							when {
-								entry.name == ENTRY_NAME_INDEX -> {
-									subject.output.put(ENTRY_NAME_INDEX, index.toString())
-								}
-
-								entry.isDirectory -> {
-									subject.output.addDirectory(entry.name)
-								}
-
-								entry.name == coverEntryName -> {
-									subject.output.copyEntryFrom(zip, entry)
-								}
-
-								else -> {
-									val name = entry.name.substringBefore('.')
-									if (patterns.any { it.matches(name) }) {
-										subject.output.copyEntryFrom(zip, entry)
-									}
-								}
-							}
-						}
+						writeFilteredArchive(zip, subject.output, idsToRemove)
 						subject.output.finish()
 						subject.output.close()
 						subject.replaceFilteredRootFile()
@@ -229,5 +202,66 @@ class LocalMangaZipOutput private constructor(
 					throw e
 				}
 			}
+
+		/** Stage the already verified embedded IDs to a caller-owned unique file.
+		 * The caller revalidates the original and atomically publishes under the destination guard.
+		 */
+		internal suspend fun stageVerifiedChapterFilter(file: File, temp: File, idsToRemove: Set<Long>) =
+			runInterruptible(Dispatchers.IO) {
+				ZipFile(file).use { zip ->
+					check(zip.size() <= 200_000)
+					val entry = requireNotNull(zip.getEntry(ENTRY_NAME_INDEX))
+					check(!entry.isDirectory && entry.size in 1L..4_194_304L)
+					val index = MangaIndex(zip.readText(entry))
+					val chapters = requireNotNull(index.getMangaInfo()?.chapters)
+					val allIds = chapters.mapTo(hashSetOf()) { it.id }
+					check(allIds.size == chapters.size && idsToRemove.isNotEmpty() &&
+						allIds.containsAll(idsToRemove) && allIds.size > idsToRemove.size)
+					// Never compile a pattern outside the existing flat writer grammar.
+					val prefix = Regex("-?[0-9]+_[0-9]+")
+					for (chapter in chapters) {
+						val pattern = requireNotNull(index.getStoredChapterEntriesPattern(chapter.id))
+						check(pattern.endsWith("\\d{4}") && prefix.matches(pattern.removeSuffix("\\d{4}")))
+					}
+					ZipOutput(temp, compressionLevel = Deflater.NO_COMPRESSION).use { output ->
+						writeFilteredArchive(zip, output, idsToRemove)
+					}
+					ZipFile(temp).use { staged ->
+						val stagedIndex = MangaIndex(staged.readText(staged.getEntry(ENTRY_NAME_INDEX)))
+						check(stagedIndex.getMangaInfo()?.chapters?.mapTo(hashSetOf()) { it.id } == allIds - idsToRemove)
+					}
+				}
+			}
+
+		private fun writeFilteredArchive(zip: ZipFile, output: ZipOutput, idsToRemove: Set<Long>) {
+			val index = MangaIndex(zip.readText(zip.getEntry(ENTRY_NAME_INDEX)))
+			idsToRemove.forEach { id -> index.removeChapter(id) }
+			val patterns = requireNotNull(index.getMangaInfo()?.chapters).map {
+				index.getChapterNamesPattern(it)
+			}
+			val coverEntryName = index.getCoverEntry()
+			for (entry in zip.entries()) {
+				when {
+					entry.name == ENTRY_NAME_INDEX -> {
+						output.put(ENTRY_NAME_INDEX, index.toString())
+					}
+
+					entry.isDirectory -> {
+						output.addDirectory(entry.name)
+					}
+
+					entry.name == coverEntryName -> {
+						output.copyEntryFrom(zip, entry)
+					}
+
+					else -> {
+						val name = entry.name.substringBefore('.')
+						if (patterns.any { it.matches(name) }) {
+							output.copyEntryFrom(zip, entry)
+						}
+					}
+				}
+			}
+		}
 	}
 }

@@ -119,6 +119,15 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 		}
 	}
 
+	/** Explicit Normal removal must never clear a different space or mint a row. */
+	internal suspend fun removeConfirmedNormalPaths(mangaId: Long, paths: Set<String>) {
+		val dao = db.getFavouriteDownloadIndexDao()
+		val row = dao.findEntry(FavouriteSpace.NORMAL.dbValue, mangaId) ?: return
+		if (File(row.path).canonicalOrAbsolute() in paths) {
+			dao.deleteIfPath(row.space, row.mangaId, row.path)
+		}
+	}
+
 	private fun File.isInside(root: File): Boolean {
 		val rootPath = root.canonicalOrAbsolute().trimEnd(File.separatorChar)
 		val filePath = canonicalOrAbsolute()

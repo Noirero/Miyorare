@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.toFileNameSafe
 import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 
 class DetailsMenuProvider(
 	private val activity: FragmentActivity,
@@ -124,12 +125,20 @@ class DetailsMenuProvider(
 					return true
 				}
 				if (showExhentaiPhysicalDeleteConfirmation(activity, activity.lifecycleScope, viewModel)) return true
-				buildAlertDialog(activity) {
-					setTitle(R.string.delete_manga)
-					setMessage(activity.getString(R.string.text_delete_local_manga, manga.title))
-					setPositiveButton(R.string.delete) { _, _ -> viewModel.deleteLocal() }
-					setNegativeButton(android.R.string.cancel, null)
-				}.show()
+				val details = viewModel.mangaDetails.value ?: return true
+				activity.lifecycleScope.launch {
+					runCatchingCancellable {
+						val request = viewModel.prepareWholeNormalDeletion(details)
+						buildAlertDialog(activity) {
+							setTitle(R.string.delete_manga)
+							setMessage(activity.getString(R.string.text_delete_local_manga, manga.title))
+							setPositiveButton(R.string.delete) { _, _ ->
+								if (request != null) viewModel.deleteConfirmedNormal(request) else viewModel.deleteLocal()
+							}
+							setNegativeButton(android.R.string.cancel, null)
+						}.show()
+					}.onFailure(viewModel::reportDeletionError)
+				}
 			}
 
 			R.id.action_save -> {

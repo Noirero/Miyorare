@@ -24,6 +24,8 @@ import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
+import org.koitharu.kotatsu.local.domain.NormalDeleteApproval
+import org.koitharu.kotatsu.local.domain.NormalDownloadDeleteAction
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
@@ -43,6 +45,9 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 	@Inject
 	lateinit var deleteLocalManga: DeleteLocalMangaUseCase
 
+	@Inject
+	lateinit var normalDelete: NormalDownloadDeleteAction
+
 	override fun onCreate() {
 		super.onCreate()
 		isRunning = true
@@ -60,7 +65,18 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 		val favouriteSpace = FavouriteSpace.fromArgument(
 			intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue),
 		)
+		val provenance = intent.getIntExtra(EXTRA_PROVENANCE, favouriteSpace.dbValue)
+			.takeIf { it >= 0 }?.let { FavouriteSpace.fromArgument(it) }
+		@Suppress("DEPRECATION")
+		val approved = intent.getSerializableExtra(EXTRA_NORMAL_APPROVAL) as? NormalDeleteApproval
 		powerManager.withPartialWakeLock(TAG) {
+			if (intent.hasExtra(EXTRA_NORMAL_APPROVAL)) {
+				val selection = checkNotNull(approved) { "Selected download approval is missing" }
+				val remote = checkNotNull(mangaDataRepository.findMangaById(manga.id, withChapters = true))
+				check(selection.selected?.keys == chaptersIds && selection.space == provenance)
+				check(normalDelete.execute(remote, provenance, selection))
+				return@withPartialWakeLock
+			}
 			val mangaWithChapters = if (manga.isLocal) {
 				localMangaRepository.getDetails(manga)
 			} else {
@@ -68,6 +84,7 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 				// then resolve the physical copy inside the space that launched the action. Without
 				// this boundary a Private delete could hit a Normal copy from the global Local index.
 				val remote = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
+				check(!normalDelete.appliesTo(remote, provenance)) { "Selected Normal chapter requires exact confirmation" }
 				if (ExhentaiDownloadedCopy.isOfficial(remote)) {
 					check(deleteLocalManga.deleteExhentaiCopy(remote, favouriteSpace, chapterIds = chaptersIds)) {
 						"Downloaded ExHentai gallery is unavailable"
@@ -137,6 +154,8 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 		private const val EXTRA_MANGA = "manga"
 		private const val EXTRA_CHAPTERS_IDS = "chapters_ids"
 		private const val EXTRA_FAVOURITE_SPACE = "favourite_space"
+		private const val EXTRA_PROVENANCE = "normal_provenance"
+		private const val EXTRA_NORMAL_APPROVAL = "normal_delete_approval"
 
 		private const val TAG = CHANNEL_ID
 
@@ -145,6 +164,17 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 			manga: Manga,
 			chaptersIds: Collection<Long>,
 			favouriteSpace: FavouriteSpace,
+			provenance: FavouriteSpace? = favouriteSpace,
+		) = startInternal(context, manga, chaptersIds, favouriteSpace, provenance, null)
+
+		internal fun startVerifiedNormal(
+			context: Context, manga: Manga, chaptersIds: Collection<Long>, favouriteSpace: FavouriteSpace,
+			approval: NormalDeleteApproval,
+		) = startInternal(context, manga, chaptersIds, favouriteSpace, approval.space, approval)
+
+		private fun startInternal(
+			context: Context, manga: Manga, chaptersIds: Collection<Long>, favouriteSpace: FavouriteSpace,
+			provenance: FavouriteSpace?, approval: NormalDeleteApproval?,
 		) {
 			if (chaptersIds.isEmpty()) {
 				return
@@ -153,6 +183,8 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 			intent.putExtra(EXTRA_MANGA, ParcelableManga(manga))
 			intent.putExtra(EXTRA_CHAPTERS_IDS, chaptersIds.toLongArray())
 			intent.putExtra(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
+			intent.putExtra(EXTRA_PROVENANCE, provenance?.dbValue ?: -1)
+			if (approval != null) intent.putExtra(EXTRA_NORMAL_APPROVAL, approval)
 			ContextCompat.startForegroundService(context, intent)
 		}
 	}

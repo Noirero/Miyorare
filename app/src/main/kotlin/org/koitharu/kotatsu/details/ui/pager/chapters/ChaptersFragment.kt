@@ -63,7 +63,7 @@ import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
-import org.koitharu.kotatsu.local.ui.LocalChaptersRemoveService
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderNavigationCallback
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
@@ -122,9 +122,16 @@ class ChaptersFragment :
 					protectedExhentai -> showExhentaiPhysicalDeleteConfirmation(
 						requireContext(), viewLifecycleOwner.lifecycleScope, viewModel,
 					)
-					manga != null -> LocalChaptersRemoveService.start(
-						requireContext(), manga, setOf(item.chapter.id), viewModel.favouriteSpace,
-					)
+					manga != null -> {
+						val details = viewModel.mangaDetails.value
+						if (details != null) viewLifecycleOwner.lifecycleScope.launch {
+							runCatchingCancellable {
+								val request = viewModel.prepareChapterDeletion(details, setOf(item.chapter.id),
+									mapOf(item.chapter.id to item.chapter.url))
+								viewModel.startChapterDeletion(requireContext(), request)
+							}.onFailure(viewModel::reportDeletionError)
+						}
+					}
 				}
 			},
 		)
@@ -286,11 +293,17 @@ class ChaptersFragment :
 	private fun confirmDeleteDownloadedVolume(volume: Int) {
 		val downloaded = volumeItems(setOf(volume)).filter { it.isDownloaded }
 		if (downloaded.isEmpty()) { Toast.makeText(requireContext(), R.string.volume_no_downloaded, Toast.LENGTH_SHORT).show(); return }
-		val manga = viewModel.getMangaOrNull() ?: return
-		MaterialAlertDialogBuilder(requireContext()).setTitle(getString(R.string.volume_delete_title, getString(R.string.volume_, volume)))
-			.setMessage(resources.getQuantityString(R.plurals.chapters, downloaded.size, downloaded.size)).setPositiveButton(R.string.delete) { _, _ ->
-				LocalChaptersRemoveService.start(requireContext(), manga, downloaded.mapTo(LinkedHashSet()) { it.chapter.id }, viewModel.favouriteSpace)
-			}.setNegativeButton(android.R.string.cancel, null).show()
+		val details = viewModel.mangaDetails.value ?: return
+		val locators = downloaded.associate { it.chapter.id to it.chapter.url }
+		viewLifecycleOwner.lifecycleScope.launch {
+			val request = runCatchingCancellable {
+				viewModel.prepareChapterDeletion(details, locators.keys, locators)
+			}.onFailure(viewModel::reportDeletionError).getOrNull() ?: return@launch
+			MaterialAlertDialogBuilder(requireContext()).setTitle(getString(R.string.volume_delete_title, getString(R.string.volume_, volume)))
+				.setMessage(resources.getQuantityString(R.plurals.chapters, downloaded.size, downloaded.size)).setPositiveButton(R.string.delete) { _, _ ->
+					viewModel.startChapterDeletion(requireContext(), request)
+				}.setNegativeButton(android.R.string.cancel, null).show()
+		}
 	}
 
 	private fun volumeItems(volumes: Set<Int>) = viewModel.chapters.value.filter { it.chapter.volume in volumes && it.chapter.source != LocalMangaSource }

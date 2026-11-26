@@ -102,6 +102,8 @@ import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.NormalDownloadReadResolver
 import org.koitharu.kotatsu.local.domain.NormalDownloadChapterAction
+import org.koitharu.kotatsu.local.domain.NormalDownloadDeleteAction
+import org.koitharu.kotatsu.local.domain.NormalDeleteApproval
 import org.koitharu.kotatsu.local.domain.MangaLock
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.reader.domain.ChaptersLoader
@@ -2881,6 +2883,125 @@ class DownloadedLocalStateTest {
 		assertTrue(action.rename(writer, space, writerApproval, "Chapter 1 Special"))
 		assertArrayEquals(bytes, File(ownedDir, "Chapter 1 Special.cbz").readBytes())
 		assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, writer.id))
+	}
+
+	/** T02/T15/Q24: exact corrupt manual chapter, approval transport, stale root and replacement. */
+	@Test fun normalDeleteExactStandaloneKeepsSiblingsAndRejectsStaleApproval() = runBlocking {
+		val (_, writerDir) = observedDownload(810_133L)
+		val bytes = File(writerDir, "Chapter 1.cbz").readBytes()
+		val seed = remote(810_134L)
+		val source = MissingMangaSource("MIHON_2677079941490683989")
+		val first = seed.chapters.orEmpty().single().copy(source = source, url = "/chapter/1")
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2", number = 2f)
+		val manga = seed.copy(source = source, chapters = listOf(first, second))
+		favourite(manga)
+		val container = File(root, "downloads/Bacami (ID)/${manga.title}").apply { check(mkdirs()) }.canonicalFile
+		val corrupt = byteArrayOf(4, 8, 15, 16)
+		val file = File(container, "Chapter 1.cbz").apply { writeBytes(corrupt) }
+		val sibling = File(container, "Chapter 2.cbz").apply { writeBytes(bytes) }
+		val space = FavouriteSpace.NORMAL
+		val store = observationStore()
+		val action = NormalDownloadDeleteAction(normalDownloadScope, store, destinations,
+			NormalDownloadMutationFence(normalDownloadScope, store), MangaLock(), local)
+		val selectors = requireNotNull(normalReader(store).resolve(manga, space)?.normalReaderSelectors)
+		val selected = mapOf(first.id to requireNotNull(selectors[first.id]).url)
+		suspend fun preview() = requireNotNull(action.preview(manga, space, container, selected))
+		assertTrue(runCatching { action.preview(manga, FavouriteSpace.PRIVATE, container, selected) }.isFailure)
+		assertTrue(runCatching { action.preview(manga, space, container, mapOf(first.id to requireNotNull(selectors[second.id]).url)) }.isFailure)
+		val competing = File(container.parentFile, container.name + "_9")
+		assertTrue(container.copyRecursively(competing))
+		assertTrue(runCatching { preview() }.isFailure)
+		assertTrue(competing.deleteRecursively())
+		val old = preview()
+		destinations.setRoot(space, File(root, "delete-b"))
+		destinations.setRoot(space, root)
+		assertTrue(runCatching { action.execute(manga, space, old) }.isFailure)
+		val beforeReplace = preview()
+		val replacement = File(container, "replacement").apply { writeBytes(corrupt) }
+		assertTrue(file.delete())
+		assertTrue(replacement.renameTo(file))
+		assertTrue(runCatching { action.execute(manga, space, beforeReplace) }.isFailure)
+		assertArrayEquals(corrupt, file.readBytes())
+		val unknown = File(container, "foreign.txt").apply { writeText("keep") }
+		assertTrue(runCatching { action.preview(manga, space, container) }.isFailure)
+		val approval = preview()
+		val serialized = java.io.ByteArrayOutputStream().also {
+			java.io.ObjectOutputStream(it).use { stream -> stream.writeObject(approval) }
+		}.toByteArray()
+		val restored = java.io.ObjectInputStream(serialized.inputStream()).use { it.readObject() as NormalDeleteApproval }
+		assertEquals(approval, restored)
+		assertTrue(action.execute(manga, space, restored))
+		assertFalse(file.exists())
+		assertArrayEquals(bytes, sibling.readBytes())
+		assertEquals("keep", unknown.readText())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
+		assertTrue(store.takeRequests().ids.contains(manga.id))
+	}
+
+	/** Q24: whole/bulk delete only confirmed containers, never a new copy for an absent title. */
+	@Test fun normalDeleteWholeAndBulkUseApprovedActiveContainers() = runBlocking {
+		val (first, firstDir) = observedDownload(810_135L)
+		val (second, secondDir) = observedDownload(810_136L)
+		val absent = remote(810_137L)
+		favourite(absent)
+		val space = FavouriteSpace.NORMAL
+		val ids = setOf(first.id, second.id, absent.id)
+		val approved = deleteLocal.previewBulkDeletion(ids, space)
+		assertEquals(ids, approved.normal.keys)
+		assertNull(approved.normal[absent.id])
+		assertEquals(firstDir, approved.normal[first.id]?.container)
+		assertEquals(secondDir, approved.normal[second.id]?.container)
+		val late = download(root, absent).file.canonicalFile
+		val lateFile = File(late, "Chapter 1.cbz")
+		val lateBytes = lateFile.readBytes()
+		assertEquals(2, deleteLocal.deleteApprovedBulk(approved))
+		assertFalse(firstDir.exists())
+		assertFalse(secondDir.exists())
+		assertArrayEquals(lateBytes, lateFile.readBytes())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, first.id))
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, second.id))
+		assertTrue(runCatching { deleteLocal.deleteApprovedBulk(approved) }.isFailure)
+	}
+
+	/** Q24: partial SINGLE_CBZ filtering preserves the other embedded chapter and its pages. */
+	@Test fun normalDeleteIndexedArchiveFiltersExactEmbeddedIdsAndKeepsRemainingPages() = runBlocking {
+		val seed = remote(810_138L)
+		val first = seed.chapters.orEmpty().single()
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2", number = 2f)
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val image = File(root, "delete-archive.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val output = LocalMangaOutput.getOrCreate(root, manga, DownloadFormat.SINGLE_CBZ)
+		val target = output.rootFile.canonicalFile
+		try {
+			output.addPage(IndexedValue(0, first), image, 0, MimeType("image/png"))
+			output.flushChapter(first)
+			output.addPage(IndexedValue(1, second), image, 0, MimeType("image/png"))
+			output.flushChapter(second)
+			output.finish()
+		} finally { output.close() }
+		val space = FavouriteSpace.NORMAL
+		val store = observationStore()
+		val action = NormalDownloadDeleteAction(normalDownloadScope, store, destinations,
+			NormalDownloadMutationFence(normalDownloadScope, store), MangaLock(), local)
+		val reader = normalReader(store)
+		val before = requireNotNull(reader.resolve(manga, space)?.normalReaderSelectors)
+		assertEquals(setOf(first.id, second.id), before.keys)
+		val approval = requireNotNull(action.preview(manga, space, target, mapOf(first.id to before.getValue(first.id).url)))
+		assertFalse(approval.removeContainer)
+		assertTrue(action.execute(manga, space, approval))
+		assertTrue(target.exists())
+		val after = requireNotNull(reader.resolve(manga, space)?.normalReaderSelectors)
+		assertEquals(setOf(second.id), after.keys)
+		assertEquals(1, local.getPages(after.getValue(second.id)).size)
+		assertTrue(runCatching { action.execute(manga, space, approval) }.isFailure)
+		val whole = requireNotNull(action.preview(manga, space, target))
+		assertTrue(action.execute(manga, space, whole))
+		assertFalse(target.exists())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {

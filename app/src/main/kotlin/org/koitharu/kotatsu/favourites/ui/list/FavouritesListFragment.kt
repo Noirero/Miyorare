@@ -102,6 +102,7 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.NormalBulkDeleteApproval
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
@@ -994,22 +995,33 @@ class FavouritesListFragment : MangaListFragment() {
 		mode: ActionMode?,
 		removeWholeNormal: Boolean,
 	) {
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.private_remove_title)
-			.setItems(
-				arrayOf(
-					getString(R.string.private_remove_only),
-					getString(R.string.private_remove_with_downloads),
-				),
-			) { _, which ->
-				mode?.finish()
-				when (which) {
-					0 -> removeFavouritesOnly(ids, removeWholeNormal)
-					1 -> removeFavouritesWithDownloads(ids, removeWholeNormal)
+		viewLifecycleScope.launch {
+			// The second dialog is the final explicit file-removal choice. Capture the
+			// active Normal targets before it, while leaving remove-only available on failure.
+			val approval = if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) runCatchingCancellable {
+				deleteLocalMangaUseCase.previewBulkDeletion(ids, viewModel.favouriteSpace)
+			} else null
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.private_remove_title)
+				.setItems(
+					arrayOf(
+						getString(R.string.private_remove_only),
+						getString(R.string.private_remove_with_downloads),
+					),
+				) { _, which ->
+					mode?.finish()
+					when (which) {
+						0 -> removeFavouritesOnly(ids, removeWholeNormal)
+						1 -> {
+							val failure = approval?.exceptionOrNull()
+							if (failure != null) showPrivateOperationError(failure, R.string.private_remove_error)
+							else removeFavouritesWithDownloads(ids, removeWholeNormal, approval?.getOrThrow())
+						}
+					}
 				}
-			}
-			.setNegativeButton(android.R.string.cancel, null)
-			.show()
+				.setNegativeButton(android.R.string.cancel, null)
+				.show()
+		}
 	}
 
 	private fun removeFavouritesOnly(ids: Set<Long>, removeWholeNormal: Boolean) {
@@ -1026,7 +1038,9 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 	}
 
-	private fun removeFavouritesWithDownloads(ids: Set<Long>, removeWholeNormal: Boolean) {
+	private fun removeFavouritesWithDownloads(
+		ids: Set<Long>, removeWholeNormal: Boolean, approval: NormalBulkDeleteApproval?,
+	) {
 		// Do not trap the user behind a non-cancelable modal while storage is slow. Once destructive
 		// deletion is confirmed the file + membership sequence itself is non-cancellable, preventing
 		// navigation/view recreation from leaving the operation half-applied.
@@ -1034,7 +1048,9 @@ class FavouritesListFragment : MangaListFragment() {
 		viewLifecycleScope.launch {
 			val result = runCatchingCancellable {
 				withContext(NonCancellable) {
-					val removedDownloads = deleteLocalMangaUseCase(ids, viewModel.favouriteSpace)
+					val removedDownloads = if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+						deleteLocalMangaUseCase.deleteApprovedBulk(checkNotNull(approval))
+					} else deleteLocalMangaUseCase(ids, viewModel.favouriteSpace)
 					if (removeWholeNormal) {
 						transferFavouritesToPrivateUseCase.removeFromNormal(ids)
 					} else {
