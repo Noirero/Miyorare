@@ -11,6 +11,12 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Captured destination paths for scanner work, not a proof of availability or publication revision. */
+data class ActiveNormalDownloadRoots(
+	val normalRoot: File?,
+	val privateRoot: File?,
+)
+
 /**
  * Stores the user-selected download root for each favourites space.
  *
@@ -53,6 +59,34 @@ class DownloadDestinationStore @Inject constructor(
 		FavouriteSpace.NORMAL -> configuredRoot(space) ?: defaultNormalRoot()
 		FavouriteSpace.PRIVATE -> configuredRoot(space) ?: effectiveRoot(FavouriteSpace.NORMAL)
 	}
+
+	/**
+	 * Scanner-only root selection. Keep the raw configured path even when unavailable; never
+	 * consult historical roots or create the manga/downloads directory during discovery.
+	 * Capture both preferences together, but resolve the app-owned default outside the lock.
+	 * Publication must separately fence changes (including A -> B -> A).
+	 */
+	internal fun captureNormalScannerRoots(): ActiveNormalDownloadRoots {
+		val (configuredNormal, configuredPrivate) = withDestinationMutationLock {
+			configuredRoot(FavouriteSpace.NORMAL) to configuredRoot(FavouriteSpace.PRIVATE)
+		}
+		val normal = configuredNormal ?: defaultNormalRootForScan()
+		return ActiveNormalDownloadRoots(normal, configuredPrivate ?: normal)
+	}
+
+	private fun defaultNormalRootForScan(): File? = runCatching {
+		// Ask Android for the app-specific base, not getExternalFilesDir("manga"),
+		// which provisions the selected storage directory. An absent manga child is
+		// a candidate path, not a reason to inspect an old internal copy.
+		val externalBase = context.getExternalFilesDir(null)
+		val external = externalBase?.let { File(it, DEFAULT_STORAGE_DIR_NAME) }
+		when {
+			external == null -> File(context.filesDir, DEFAULT_STORAGE_DIR_NAME)
+			external.isDirectory -> external
+			external.exists() -> File(context.filesDir, DEFAULT_STORAGE_DIR_NAME)
+			else -> external
+		}
+	}.getOrNull()
 
 	/**
 	 * Roots that may contain downloads belonging to [space], ordered with the active destination

@@ -716,6 +716,81 @@ class DownloadedLocalStateTest {
 		assertArrayEquals(byteArrayOf(3), privateArtifact.readBytes())
 	}
 
+
+	/** T06/T07/T10/T11: active root selection must not inherit the legacy lookup purpose. */
+	@Test fun normalScannerActiveLookupUsesSelectedRootWithoutChangingKnownCopies() = runBlocking {
+		val manga = remote(810_070L)
+		val nonFavourite = remote(810_071L)
+		val privateOnly = remote(810_072L)
+		favourite(manga)
+		favourite(privateOnly, FavouriteSpace.PRIVATE)
+		data.storeManga(nonFavourite, replaceExisting = true)
+		val oldCopy = download(root, manga)
+		val controlCopy = download(root, nonFavourite)
+		val dao = db.getFavouriteDownloadIndexDao()
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, oldCopy.file.canonicalPath)
+		dao.upsert(listOf(owner,
+			FavouriteDownloadIndexEntity(nonFavourite.id, FavouriteSpace.NORMAL.dbValue, controlCopy.file.canonicalPath)))
+		val oldFile = oldCopy.file.listFiles().orEmpty().single { it.extension.equals("cbz", true) }
+		val bytes = oldFile.readBytes()
+		val before = requireNotNull(normalDownloadScope.resolveActiveLookup(manga, FavouriteSpace.NORMAL))
+		assertEquals(root.canonicalFile, before.normalRoot?.canonicalFile)
+		assertEquals(privateRoot.canonicalFile, before.privateRoot?.canonicalFile)
+		assertTrue(normalDownloadScope.isWithinActiveRoot(oldCopy.file, before.normalRoot, before.privateRoot))
+
+		val activeB = File(root, "scanner-active-b")
+		destinations.setRoot(FavouriteSpace.NORMAL, activeB)
+		val after = requireNotNull(normalDownloadScope.resolveActiveLookup(manga, null))
+		assertEquals(activeB.canonicalFile, after.normalRoot?.canonicalFile)
+		assertFalse(normalDownloadScope.isWithinActiveRoot(oldCopy.file, after.normalRoot, after.privateRoot))
+		assertTrue(root.canonicalFile in destinations.readableRoots(FavouriteSpace.NORMAL).map { it.canonicalFile })
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertEquals(setOf(manga.id, nonFavourite.id),
+			classifier.getKnownDownloadedIds(FavouriteSpace.NORMAL, listOf(manga.id, nonFavourite.id)))
+		// The existing legacy resolver remains usable; active discovery does not call it.
+		assertEquals(oldCopy.file.canonicalFile,
+			resolver.findSavedManga(manga, FavouriteSpace.NORMAL)?.file?.canonicalFile)
+		assertNull(normalDownloadScope.resolveActiveLookup(nonFavourite, FavouriteSpace.NORMAL))
+		assertNull(normalDownloadScope.resolveActiveLookup(privateOnly, null))
+		assertNull(normalDownloadScope.resolveActiveLookup(manga, FavouriteSpace.PRIVATE))
+
+		// Simulate a configured but unavailable destination without calling the mkdir-on-set API.
+		val missing = File(root, "scanner-unavailable")
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		prefs.edit(commit = true) {
+			putString(AppSettings.KEY_LOCAL_STORAGE, missing.path)
+			remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT)
+		}
+		val unavailable = requireNotNull(normalDownloadScope.resolveActiveLookup(manga, FavouriteSpace.NORMAL))
+		assertEquals(missing.canonicalFile, unavailable.normalRoot?.canonicalFile)
+		assertEquals(missing.canonicalFile, unavailable.privateRoot?.canonicalFile)
+		assertFalse(normalDownloadScope.isWithinActiveRoot(oldCopy.file, unavailable.normalRoot, unavailable.privateRoot))
+		assertFalse(missing.exists())
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertArrayEquals(bytes, oldFile.readBytes())
+	}
+
+	/** Scanner default selection must not provision the selected manga directory. */
+	@Test fun normalScannerUnconfiguredRootSelectionDoesNotCreateMangaDirectory() = runBlocking {
+		val manga = remote(810_073L)
+		favourite(manga)
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		prefs.edit(commit = true) {
+			remove(AppSettings.KEY_LOCAL_STORAGE)
+			remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT)
+		}
+		val external = context.getExternalFilesDir(null)?.let { File(it, "manga") }
+		val internal = File(context.filesDir, "manga")
+		val externalExisted = external?.exists()
+		val internalExisted = internal.exists()
+		val expected = if (external == null || (external.exists() && !external.isDirectory)) internal else external
+		val selected = requireNotNull(normalDownloadScope.resolveActiveLookup(manga, FavouriteSpace.NORMAL))
+		assertEquals(expected.absoluteFile, selected.normalRoot?.absoluteFile)
+		assertEquals(selected.normalRoot, selected.privateRoot)
+		assertEquals(externalExisted, external?.exists())
+		assertEquals(internalExisted, internal.exists())
+	}
+
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
 		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)

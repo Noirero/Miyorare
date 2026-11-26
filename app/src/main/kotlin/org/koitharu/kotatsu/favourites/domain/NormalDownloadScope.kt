@@ -1,10 +1,14 @@
 package org.koitharu.kotatsu.favourites.domain
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.download.domain.ActiveNormalDownloadRoots
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
@@ -21,6 +25,7 @@ import javax.inject.Inject
 class NormalDownloadScope @Inject constructor(
 	private val db: MangaDatabase,
 	private val sourceAliases: SourceAliasRegistry,
+	private val destinations: DownloadDestinationStore,
 ) {
 
 	/**
@@ -37,6 +42,17 @@ class NormalDownloadScope @Inject constructor(
 				(space == FavouriteSpace.NORMAL || db.getPrivateFavouritesDao().findCategoriesCount(manga.id) == 0)
 		}
 		return eligibleMembership && sourceAliases.canonicalId(source) != EhentaiSourceFamily.CANONICAL_ID
+	}
+
+	/**
+	 * Entry point for active Normal discovery. Null means outside scanner scope, never
+	 * that an eligible title may use historical roots. An eligible result can contain an
+	 * unavailable or unresolved root; callers must not fall back to the legacy lookup.
+	 * This selects roots only: it does not resolve an artifact or authorize any action.
+	 */
+	suspend fun resolveActiveLookup(manga: Manga, space: FavouriteSpace?): ActiveNormalDownloadRoots? {
+		if (!appliesTo(manga, space)) return null
+		return withContext(Dispatchers.IO) { destinations.captureNormalScannerRoots() }
 	}
 
 	/**

@@ -59,7 +59,12 @@ class DownloadedContentClassifier @Inject constructor(
 	 * reconciliation here. A missing index row is simply unknown/not-downloaded until normal storage
 	 * maintenance records it.
 	 */
-	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
+	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> =
+		getLegacyKnownDownloadedIds(space, mangaIds)
+
+	// Keep the persisted historical lookup independent of the future active Normal projection.
+	// Maintenance must continue to see known copies after a root switch.
+	private suspend fun getLegacyKnownDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
 		val roots = getDownloadRoots(space)
 		if (roots.isEmpty()) return emptySet()
@@ -88,9 +93,9 @@ class DownloadedContentClassifier @Inject constructor(
 		return indexed + found
 	}
 
-	/** Fast alias used by interactive counts/cards; always index-only and filesystem-free. */
+	/** Existing index-only known-copy lookup, including historical maintenance evidence. */
 	suspend fun getKnownDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> =
-		getDownloadedIds(space, mangaIds)
+		getLegacyKnownDownloadedIds(space, mangaIds)
 
 	/**
 	 * Space-scoped persisted-download predicate used as a coarse SQL filter.
