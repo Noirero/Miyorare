@@ -11,12 +11,14 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.index.DownloadPathAlias
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.longHashCode
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
 import java.io.File
 import javax.inject.Inject
 
@@ -112,10 +114,14 @@ internal class NormalDownloadPriorIdentityReader @Inject constructor(
 	 * Reconcile a caller-verified directory using persisted evidence. Unknown personal keys/IDs
 	 * withhold this identity projection, not the caller's independently verified physical
 	 * presence. No new identity becomes authoritative even when the prior evidence is complete.
-	 * Migrated/other layouts require a separate compatible reconciliation path.
+	 * The caller may carry the alias from successful migrated-index verification;
+	 * it is revalidated, never used as proof on its own. Only target manga records
+	 * are consulted. No old-owner personal data is copied or reassigned.
 	 */
 	suspend fun reconcileVerifiedDirectory(
 		remote: Manga, candidate: LocalManga,
+		verifiedMigration: DownloadPathAlias? = null,
+		sourceAliases: SourceAliasRegistry? = null,
 	): NormalPriorDirectoryReconciliation? = withContext(Dispatchers.IO) {
 		if (candidate.manga.id != remote.id || candidate.manga.source != LocalMangaSource ||
 			!candidate.file.isDirectory
@@ -123,6 +129,14 @@ internal class NormalDownloadPriorIdentityReader @Inject constructor(
 		val evidence = read(remote, candidate.file) ?: return@withContext null
 		val projection = if (evidence.unresolvedIds.isNotEmpty() || evidence.unresolvedLocalKeys.isNotEmpty()) {
 			null
+		} else if (verifiedMigration != null) {
+			// No direct/sidecar-free fallback if the migrated index no longer validates.
+			sourceAliases?.let {
+				NormalDownloadDirectoryReconciler.reconcileMigratedIndexed(
+					remote, candidate.file, verifiedMigration, it,
+					requireFinalized = true, verifiedPrevious = evidence.verified,
+				)
+			}
 		} else if (File(candidate.file, LocalMangaOutput.ENTRY_NAME_INDEX).exists()) {
 			NormalDownloadDirectoryReconciler.reconcileIndexed(remote, candidate.file, evidence.verified, requireFinalized = true)
 		} else {

@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.download.domain.ActiveNormalDownloadRoots
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.NormalDownloadScope
+import org.koitharu.kotatsu.local.data.index.DownloadPathAlias
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -54,6 +55,7 @@ internal data class NormalCandidateResolution(
 private data class NormalVerifiedCandidate(
 	val physical: LocalManga,
 	val migratedArchiveIdentity: NormalMigratedArchiveIdentity? = null,
+	val verifiedDirectoryMigration: DownloadPathAlias? = null,
 )
 
 /**
@@ -288,11 +290,13 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 			// A canonical sibling proves neither the ID nor personal key of a local-only
 			// chapter. Reconcile stored evidence only after a unique, complete directory
 			// candidate is established. Keep physical evidence even if identity is unknown.
-			// This is not a publication fence; migrated directories and root archives do
-			// not acquire identity authority from this standalone reconciliation.
+			// Carry the verified migration context forward; a direct-index retry would
+			// discard valid migrated prior identity. This is not a publication fence.
 			val directory = resolution.uniqueCandidate?.takeIf { it.file.isDirectory }
 			if (directory == null) resolution else resolution.copy(
-				directoryIdentity = priorIdentity.reconcileVerifiedDirectory(manga, directory),
+				directoryIdentity = priorIdentity.reconcileVerifiedDirectory(
+					manga, directory, verified.single().verifiedDirectoryMigration, sourceAliases,
+				),
 			)
 		}
 	}
@@ -353,7 +357,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 					val alias = index.getDownloadAliasForScanner(manga.id) ?: return@runCatchingCancellable null
 					return@runCatchingCancellable NormalDownloadDirectoryReconciler.reconcileMigratedIndexed(
 						manga, physical, alias, sourceAliases, requireFinalized = true,
-					)?.let { NormalVerifiedCandidate(it) }
+					)?.let { NormalVerifiedCandidate(it, verifiedDirectoryMigration = alias) }
 				}
 				// A non-registry source-qualified path is not enough on its own. Only
 				// permit this narrower manual subset when durable prior locator evidence

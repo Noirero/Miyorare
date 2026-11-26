@@ -2145,6 +2145,141 @@ class DownloadedLocalStateTest {
 		assertArrayEquals(bytes, sibling.readBytes())
 	}
 
+	/** T05 closure: a verified migrated index must not drop corroborated target-local identity. */
+	@Test fun normalScannerMigratedIndexedRetainsCorroboratedPriorIdentity() = runBlocking {
+		val seed = remote(810_108L)
+		val oldSource = MissingMangaSource("MIHON_2677079941490683989")
+		val first = seed.chapters.orEmpty().single().copy(source = oldSource, url = "/chapter/1", number = 0f)
+		val second = first.copy(id = first.id + 1L, title = "Chapter 2", url = "/chapter/2")
+		val old = seed.copy(source = oldSource, chapters = listOf(first, second))
+		val targetSource = MissingMangaSource("TSUKI:MIYORARE:miyorare-id:BACAMI")
+		val newFirst = first.copy(id = first.id + 10L, source = targetSource)
+		val newSecond = second.copy(id = second.id + 10L, source = targetSource)
+		val target = old.copy(id = 810_109L, source = targetSource, chapters = listOf(newFirst, newSecond))
+		ids += target.id
+		data.storeManga(old, replaceExisting = true)
+		favourite(target)
+		val container = download(root, old.copy(chapters = listOf(first))).file.canonicalFile
+		val original = File(container, "Chapter 1.cbz")
+		val bytes = original.readBytes()
+		val sibling = File(container, "Chapter 2.cbz")
+		original.copyTo(sibling)
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(original.renameTo(special))
+		val legacy = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == "Chapter 1 Special" }
+		val key = ChapterPersonalKey.of(legacy)
+		val page = local.getPages(legacy).first()
+		val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		sidecar.writeText(MangaIndex(null).apply {
+			setMangaInfo(old)
+			addChapter(IndexedValue(0, first), original.name)
+			addChapter(IndexedValue(1, second), sibling.name)
+		}.toString())
+		val indexBytes = sidecar.readBytes()
+		index.rememberVerifiedPath(old.id, container)
+		requireNotNull(index.prepareDownloadIdentityMove(old.id, target.id,
+			mapOf(first.id to newFirst.id, second.id to newSecond.id)))
+		val alias = requireNotNull(index.getDownloadAliasForScanner(target.id))
+		val owner = FavouriteDownloadIndexEntity(target.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		val dao = db.getFavouriteDownloadIndexDao()
+		dao.upsert(owner)
+		val personal = ChapterPersonalEntity(target.id, key.source, key.url, 4, "Migrated local-only prior")
+		val progress = ChapterProgressEntity(target.id, key.source, key.url, FavouriteSpace.NORMAL.dbValue, 1, 0, 2)
+		val bookmark = BookmarkEntity(target.id, page.id, legacy.id, 0, 0, page.url, 100L, 0.5f)
+		val history = HistoryEntity(target.id, 100L, 200L, legacy.id, 0, 0f, 0.5f, 0L, 1)
+		suspend fun resolve() = requireNotNull(normalDirectoryDiscovery.resolveCandidates(target, FavouriteSpace.NORMAL))
+		db.getChapterPersonalDao().upsert(personal)
+		db.getChapterProgressDao().upsert(progress)
+		val keyOnly = resolve()
+		assertEquals(container, keyOnly.uniqueCandidate?.file)
+		val withheld = requireNotNull(keyOnly.directoryIdentity)
+		assertEquals(setOf(key), withheld.evidence.unresolvedLocalKeys)
+		assertNull(withheld.projection)
+		db.getBookmarksDao().insert(bookmark)
+		db.getHistoryDao().insert(history)
+		settings.setChapterReadOverrides(target.id, mapOf(legacy.id to true))
+		suspend fun assertStable(originalPresent: Boolean) {
+			val result = resolve()
+			assertEquals(container, result.uniqueCandidate?.file)
+			val identity = requireNotNull(result.directoryIdentity)
+			assertTrue(identity.evidence.unresolvedIds.isEmpty())
+			assertTrue(identity.evidence.unresolvedLocalKeys.isEmpty())
+			val chapters = requireNotNull(identity.projection).manga.chapters.orEmpty()
+			assertEquals(originalPresent, chapters.any { it.id == newFirst.id })
+			assertTrue(chapters.any { it.id == newSecond.id })
+			val restored = chapters.single { it.id == legacy.id }
+			assertEquals(key, ChapterPersonalKey.of(restored))
+			assertEquals(page.url, local.getPages(restored).first().url)
+		}
+		assertStable(false)
+		val unrelated = File(container, "Chapter 0.cbz").apply { writeBytes(bytes) }
+		assertStable(false)
+		assertTrue(unrelated.delete())
+		original.writeBytes(bytes)
+		assertStable(true)
+		val unknownId = legacy.id xor 123456789L
+		assertFalse(unknownId in setOf(0L, legacy.id, newFirst.id, newSecond.id))
+		settings.setChapterReadOverrides(target.id, mapOf(legacy.id to true, unknownId to false))
+		val unresolved = requireNotNull(resolve().directoryIdentity)
+		assertEquals(setOf(unknownId), unresolved.evidence.unresolvedIds)
+		assertNull(unresolved.projection)
+		settings.setChapterReadOverrides(target.id, mapOf(legacy.id to true))
+		assertStable(true)
+		assertEquals(listOf(personal), db.getChapterPersonalDao().findAll(listOf(target.id)))
+		assertEquals(listOf(progress), db.getChapterProgressDao().findAll(listOf(target.id), FavouriteSpace.NORMAL.dbValue))
+		assertEquals(listOf(bookmark), db.getBookmarksDao().findAll(target.id))
+		assertEquals(history, db.getHistoryDao().findIncludingDeleted(target.id))
+		assertEquals(mapOf(legacy.id to true), settings.getChapterReadOverrides(target.id))
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, target.id))
+		assertEquals(alias, index.getDownloadAliasForScanner(target.id))
+		assertArrayEquals(indexBytes, sidecar.readBytes())
+		for (file in listOf(original, sibling, special)) assertArrayEquals(bytes, file.readBytes())
+	}
+
+	/** T02 foundation: scoped matching keeps the exact corrupt final artifact, independent of origin. */
+	@Test fun normalScannerCorruptFinalArtifactKeepsExactScopedLocatorAcrossOrigins() = runBlocking {
+		val seed = remote(810_110L)
+		val source = MissingMangaSource("MIHON_2677079941490683989")
+		val chapter = seed.chapters.orEmpty().single().copy(source = source, url = "/chapter/1")
+		val manual = seed.copy(source = source, chapters = listOf(chapter))
+		favourite(manual)
+		val manualDir = File(root, "downloads/Bacami (ID)/${manual.title}").apply { check(mkdirs()) }.canonicalFile
+		val corrupt = byteArrayOf(1, 2, 3, 4)
+		val manualFile = File(manualDir, "Chapter 1.cbz").apply { writeBytes(corrupt) }
+		val writer = remote(810_111L)
+		favourite(writer)
+		val writerDir = download(root, writer).file.canonicalFile
+		val writerFile = File(writerDir, "Chapter 1.cbz")
+		val dao = db.getFavouriteDownloadIndexDao()
+		val owner = FavouriteDownloadIndexEntity(writer.id, FavouriteSpace.NORMAL.dbValue, writerDir.path)
+		dao.upsert(owner)
+		writerFile.writeBytes(corrupt)
+		suspend fun assertCorrupt(manga: Manga, file: File) {
+			val result = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL))
+			assertEquals(file.parentFile, result.uniqueCandidate?.file)
+			val identity = requireNotNull(result.directoryIdentity)
+			val selected = requireNotNull(identity.projection).manga.chapters.orEmpty().single()
+			assertEquals(manga.chapters.orEmpty().single().id, selected.id)
+			assertEquals(file.canonicalPath, android.net.Uri.parse(selected.url).path)
+			assertTrue(runCatching { local.getPages(selected) }.getOrNull().isNullOrEmpty())
+			assertArrayEquals(corrupt, file.readBytes())
+		}
+		assertCorrupt(manual, manualFile)
+		assertCorrupt(writer, writerFile)
+		val sidecar = File(writerDir, LocalMangaOutput.ENTRY_NAME_INDEX)
+		sidecar.writeText(MangaIndex(null).apply {
+			setMangaInfo(writer)
+			addChapter(IndexedValue(0, writer.chapters.orEmpty().single()), writerFile.name)
+		}.toString())
+		val indexBytes = sidecar.readBytes()
+		assertCorrupt(writer, writerFile)
+		assertArrayEquals(indexBytes, sidecar.readBytes())
+		assertFalse(File(manualDir, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+		assertNull(dao.findEntry(FavouriteSpace.NORMAL.dbValue, manual.id))
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, writer.id))
+	}
+
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
 		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)

@@ -62,7 +62,8 @@ internal object NormalDownloadDirectoryReconciler {
 		alias: DownloadPathAlias,
 		sourceAliases: SourceAliasRegistry,
 		requireFinalized: Boolean = false,
-	): LocalManga? = reconcile(remote, container, indexedLayout = true, verifiedPrevious = emptyList(),
+		verifiedPrevious: Collection<MangaChapter> = emptyList(),
+	): LocalManga? = reconcile(remote, container, indexedLayout = true, verifiedPrevious = verifiedPrevious,
 		migration = alias, sourceAliases = sourceAliases, requireFinalized = requireFinalized)
 
 	private suspend fun reconcile(
