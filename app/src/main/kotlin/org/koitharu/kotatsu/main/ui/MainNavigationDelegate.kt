@@ -268,7 +268,7 @@ class MainNavigationDelegate(
 
 	private fun onNavigationItemSelected(@IdRes itemId: Int, userNavbar: Boolean = false): Boolean {
 		val newFragment = fragmentClassForItem(itemId) ?: return false
-		if (fragmentManager.isStateSaved) return false
+		if (userNavbar && fragmentManager.isStateSaved) return false
 		if (!setPrimaryFragment(newFragment, userNavbar)) {
 			onNavigationItemReselected()
 		}
@@ -333,6 +333,8 @@ class MainNavigationDelegate(
 	}
 
 	private fun previewTab(@IdRes itemId: Int?): Boolean {
+		// The gesture's final null notification must not cancel the visual tail of a valid commit.
+		if (itemId == null && tabPreview == null) return true
 		val previous = tabPreview
 		clearTabPreview()
 		if (itemId == null) return true
@@ -388,11 +390,15 @@ class MainNavigationDelegate(
 		// Transfer the already-visible Favorites producer to RESUMED without
 		// cancelling it in between. A different release target gets no handoff.
 		dragPreviewMatched = tabPreview?.itemId == itemId
+		val handoff = tabPreview?.target?.takeIf { dragPreviewMatched }?.let(slidePresentation::captureHandoff)
 		val favourites = tabPreview?.favourites.takeIf { dragPreviewMatched && itemId == R.id.nav_favorites }
 		clearTabPreview(keepFavouritesWork = favourites != null)
 		committingTabDrag = true
 		try {
 			navBar.selectedItemId = itemId
+			if (handoff != null && primaryFragment?.view === handoff.incoming) {
+				slidePresentation.resume(handoff)
+			}
 		} finally {
 			committingTabDrag = false
 			dragPreviewMatched = false

@@ -33,6 +33,15 @@ internal class DirectionalSlidePresentation {
 		val fromX: Float,
 		val toX: Float,
 		val outgoingAfter: Int,
+		val distance: Float,
+	)
+
+	internal data class Handoff(
+		val outgoing: View,
+		val incoming: View,
+		val outgoingOffset: Float,
+		val incomingOffset: Float,
+		val distance: Float,
 	)
 
 	private var state: PairState? = null
@@ -47,19 +56,48 @@ internal class DirectionalSlidePresentation {
 			outgoing.visibility = outgoingAfter
 			return
 		}
-		val pair = PairState(outgoing, incoming, outgoing.translationX, incoming.translationX, outgoingAfter)
-		state = pair
-		outgoing.visibility = View.VISIBLE
 		val distance = direction * width.toFloat()
-		incoming.translationX = pair.toX + distance
+		val pair = PairState(outgoing, incoming, outgoing.translationX, incoming.translationX, outgoingAfter, distance)
+		animate(pair, 0f, distance, outgoing.resources.getInteger(R.integer.navigation_slide_duration).toLong())
+	}
+
+	/** Snapshot visual offsets before the delegate restores views and commits a valid target. */
+	fun captureHandoff(incoming: View): Handoff? = state?.takeIf { it.incoming === incoming }?.let {
+		Handoff(it.outgoing, it.incoming, it.outgoing.translationX - it.fromX,
+			it.incoming.translationX - it.toX, it.distance)
+	}
+
+	/** Continue only the remaining visual distance after the real fragment commit. */
+	fun resume(handoff: Handoff) {
+		finish()
+		val outgoing = handoff.outgoing
+		val incoming = handoff.incoming
+		if (!outgoing.isAttachedToWindow || !incoming.isAttachedToWindow ||
+			outgoing.parent !== incoming.parent || outgoing.visibility == View.VISIBLE ||
+			!incoming.context.isAnimationsEnabled || handoff.distance == 0f
+		) return
+		val fraction = kotlin.math.abs(handoff.incomingOffset / handoff.distance).coerceIn(0f, 1f)
+		if (fraction <= 0.01f) return
+		val pair = PairState(outgoing, incoming, outgoing.translationX, incoming.translationX,
+			outgoing.visibility, handoff.distance)
+		val duration = (outgoing.resources.getInteger(R.integer.navigation_slide_duration) * fraction).toLong().coerceAtLeast(1L)
+		animate(pair, handoff.outgoingOffset, handoff.incomingOffset, duration)
+	}
+
+	private fun animate(pair: PairState, fromOffset: Float, toOffset: Float, durationMs: Long) {
+		state = pair
+		pair.outgoing.translationX = pair.fromX + fromOffset
+		pair.incoming.translationX = pair.toX + toOffset
+		pair.outgoing.visibility = View.VISIBLE
+		pair.incoming.visibility = View.VISIBLE
 		animator = ValueAnimator.ofFloat(0f, 1f).apply {
-			duration = outgoing.resources.getInteger(R.integer.navigation_slide_duration).toLong()
+			duration = durationMs
 			interpolator = DecelerateInterpolator()
 			addUpdateListener {
 				if (state === pair) {
 					val progress = it.animatedValue as Float
-					outgoing.translationX = pair.fromX - distance * progress
-					incoming.translationX = pair.toX + distance * (1f - progress)
+					pair.outgoing.translationX = pair.fromX + fromOffset + (-pair.distance - fromOffset) * progress
+					pair.incoming.translationX = pair.toX + toOffset * (1f - progress)
 				}
 			}
 			addListener(object : AnimatorListenerAdapter() {

@@ -67,7 +67,10 @@ internal class NavigationTabDrag(
 	}
 
 	fun cancel() {
-		val drag = stream ?: return
+		val drag = stream ?: run {
+			if (settle != null) clearIndicator()
+			return
+		}
 		drag.rejected = true
 		if (drag.captured) {
 			showPreview(null)

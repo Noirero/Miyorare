@@ -5,6 +5,9 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration as AndroidConfiguration
 import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
 import org.koitharu.kotatsu.core.ui.widgets.NavigationTabDrag
+import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
+import org.koitharu.kotatsu.core.ui.widgets.DirectionalSlidePresentation
+import android.widget.FrameLayout
 import androidx.compose.ui.geometry.Rect as SlotRect
 import android.graphics.Rect
 import android.os.SystemClock
@@ -165,7 +168,7 @@ class DiscoveryNavigationRuntimeTest {
 		launch().use { scenario ->
 			compose.waitForIdle()
 			scenario.onActivity { activity ->
-				val bar = checkNotNull(activity.bottomNav)
+				val bar = checkNotNull(activity.bottomNav as? FloatingBottomNavigationView)
 				bar.selectFromUser(R.id.nav_discovery_hub)
 				bar.selectFromUser(R.id.nav_local)
 				bar.selectFromUser(R.id.nav_favorites)
@@ -198,6 +201,27 @@ class DiscoveryNavigationRuntimeTest {
 		assertEquals(NavigationMotion.CLASSIC_GLIDE, prefs.motion)
 		assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
 		assertEquals(originalLabels, raw.getBoolean(AppSettings.KEY_NAV_LABELS, true))
+	}
+
+	@Test fun directionalPresentationCleanupRestoresOriginalTranslationsAndVisibility() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val parent = FrameLayout(app)
+			val first = View(app).apply { translationX = 3f }
+			val second = View(app).apply { translationX = 5f; visibility = View.INVISIBLE }
+			val third = View(app).apply { translationX = 7f; visibility = View.INVISIBLE }
+			for (child in listOf(first, second, third)) parent.addView(child, FrameLayout.LayoutParams(300, 100))
+			parent.layout(0, 0, 300, 100)
+			val presentation = DirectionalSlidePresentation()
+			presentation.start(first, second, 1, View.INVISIBLE)
+			presentation.start(second, third, 1, View.INVISIBLE)
+			presentation.finish()
+			assertEquals(View.INVISIBLE, first.visibility)
+			assertEquals(View.INVISIBLE, second.visibility)
+			assertEquals(View.VISIBLE, third.visibility)
+			assertEquals(3f, first.translationX, 0.01f)
+			assertEquals(5f, second.translationX, 0.01f)
+			assertEquals(7f, third.translationX, 0.01f)
+		}
 	}
 
 	@Test fun dragIndicatorMovesWithinOneSlotWithoutRepeatedPreview() {

@@ -58,7 +58,7 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 		bar.setTabDragListeners(
 			preview = { id ->
 				if (detached) true else if (id == null || id in pageViews) {
-					render(id ?: committed)
+					if (id == null) restoreCommitted() else render(id)
 					true
 				} else false
 			},
@@ -68,15 +68,22 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 
 	fun configure(nextMotion: NavigationMotion, nextTransition: ScreenTransition, legacy: Boolean, labels: Boolean) {
 		if (motion != nextMotion || transition != nextTransition) {
-			presentation.finish()
 			bar.cancelTabDrag()
-			render(committed)
+			restoreCommitted()
 			motion = nextMotion
 			transition = nextTransition
 			bar.setNavigationMotion(motion)
 		}
 		bar.setUseLegacyNavigation(legacy)
 		bar.setComposeLabeled(labels)
+	}
+
+	private fun restoreCommitted() {
+		// A final null after a successful selection leaves the accepted animation running.
+		if (visible == committed) return
+		presentation.finish()
+		visible = committed
+		pageViews.forEach { (id, view) -> view.visibility = if (id == committed) View.VISIBLE else View.INVISIBLE }
 	}
 
 	private fun render(id: Int) {
