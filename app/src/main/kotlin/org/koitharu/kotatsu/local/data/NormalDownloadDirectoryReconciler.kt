@@ -35,7 +35,9 @@ internal object NormalDownloadDirectoryReconciler {
 		remote: Manga,
 		container: File,
 		verifiedPrevious: Collection<MangaChapter> = emptyList(),
-	): LocalManga? = reconcile(remote, container, indexedLayout = true, verifiedPrevious = verifiedPrevious)
+		requireFinalized: Boolean = false,
+	): LocalManga? = reconcile(remote, container, indexedLayout = true,
+		verifiedPrevious = verifiedPrevious, requireFinalized = requireFinalized)
 
 	/**
 	 * Previous local-only chapters must be independently verified against this manga, scope and physical
@@ -45,7 +47,9 @@ internal object NormalDownloadDirectoryReconciler {
 		remote: Manga,
 		container: File,
 		verifiedPrevious: Collection<MangaChapter> = emptyList(),
-	): LocalManga? = reconcile(remote, container, indexedLayout = false, verifiedPrevious = verifiedPrevious)
+		requireFinalized: Boolean = false,
+	): LocalManga? = reconcile(remote, container, indexedLayout = false,
+		verifiedPrevious = verifiedPrevious, requireFinalized = requireFinalized)
 
 	/**
 	 * Only for an independently space-verified, exact migration container. A redirect is
@@ -57,8 +61,9 @@ internal object NormalDownloadDirectoryReconciler {
 		container: File,
 		alias: DownloadPathAlias,
 		sourceAliases: SourceAliasRegistry,
+		requireFinalized: Boolean = false,
 	): LocalManga? = reconcile(remote, container, indexedLayout = true, verifiedPrevious = emptyList(),
-		migration = alias, sourceAliases = sourceAliases)
+		migration = alias, sourceAliases = sourceAliases, requireFinalized = requireFinalized)
 
 	private suspend fun reconcile(
 		remote: Manga,
@@ -67,12 +72,25 @@ internal object NormalDownloadDirectoryReconciler {
 		verifiedPrevious: Collection<MangaChapter>,
 		migration: DownloadPathAlias? = null,
 		sourceAliases: SourceAliasRegistry? = null,
+		requireFinalized: Boolean,
 	): LocalManga? = withContext(Dispatchers.IO) {
 		runCatchingCancellable {
 			val root = container.canonicalFile
 			if (!root.isDirectory || !root.canRead()) return@runCatchingCancellable null
 			val entries = root.listFiles() ?: return@runCatchingCancellable null
 			if (entries.any { it.name == ".notamanga" }) return@runCatchingCancellable null
+			// The real standalone writer can fall back from rename to a copy at the final
+			// path while the temp is still present. Use this same inventory for staging
+			// evidence and matching, not a separate earlier listing. This is still not
+			// a producer mutation/visibility fence; a later generation check is required.
+			if (requireFinalized) {
+				val names = entries.mapTo(HashSet()) { it.name.lowercase(Locale.ROOT) }
+				if (names.any { name ->
+					(name.endsWith(".cbz") || name.endsWith(".zip")) &&
+						(name + LocalMangaOutput.SUFFIX_TMP in names ||
+							name + ".bak" + LocalMangaOutput.SUFFIX_TMP in names)
+				}) return@runCatchingCancellable null
+			}
 			val sidecar = entries.singleOrNull { it.name == LocalMangaOutput.ENTRY_NAME_INDEX }
 			if (indexedLayout != (sidecar != null)) return@runCatchingCancellable null
 			val index = if (sidecar != null) {

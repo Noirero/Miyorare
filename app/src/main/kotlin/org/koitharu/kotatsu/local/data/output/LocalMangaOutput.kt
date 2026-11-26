@@ -288,6 +288,20 @@ sealed class LocalMangaOutput(
 			return parents.flatMapTo(LinkedHashSet()) { parent -> titleNames.map { File(parent, it) } }
 		}
 
+		/** Exact title keys using the same filename normalization as deterministic candidates. */
+		internal fun normalScannerTitleKeys(title: String): Set<String> =
+			setOf(title.toReadableFileName().lowercase(Locale.ROOT), title.toFileNameSafe().lowercase(Locale.ROOT))
+
+		/** Registry-proven source folder naming, never a display-name-to-source lookup. */
+		internal fun normalScannerVerifiedAliasCandidates(
+			root: File, title: String, displayName: String, language: String,
+		): Set<File> {
+			val name = externalSourceDirectoryName(displayName, language).toReadableFileName()
+			val parents = listOf(File(File(root, DOWNLOADS_DIR_NAME), name), File(root, name))
+			val titles = setOf(title.toReadableFileName(), title.toFileNameSafe())
+			return parents.flatMapTo(LinkedHashSet()) { parent -> titles.map { File(parent, it) } }
+		}
+
 		/** Candidate paths only, never identity proof. No output is opened, recovered, or modified. */
 		internal fun maintenanceCandidates(root: File, manga: Manga, directoryCache: MutableMap<String, List<File>> = HashMap()): List<File> {
 			val downloads = File(root, DOWNLOADS_DIR_NAME)

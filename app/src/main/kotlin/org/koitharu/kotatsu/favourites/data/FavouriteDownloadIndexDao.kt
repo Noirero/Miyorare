@@ -25,12 +25,6 @@ interface FavouriteDownloadIndexDao {
 	@Query("SELECT * FROM favourite_download_index WHERE path IN (:paths)")
 	suspend fun findEntriesByPaths(paths: Collection<String>): List<FavouriteDownloadIndexEntity>
 
-	/** Scanner boundary: canonical container, ancestors and descendants, without a global row scan. */
-	@Query("SELECT * FROM favourite_download_index WHERE path IN (:ancestors) OR (path >= :childPrefix AND path < :childUpperBound)")
-	suspend fun findOverlappingCanonicalPaths(
-		ancestors: Collection<String>, childPrefix: String, childUpperBound: String,
-	): List<FavouriteDownloadIndexEntity>
-
 	@Upsert
 	suspend fun upsert(entity: FavouriteDownloadIndexEntity)
 

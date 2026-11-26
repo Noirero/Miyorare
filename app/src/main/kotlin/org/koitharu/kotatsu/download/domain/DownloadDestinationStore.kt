@@ -15,6 +15,7 @@ import javax.inject.Singleton
 data class ActiveNormalDownloadRoots(
 	val normalRoot: File?,
 	val privateRoot: File?,
+	val historicalPrivateRoots: List<File> = emptyList(),
 )
 
 /**
@@ -67,11 +68,14 @@ class DownloadDestinationStore @Inject constructor(
 	 * Publication must separately fence changes (including A -> B -> A).
 	 */
 	internal fun captureNormalScannerRoots(): ActiveNormalDownloadRoots {
-		val (configuredNormal, configuredPrivate) = withDestinationMutationLock {
-			configuredRoot(FavouriteSpace.NORMAL) to configuredRoot(FavouriteSpace.PRIVATE)
+		val (configuredNormal, configuredPrivate, privateHistory) = withDestinationMutationLock {
+			val privateRoot = configuredRoot(FavouriteSpace.PRIVATE)
+			val history = readLegacyRoots(FavouriteSpace.PRIVATE) +
+				if (privateRoot == null) readLegacyRoots(FavouriteSpace.NORMAL) else emptyList()
+			Triple(configuredRoot(FavouriteSpace.NORMAL), privateRoot, history.distinct())
 		}
 		val normal = configuredNormal ?: defaultNormalRootForScan()
-		return ActiveNormalDownloadRoots(normal, configuredPrivate ?: normal)
+		return ActiveNormalDownloadRoots(normal, configuredPrivate ?: normal, privateHistory)
 	}
 
 	private fun defaultNormalRootForScan(): File? = runCatching {

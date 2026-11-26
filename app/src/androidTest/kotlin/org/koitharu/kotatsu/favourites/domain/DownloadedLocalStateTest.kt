@@ -74,6 +74,7 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.MangaIndex
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryReconciler
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryDiscovery
+import org.koitharu.kotatsu.local.data.NormalDownloadPriorIdentityReader
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -1198,6 +1199,212 @@ class DownloadedLocalStateTest {
 		assertEquals(alias, index.getDownloadAliasForScanner(target.id))
 		assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, target.id))
 		assertArrayEquals(bytes, file.readBytes())
+	}
+
+
+	/** T01/T10: real manual sidecar-free proof, known competing titles and historical Private overlap. */
+	@Test fun normalScannerManualSidecarFreeProofRequiresSourceTitleAndChapterEvidence() = runBlocking {
+		val seed = remote(810_083L)
+		val source = MissingMangaSource("MIHON_2677079941490683989")
+		val chapter = seed.chapters.orEmpty().single().copy(source = source, url = "/chapter/1")
+		val manga = seed.copy(source = source, chapters = listOf(chapter))
+		favourite(manga)
+		val container = File(root, "downloads/Bacami (ID)/${manga.title}").apply { check(mkdirs()) }.canonicalFile
+		val artifact = File(container, "Chapter 1.cbz").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+		val bytes = artifact.readBytes()
+		val dao = db.getFavouriteDownloadIndexDao()
+		suspend fun verify() = normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, container)
+		assertEquals(chapter.id, requireNotNull(verify()).manga.chapters.orEmpty().single().id)
+		assertNull(dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertFalse(File(container, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+
+		val other = remote(810_084L).copy(title = manga.title, source = MissingMangaSource("MIHON_4838485846640015979"), chapters = emptyList())
+		favourite(other)
+		// Known Komiku and Bacami directories are distinct, despite identical titles.
+		assertNotNull(verify())
+		val foreign = remote(810_085L).copy(title = manga.title, source = MissingMangaSource("UNVERIFIED_SOURCE"), chapters = emptyList())
+		data.storeManga(foreign, replaceExisting = true)
+		assertNull(verify())
+		val movedForeign = foreign.copy(title = "Unrelated title")
+		data.storeManga(movedForeign, replaceExisting = true)
+		assertNotNull(verify())
+		val sameSource = remote(810_086L).copy(title = manga.title.uppercase(java.util.Locale.ROOT), source = source, url = "/different-manga", chapters = emptyList())
+		data.storeManga(sameSource, replaceExisting = true)
+		assertNull(verify())
+		data.storeManga(sameSource.copy(title = "Different title"), replaceExisting = true)
+		assertNotNull(verify())
+
+		// A title-only legacy location is a candidate hint, not manual source proof.
+		val bare = File(root, "downloads/${manga.title}").apply { check(mkdirs()) }
+		File(bare, artifact.name).writeBytes(bytes)
+		assertNull(normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, bare))
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(artifact.renameTo(special))
+		assertNull(verify())
+		assertTrue(special.renameTo(artifact))
+
+		// Move Private away from a formerly shared root. History is a safety boundary,
+		// never an extra source of positive Normal presence.
+		destinations.setRoot(FavouriteSpace.PRIVATE, root)
+		destinations.setRoot(FavouriteSpace.PRIVATE, privateRoot)
+		assertNull(verify())
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		dao.upsert(owner)
+		assertNotNull(verify())
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertArrayEquals(bytes, artifact.readBytes())
+		assertFalse(File(container, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+	}
+
+	/** T10: absolute noncanonical child path must not hide a Private ownership conflict. */
+	@Test fun normalScannerCanonicalOwnershipSnapshotRejectsNoncanonicalConflicts() = runBlocking {
+		val manga = remote(810_087L)
+		favourite(manga)
+		val container = download(root, manga).file.canonicalFile
+		val artifact = File(container, "Chapter 1.cbz")
+		val bytes = artifact.readBytes()
+		val dao = db.getFavouriteDownloadIndexDao()
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		dao.upsert(owner)
+		val foreign = remote(810_088L)
+		data.storeManga(foreign, replaceExisting = true)
+		val noncanonical = File(container, "./${artifact.name}").path
+		assertNotEquals(artifact.canonicalPath, noncanonical)
+		assertEquals(artifact.canonicalPath, File(noncanonical).canonicalPath)
+		val foreignOwner = FavouriteDownloadIndexEntity(foreign.id, FavouriteSpace.PRIVATE.dbValue, noncanonical)
+		dao.upsert(foreignOwner)
+		val evidence = requireNotNull(normalDirectoryDiscovery.captureVerificationEvidence())
+		assertNull(normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, container, evidence))
+		assertEquals(foreignOwner, dao.findEntry(FavouriteSpace.PRIVATE.dbValue, foreign.id))
+		dao.delete(FavouriteSpace.PRIVATE.dbValue, foreign.id)
+		// A new work snapshot is required after metadata changes.
+		val refreshed = requireNotNull(normalDirectoryDiscovery.captureVerificationEvidence())
+		assertNotNull(normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, container, refreshed))
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertArrayEquals(bytes, artifact.readBytes())
+	}
+
+	/** T01/T03: exercise the real directory writer before and after durable chapter flush. */
+	@Test fun normalScannerSidecarFreeProofWaitsForActualStandaloneWriterFlush() = runBlocking {
+		val manga = remote(810_089L)
+		favourite(manga)
+		val image = File(root, "writer-fixture.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val chapter = manga.chapters.orEmpty().single()
+		val output = LocalMangaOutput.getOrCreate(root, manga, DownloadFormat.MULTIPLE_CBZ)
+		try {
+			val container = output.rootFile.canonicalFile
+			val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path)
+			val dao = db.getFavouriteDownloadIndexDao()
+			dao.upsert(owner)
+			suspend fun verify() = normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, container)
+			output.addPage(IndexedValue(0, chapter), image, 0, MimeType("image/png"))
+			val staging = File(container, "Chapter 1.cbz" + LocalMangaOutput.SUFFIX_TMP)
+			val final = File(container, "Chapter 1.cbz")
+			assertTrue(staging.isFile)
+			assertFalse(final.exists())
+			assertNull(verify())
+			assertTrue(output.flushChapter(chapter))
+			assertFalse(staging.exists())
+			assertTrue(final.isFile)
+			val bytes = final.readBytes()
+			assertEquals(chapter.id, requireNotNull(verify()).manga.chapters.orEmpty().single().id)
+			// Model the final-name-visible interval of the actual fallback copy. This is
+			// not a fault-injected writer concurrency test; it exercises the proof boundary.
+			staging.writeBytes(bytes)
+			assertNull(verify())
+			assertTrue(staging.delete())
+			assertNotNull(verify())
+			assertArrayEquals(bytes, final.readBytes())
+			assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+			output.finish()
+		} finally { output.close() }
+	}
+
+
+	/** T05: read durable ID + exact URI evidence without passing the old parser object to recovery. */
+	@Test fun normalScannerRecoversCorroboratedPriorLocalIdentityFromStoredPersonalRecords() = runBlocking {
+		val seed = remote(810_090L)
+		val first = seed.chapters.orEmpty().single().copy(number = 0f)
+		val second = first.copy(id = first.id + 1L, title = "Chapter 2", url = "/chapter/2")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, seed).file.canonicalFile
+		val original = File(container, "Chapter 1.cbz")
+		val bytes = original.readBytes()
+		val sibling = File(container, "Chapter 2.cbz")
+		original.copyTo(sibling)
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(original.renameTo(special))
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		val ownerDao = db.getFavouriteDownloadIndexDao()
+		ownerDao.upsert(owner)
+		// The surviving canonical sibling and exact owner establish this Normal container.
+		val initialProof = requireNotNull(normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, container))
+		assertTrue(initialProof.manga.chapters.orEmpty().any { it.id == second.id })
+		val legacy = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == "Chapter 1 Special" }
+		val key = ChapterPersonalKey.of(legacy)
+		val page = local.getPages(legacy).first()
+		assertFalse(legacy.id in setOf(first.id, second.id))
+		val personalDao = db.getChapterPersonalDao()
+		val progressDao = db.getChapterProgressDao()
+		val bookmarkDao = db.getBookmarksDao()
+		val historyDao = db.getHistoryDao()
+		personalDao.upsert(ChapterPersonalEntity(manga.id, key.source, key.url, 4, "Prior independent note"))
+		progressDao.upsert(ChapterProgressEntity(manga.id, key.source, key.url, FavouriteSpace.NORMAL.dbValue, 1, 0, 2))
+		val bookmark = BookmarkEntity(manga.id, page.id, legacy.id, 0, 0, page.url, 100L, 0.5f)
+		bookmarkDao.insert(bookmark)
+		historyDao.insert(HistoryEntity(manga.id, 100L, 200L, legacy.id, 0, 0f, 0.5f, 0L, 1))
+		// An unrelated ID-only read flag cannot prove a chapter locator.
+		val unknownId = legacy.id xor 123456789L
+		assertFalse(unknownId in setOf(0L, first.id, second.id, legacy.id))
+		settings.setChapterReadOverrides(manga.id, mapOf(legacy.id to true, unknownId to false))
+		val personalBefore = personalDao.findAll(listOf(manga.id)).toSet()
+		val progressBefore = progressDao.findAll(listOf(manga.id), FavouriteSpace.NORMAL.dbValue).toSet()
+		val historyBefore = historyDao.findIncludingDeleted(manga.id)
+		val overridesBefore = settings.getChapterReadOverrides(manga.id)
+
+		// Listing changes after the old parser generated the ID. Recovery uses only stored
+		// records, not that in-memory chapter nor a new ordinal. This is a fresh reader
+		// instance, not an instrumentation process-death test.
+		val unrelated = File(container, "Chapter 0.cbz").apply { writeBytes(bytes) }
+		val reparsed = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == legacy.title }
+		assertNotEquals("The pre-scanner ordinal really changed", legacy.id, reparsed.id)
+		suspend fun recover() = requireNotNull(NormalDownloadPriorIdentityReader(db, settings).read(manga, container))
+		val recovered = recover()
+		assertEquals(legacy.id, recovered.verified.single().id)
+		assertEquals(key, ChapterPersonalKey.of(recovered.verified.single()))
+		assertTrue(recovered.unresolvedLocalKeys.isEmpty())
+		assertEquals(setOf(unknownId), recovered.unresolvedIds)
+		val projected = requireNotNull(
+			NormalDownloadDirectoryReconciler.reconcileSidecarFree(manga, container, recovered.verified),
+		).manga.chapters.orEmpty()
+		assertEquals(legacy.id, projected.single { it.url == key.url }.id)
+		assertEquals(page.url, local.getPages(projected.single { it.id == legacy.id }).first().url)
+		assertTrue(unrelated.delete())
+		assertTrue(special.delete())
+		assertEquals(legacy.id, recover().verified.single().id) // reserve missing prior ID, no reassignment
+		special.writeBytes(bytes)
+		assertEquals(key, ChapterPersonalKey.of(recover().verified.single()))
+		assertEquals(personalBefore, personalDao.findAll(listOf(manga.id)).toSet())
+		assertEquals(progressBefore, progressDao.findAll(listOf(manga.id), FavouriteSpace.NORMAL.dbValue).toSet())
+		assertEquals(historyBefore, historyDao.findIncludingDeleted(manga.id))
+		assertEquals(overridesBefore, settings.getChapterReadOverrides(manga.id))
+		assertEquals(listOf(bookmark), bookmarkDao.findAll(manga.id))
+
+		// A stale/replaced image URL cannot independently establish the bookmark ID's locator.
+		bookmarkDao.upsert(listOf(bookmark.copy(imageUrl = page.url + "?stale=1")))
+		val ambiguous = recover()
+		assertTrue(ambiguous.verified.isEmpty())
+		assertEquals(setOf(key), ambiguous.unresolvedLocalKeys)
+		assertTrue(legacy.id in ambiguous.unresolvedIds)
+		assertArrayEquals(bytes, special.readBytes())
+		assertArrayEquals(bytes, sibling.readBytes())
+		assertEquals(owner, ownerDao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
