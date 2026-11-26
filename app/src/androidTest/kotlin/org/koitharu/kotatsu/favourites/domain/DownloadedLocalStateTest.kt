@@ -20,6 +20,8 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -60,6 +62,8 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.data.NormalDownloadObservationDao
+import org.koitharu.kotatsu.favourites.data.NormalDownloadObservationEntity
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListViewModel
@@ -2278,6 +2282,166 @@ class DownloadedLocalStateTest {
 		assertFalse(File(manualDir, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
 		assertNull(dao.findEntry(FavouriteSpace.NORMAL.dbValue, manual.id))
 		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, writer.id))
+	}
+
+	private fun observationStore(dao: NormalDownloadObservationDao = db.getNormalDownloadObservationDao()) =
+		NormalDownloadObservationStore(db, destinations, normalDownloadScope, normalDirectoryDiscovery, dao)
+
+	private suspend fun observedDownload(id: Long): Pair<Manga, File> {
+		val manga = remote(id)
+		favourite(manga)
+		val file = download(root, manga).file.canonicalFile
+		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, file.path))
+		return manga to file
+	}
+
+	/** T08: actual destination A -> B -> A invalidates work and cached read snapshots. */
+	@Test fun normalObservationRejectsRootAbaAndLateRead() = runBlocking {
+		val (manga, file) = observedDownload(810_112L)
+		val store = observationStore()
+		val space = FavouriteSpace.NORMAL
+		suspend fun read() = store.readVisible(listOf(manga), space)[manga.id]
+		assertTrue(store.scan(manga, space))
+		val previous = requireNotNull(read())
+		assertEquals(NormalObservationStatus.PRESENT, previous.fact.status)
+		val work = requireNotNull(store.begin(manga, space))
+		val result = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+		destinations.setRoot(space, File(root, "new-normal"))
+		destinations.setRoot(space, root)
+		assertFalse(store.publish(work, result))
+		assertNull(read())
+		assertFalse(store.isCurrent(manga, space, previous))
+		assertTrue(store.scan(manga, space))
+		assertEquals(file.path, requireNotNull(read()).fact.path)
+		assertTrue(store.takeRequests().full)
+	}
+
+	/** T09: stale positive and negative, overlapping producer intents, and no lost full request. */
+	@Test fun normalObservationRejectsBothMutationDirectionsAndCoalescesRequests() = runBlocking {
+		val (manga, file) = observedDownload(810_113L)
+		val store = observationStore()
+		val space = FavouriteSpace.NORMAL
+		val chapter = File(file, "Chapter 1.cbz")
+		val bytes = chapter.readBytes()
+		suspend fun read() = store.readVisible(listOf(manga), space)[manga.id]
+		assertTrue(store.scan(manga, space))
+		val positive = requireNotNull(read())
+		val stalePositive = requireNotNull(store.begin(manga, space))
+		val positiveResult = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+		val first = store.beginMutation(manga.id)
+		val overlapping = store.beginMutation(manga.id)
+		assertNull(read())
+		assertNull(store.begin(manga, space))
+		assertTrue(file.deleteRecursively())
+		store.finishMutation(manga.id, first)
+		assertNull(store.begin(manga, space))
+		store.finishMutation(manga.id, overlapping)
+		assertFalse(store.publish(stalePositive, positiveResult))
+		assertFalse(store.isCurrent(manga, space, positive))
+		assertTrue(store.scan(manga, space))
+		assertEquals(NormalObservationStatus.ABSENT, requireNotNull(read()).fact.status)
+		val staleNegative = requireNotNull(store.begin(manga, space))
+		val negativeResult = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+		val mutation = store.beginMutation(manga.id)
+		assertTrue(file.mkdirs())
+		chapter.writeBytes(bytes)
+		store.finishMutation(manga.id, mutation)
+		assertFalse(store.publish(staleNegative, negativeResult))
+		assertTrue(store.scan(manga, space))
+		assertEquals(NormalObservationStatus.PRESENT, requireNotNull(read()).fact.status)
+		assertTrue(store.takeRequests().full)
+		store.requestFull()
+		assertTrue(store.takeRequests().full)
+		assertFalse(store.takeRequests().full)
+		assertArrayEquals(bytes, chapter.readBytes())
+	}
+
+	/** T08/T13: suspend inside actual Room upsert, switch root before commit and read acceptance. */
+	@Test fun normalObservationRootSwitchDuringRoomWriteNeverExposesStaleRow() = runBlocking {
+		val (manga, _) = observedDownload(810_114L)
+		val realDao = db.getNormalDownloadObservationDao()
+		val entered = CompletableDeferred<Unit>()
+		val release = CompletableDeferred<Unit>()
+		var written: NormalDownloadObservationEntity? = null
+		val store = observationStore(object : NormalDownloadObservationDao by realDao {
+			override suspend fun upsert(row: NormalDownloadObservationEntity) {
+				realDao.upsert(row)
+				written = row
+				entered.complete(Unit)
+				release.await()
+			}
+		})
+		val space = FavouriteSpace.NORMAL
+		val work = requireNotNull(store.begin(manga, space))
+		val result = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+		val publishing = async { store.publish(work, result) }
+		try {
+			withTimeout(10_000) { entered.await() }
+			destinations.setRoot(space, File(root, "during-write"))
+		} finally { release.complete(Unit) }
+		assertFalse(publishing.await())
+		val row = requireNotNull(written)
+		assertEquals(listOf(row), realDao.findCurrent(row.session, row.rootEpoch, listOf(manga.id)))
+		assertTrue(store.readVisible(listOf(manga), space).isEmpty())
+		destinations.setRoot(space, root)
+		assertTrue(store.readVisible(listOf(manga), space).isEmpty())
+	}
+
+	/** T08: actual membership removal invalidates an outstanding result and old cached row. */
+	@Test fun normalObservationRejectsMembershipChangeBeforePublication() = runBlocking {
+		val (manga, _) = observedDownload(810_115L)
+		val store = observationStore()
+		val space = FavouriteSpace.NORMAL
+		assertTrue(store.scan(manga, space))
+		val work = requireNotNull(store.begin(manga, space))
+		val result = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+		val categories = db.getFavouritesDao().findCategoriesIds(manga.id)
+		assertTrue(categories.isNotEmpty())
+		repository.updateCategoryMemberships(listOf(manga), categories.associateWith { false }, space)
+		assertFalse(store.publish(work, result))
+		assertTrue(store.readVisible(listOf(manga), space).isEmpty())
+		repository.updateCategoryMemberships(listOf(manga), categories.associateWith { true }, space)
+		assertTrue(store.readVisible(listOf(manga), space).isEmpty())
+		assertTrue(store.scan(manga, space))
+		assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(manga), space)[manga.id]?.fact?.status)
+	}
+
+	/** T13: old persisted positives are not a restart authority; no-change scan writes nothing. */
+	@Test fun normalObservationSessionAndAvailabilityInvalidateWithoutRewritingOldRow() = runBlocking {
+		val (manga, _) = observedDownload(810_116L)
+		val realDao = db.getNormalDownloadObservationDao()
+		var writes = 0
+		val store = observationStore(object : NormalDownloadObservationDao by realDao {
+			override suspend fun upsert(row: NormalDownloadObservationEntity) {
+				writes += 1
+				realDao.upsert(row)
+			}
+		})
+		val space = FavouriteSpace.NORMAL
+		assertTrue(store.scan(manga, space))
+		val positive = requireNotNull(store.readVisible(listOf(manga), space)[manga.id])
+		val change = store.changes.value
+		assertTrue(store.scan(manga, space))
+		assertEquals(1, writes)
+		assertEquals(change, store.changes.value)
+		assertEquals(positive, store.readVisible(listOf(manga), space)[manga.id])
+		val restarted = observationStore()
+		assertTrue(restarted.readVisible(listOf(manga), space).isEmpty())
+		assertEquals(listOf(positive.row), realDao.findCurrent(positive.row.session, positive.row.rootEpoch, listOf(manga.id)))
+		val offline = File(root.parentFile, root.name + "-offline")
+		assertTrue(root.renameTo(offline))
+		try {
+			val unavailable = requireNotNull(store.readVisible(listOf(manga), space)[manga.id])
+			assertEquals(NormalObservationStatus.UNAVAILABLE, unavailable.fact.status)
+			assertNull(unavailable.fact.path)
+			assertFalse(store.isCurrent(manga, space, positive))
+			assertEquals(1, writes)
+		} finally { assertTrue(offline.renameTo(root)) }
+		assertTrue(store.readVisible(listOf(manga), space).isEmpty())
+		assertEquals(1, writes)
+		assertTrue(store.scan(manga, space))
+		assertEquals(2, writes)
+		assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(manga), space)[manga.id]?.fact?.status)
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {

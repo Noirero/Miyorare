@@ -18,6 +18,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import eu.kanade.tachiyomi.util.lang.Hash
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onStart
@@ -62,6 +64,13 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 	// Serialize active download-root publication with confirmed physical removal.
 	internal val downloadDestinationMutationLock = Any()
+	// Process-scoped generation: A -> B -> A must not revive an old scanner observation.
+	private val _normalScannerRootGeneration = MutableStateFlow(0L)
+	internal val normalScannerRootGeneration = _normalScannerRootGeneration.asStateFlow()
+
+	internal fun advanceNormalScannerRootGeneration() = synchronized(downloadDestinationMutationLock) {
+		_normalScannerRootGeneration.value += 1L
+	}
 	private val discordCredentials = context.getSharedPreferences("miyorare_discord_credentials", Context.MODE_PRIVATE)
 	// Capture this before any migration/default writes below. Existing installs already have app
 	// preferences, while a true fresh install starts empty. That distinction lets Modern become the
@@ -988,6 +997,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 			File(it)
 		}?.takeIf { it.exists() && it in userSpecifiedMangaDirectories }
 		set(value) = synchronized(downloadDestinationMutationLock) {
+			val previous = prefs.getString(KEY_LOCAL_STORAGE, null)
 			prefs.edit {
 				if (value == null) {
 					remove(KEY_LOCAL_STORAGE)
@@ -999,6 +1009,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 					putString(KEY_LOCAL_STORAGE, value.path)
 				}
 			}
+			if (previous != prefs.getString(KEY_LOCAL_STORAGE, null)) advanceNormalScannerRootGeneration()
 		}
 
 	var allowDownloadOnMeteredNetwork: TriStateOption

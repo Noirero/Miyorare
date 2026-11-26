@@ -16,6 +16,7 @@ data class ActiveNormalDownloadRoots(
 	val normalRoot: File?,
 	val privateRoot: File?,
 	val historicalPrivateRoots: List<File> = emptyList(),
+	val generation: Long = 0L,
 )
 
 /**
@@ -68,14 +69,16 @@ class DownloadDestinationStore @Inject constructor(
 	 * Publication must separately fence changes (including A -> B -> A).
 	 */
 	internal fun captureNormalScannerRoots(): ActiveNormalDownloadRoots {
-		val (configuredNormal, configuredPrivate, privateHistory) = withDestinationMutationLock {
+		val (configured, generation) = withDestinationMutationLock {
 			val privateRoot = configuredRoot(FavouriteSpace.PRIVATE)
 			val history = readLegacyRoots(FavouriteSpace.PRIVATE) +
 				if (privateRoot == null) readLegacyRoots(FavouriteSpace.NORMAL) else emptyList()
-			Triple(configuredRoot(FavouriteSpace.NORMAL), privateRoot, history.distinct())
+			Triple(configuredRoot(FavouriteSpace.NORMAL), privateRoot, history.distinct()) to
+				settings.normalScannerRootGeneration.value
 		}
+		val (configuredNormal, configuredPrivate, privateHistory) = configured
 		val normal = configuredNormal ?: defaultNormalRootForScan()
-		return ActiveNormalDownloadRoots(normal, configuredPrivate ?: normal, privateHistory)
+		return ActiveNormalDownloadRoots(normal, configuredPrivate ?: normal, privateHistory, generation)
 	}
 
 	private fun defaultNormalRootForScan(): File? = runCatching {
@@ -164,6 +167,13 @@ class DownloadDestinationStore @Inject constructor(
 			.orEmpty()
 	}
 
+	internal val normalScannerRootChanges get() = settings.normalScannerRootGeneration
+
+	private fun scannerPreferenceState() = listOf(
+		configuredRoot(FavouriteSpace.NORMAL), configuredRoot(FavouriteSpace.PRIVATE),
+		readLegacyRoots(FavouriteSpace.NORMAL).toSet(), readLegacyRoots(FavouriteSpace.PRIVATE).toSet(),
+	)
+
 	/** Only non-suspending operations may run under this shared root-publication lock. */
 	internal fun <T> withDestinationMutationLock(block: () -> T): T =
 		synchronized(settings.downloadDestinationMutationLock, block)
@@ -177,6 +187,8 @@ class DownloadDestinationStore @Inject constructor(
 		}
 
 		withDestinationMutationLock {
+			val previousScannerState = scannerPreferenceState()
+			val previousGeneration = settings.normalScannerRootGeneration.value
 			val previousEffective = effectiveRoot(space)
 			if (previousEffective != null && !previousEffective.samePathAs(root)) {
 				rememberLegacyRoot(space, previousEffective)
@@ -193,13 +205,18 @@ class DownloadDestinationStore @Inject constructor(
 					if (root == null) remove(KEY_PRIVATE_DOWNLOAD_ROOT) else putString(KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
 				}
 			}
+			if (previousScannerState != scannerPreferenceState() &&
+				previousGeneration == settings.normalScannerRootGeneration.value
+			) settings.advanceNormalScannerRootGeneration()
 		}
 	}
 
 	/** Explicit removal from Manage folders means this path should no longer be used even as legacy. */
-	fun forgetRoot(root: File) {
+	fun forgetRoot(root: File) = withDestinationMutationLock {
+		val previous = scannerPreferenceState()
 		forgetLegacyRoot(FavouriteSpace.NORMAL, root)
 		forgetLegacyRoot(FavouriteSpace.PRIVATE, root)
+		if (previous != scannerPreferenceState()) settings.advanceNormalScannerRootGeneration()
 	}
 
 	fun privateUsesOwnRoot(): Boolean = prefs.contains(KEY_PRIVATE_DOWNLOAD_ROOT)
