@@ -46,6 +46,7 @@ class PrivateSanctuaryRuntimeTest {
 		val allow = mutableStateOf(false)
 		var screenshotCallbacks = 0
 		var pinCallbacks = 0
+		var downloadCallbacks = 0
 		try {
 			prefs.edit().putString(key, MiyorareDesignStyle.MODERN.name).commit()
 			compose.setContent {
@@ -56,10 +57,12 @@ class PrivateSanctuaryRuntimeTest {
 						PrivateFavouritesSettingsScreen(
 							protection = protection.value, hasPin = false, includeBackup = false,
 							allowScreenshots = allow.value, privateTheme = theme.value, privatePagesDirectory = null,
+							downloadsDirectory = "/synthetic/private/download-root",
 							onThemeClick = {}, onThemeSelect = { theme.value = it }, onProtectionClick = {},
 							onChangePin = { pinCallbacks++ }, onLockNow = {}, onIncludeBackupChange = {},
 							onAllowScreenshotsChange = { screenshotCallbacks++ },
-							onPrivatePagesDirectoryClick = {}, onDisablePrivate = {},
+							onPrivatePagesDirectoryClick = {}, onDownloadsDirectoryClick = { downloadCallbacks++ },
+							onDisablePrivate = {},
 						)
 					}
 				}
@@ -85,6 +88,9 @@ class PrivateSanctuaryRuntimeTest {
 				allow.value = true
 			}
 			toggle.assertIsOn()
+			compose.onNodeWithText(context.getString(R.string.manga_save_location)).performScrollTo().performClick()
+			compose.runOnIdle { assertEquals(1, downloadCallbacks) }
+			compose.onNodeWithText("/synthetic/private/download-root").assertExists()
 		} finally {
 			prefs.edit().apply { if (old == null) remove(key) else putString(key, old) }.commit()
 		}

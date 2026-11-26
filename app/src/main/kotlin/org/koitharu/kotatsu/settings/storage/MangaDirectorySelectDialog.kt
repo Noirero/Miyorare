@@ -1,10 +1,12 @@
 package org.koitharu.kotatsu.settings.storage
 
 import android.Manifest
+import android.app.Dialog
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -31,7 +33,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.os.OpenDocumentTreeHelper
 import org.koitharu.kotatsu.core.ui.ComposeAlertDialogFragment
@@ -41,10 +46,21 @@ import org.koitharu.kotatsu.core.ui.dialog.ExpressivePillButton
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.tryLaunch
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
+
+	@Inject lateinit var privateSecurity: PrivateFavouritesSecurityStore
+	@Inject lateinit var privateSession: PrivateFavouritesSession
+
+	// The origin is immutable even when the user switches the destination within the dialog.
+	private val openedFromPrivate: Boolean
+		get() = arguments?.getInt(EXTRA_FAVOURITE_SPACE) == FavouriteSpace.PRIVATE.dbValue
 
 	private val viewModel: MangaDirectorySelectViewModel by viewModels()
 	private val pickFileTreeLauncher = OpenDocumentTreeHelper(
@@ -74,8 +90,32 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 		}
 	}
 
+	override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
+		super.onCreateDialog(savedInstanceState).also { created ->
+			if (openedFromPrivate && shouldSecurePrivateDialog(privateSecurity.allowPrivateScreenshots && privateSession.isUnlocked.value)) {
+				created.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+			}
+		}
+
+	private fun shouldSecurePrivateDialog(allowCapture: Boolean): Boolean =
+		!allowCapture || (requireActivity().window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		if (openedFromPrivate) {
+			// Dialog windows do not necessarily inherit FLAG_SECURE from their host.
+			viewLifecycleOwner.lifecycleScope.launch {
+				combine(privateSecurity.allowPrivateScreenshotsFlow, privateSession.isUnlocked) { allowed, unlocked ->
+					allowed && unlocked
+				}.collect { allowCapture ->
+					if (shouldSecurePrivateDialog(allowCapture)) {
+						dialog?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+					} else {
+						dialog?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+					}
+				}
+			}
+		}
 		viewModel.onDismissDialog.observeEvent(viewLifecycleOwner) { dismiss() }
 		viewModel.onPickDirectory.observeEvent(viewLifecycleOwner) { pickCustomDirectory() }
 		viewModel.onError.observeEvent(viewLifecycleOwner) { e ->

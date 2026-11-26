@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings
 
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -52,16 +53,22 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.os.OpenDocumentTreeHelper
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.ui.PrivateFavouritesVisualResolver
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.util.ext.resolveFile
 import org.koitharu.kotatsu.core.util.ext.tryLaunch
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.vault.DisablePrivateFavouritesDestination
 import org.koitharu.kotatsu.favourites.vault.DisablePrivateFavouritesUseCase
@@ -86,7 +93,8 @@ import org.koitharu.kotatsu.settings.protect.showPinSetupDialog
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.private_favourites) {
+class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.private_favourites),
+	SharedPreferences.OnSharedPreferenceChangeListener {
 
 	@Inject lateinit var security: PrivateFavouritesSecurityStore
 	@Inject lateinit var session: PrivateFavouritesSession
@@ -95,12 +103,16 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 	@Inject lateinit var disablePrivateFavouritesUseCase: DisablePrivateFavouritesUseCase
 	@Inject lateinit var pageSaveDestinationStore: PageSaveDestinationStore
 	@Inject lateinit var storageManager: LocalStorageManager
+	@Inject lateinit var destinationStore: DownloadDestinationStore
+	@Inject lateinit var settings: AppSettings
 
 	private val protectionState = MutableStateFlow(PrivateFavouritesProtection.BIOMETRIC)
 	private val hasPinState = MutableStateFlow(false)
 	private val backupState = MutableStateFlow(false)
 	private val screenshotsState = MutableStateFlow(false)
 	private val privatePagesDirState = MutableStateFlow<String?>(null)
+	private val downloadsDirState = MutableStateFlow<String?>(null)
+	private var downloadsRefreshJob: Job? = null
 
 	private val pickPrivatePagesDirLauncher = OpenDocumentTreeHelper(this) {
 		if (it != null) onPrivatePagesDirectoryPicked(it)
@@ -123,6 +135,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 					(activity as? SettingsActivity)?.refreshPrivateFavouritesSettingsChrome()
 				}
 				val privatePagesDirectory by privatePagesDirState.collectAsState()
+				val downloadsDirectory by downloadsDirState.collectAsState()
 				PrivateFavouritesSettingsScreen(
 					protection = protection,
 					hasPin = hasPin,
@@ -130,6 +143,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 					allowScreenshots = allowScreenshots,
 					privateTheme = privateTheme,
 					privatePagesDirectory = privatePagesDirectory,
+					downloadsDirectory = downloadsDirectory,
 					onThemeClick = ::showThemeChooser,
 					onThemeSelect = ::changePrivateTheme,
 					onProtectionClick = ::showProtectionChooser,
@@ -141,15 +155,57 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 					onIncludeBackupChange = ::changeBackupInclusion,
 					onAllowScreenshotsChange = ::changePrivateScreenshots,
 					onPrivatePagesDirectoryClick = ::launchPrivatePagesDirectoryPicker,
+					onDownloadsDirectoryClick = { router.showDirectorySelectDialog(FavouriteSpace.PRIVATE) },
 					onDisablePrivate = ::confirmDisablePrivateFavourites,
 				)
 			}
 		}
 	}
 
+	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+		super.onViewCreated(view, savedInstanceState)
+		settings.subscribe(this)
+	}
+
 	override fun onResume() {
 		super.onResume()
 		refreshState()
+		refreshDownloadsDirectory()
+	}
+
+	override fun onDestroyView() {
+		settings.unsubscribe(this)
+		downloadsRefreshJob?.cancel()
+		super.onDestroyView()
+	}
+
+	override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
+		when (key) {
+			null, AppSettings.KEY_LOCAL_STORAGE, DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT ->
+				refreshDownloadsDirectory()
+		}
+	}
+
+	private fun refreshDownloadsDirectory() {
+		val owner = viewLifecycleOwnerLiveData.value ?: return
+		downloadsRefreshJob?.cancel()
+		downloadsRefreshJob = owner.lifecycleScope.launch {
+			val (root, availability) = withContext(Dispatchers.IO) {
+				val directory = destinationStore.effectiveRoot(FavouriteSpace.PRIVATE)
+				directory to downloadDestinationAvailability(directory)
+			}
+			downloadsDirState.value = when (availability) {
+				DownloadDestinationAvailability.AVAILABLE ->
+					storageManager.getDirectoryDisplayName(checkNotNull(root), isFullPath = true)
+				DownloadDestinationAvailability.UNAVAILABLE -> if (root == null) {
+					getString(R.string.not_available)
+				} else {
+					getString(R.string.download_destination_summary_unavailable, root.path)
+				}
+				DownloadDestinationAvailability.READ_ONLY ->
+					getString(R.string.download_destination_read_only, checkNotNull(root).path)
+			}
+		}
 	}
 
 	private fun refreshState() {
@@ -402,6 +458,7 @@ internal fun PrivateFavouritesSettingsScreen(
 	allowScreenshots: Boolean,
 	privateTheme: PrivateFavouritesThemePreset,
 	privatePagesDirectory: String?,
+	downloadsDirectory: String?,
 	onThemeClick: () -> Unit,
 	onThemeSelect: (PrivateFavouritesThemePreset) -> Unit,
 	onProtectionClick: () -> Unit,
@@ -410,6 +467,7 @@ internal fun PrivateFavouritesSettingsScreen(
 	onIncludeBackupChange: (Boolean) -> Unit,
 	onAllowScreenshotsChange: (Boolean) -> Unit,
 	onPrivatePagesDirectoryClick: () -> Unit,
+	onDownloadsDirectoryClick: () -> Unit,
 	onDisablePrivate: () -> Unit,
 ) {
 	val sanctuary = rememberPrivateSanctuary(LocalPrivateSettingsThemeSnapshot.current)
@@ -509,6 +567,17 @@ internal fun PrivateFavouritesSettingsScreen(
 						icon = R.drawable.ic_download,
 						shape = pos.shape,
 						onClick = onPrivatePagesDirectoryClick,
+					)
+				}
+				item { pos ->
+					SettingsItem(
+						title = stringResource(R.string.manga_save_location),
+						surfaceOverride = sanctuary?.surface(SanctuaryRole.STANDARD),
+						iconColors = sanctuary?.iconColors(SanctuaryRole.STANDARD),
+						subtitle = downloadsDirectory,
+						icon = R.drawable.ic_storage,
+						shape = pos.shape,
+						onClick = onDownloadsDirectoryClick,
 					)
 				}
 			}
