@@ -38,6 +38,9 @@ internal data class NormalCandidateResolution(
 	val verified: List<LocalManga>,
 	val unresolvedPaths: Set<File>,
 	val inventoryComplete: Boolean,
+	// Separate durable identity evidence from container/physical candidate selection.
+	// Null means not assessed or unavailable, never confirmed absence.
+	val directoryIdentity: NormalPriorDirectoryReconciliation? = null,
 ) {
 	// This is a candidate choice, NOT publication/read/delete authorization or identity authority.
 	val uniqueCandidate: LocalManga?
@@ -266,7 +269,16 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				val copy = verifyCandidate(manga, space, file, layout, proof, candidates)
 				if (copy == null) unresolved += file else verified += copy
 			}
-			NormalCandidateResolution(verified, unresolved, candidates.inventoryComplete)
+			val resolution = NormalCandidateResolution(verified, unresolved, candidates.inventoryComplete)
+			// A canonical sibling proves neither the ID nor personal key of a local-only
+			// chapter. Reconcile stored evidence only after a unique, complete directory
+			// candidate is established. Keep physical evidence even if identity is unknown.
+			// This is not a publication fence; migrated directories and root archives do
+			// not acquire identity authority from this standalone reconciliation.
+			val directory = resolution.uniqueCandidate?.takeIf { it.file.isDirectory }
+			if (directory == null) resolution else resolution.copy(
+				directoryIdentity = priorIdentity.reconcileVerifiedDirectory(manga, directory),
+			)
 		}
 	}
 

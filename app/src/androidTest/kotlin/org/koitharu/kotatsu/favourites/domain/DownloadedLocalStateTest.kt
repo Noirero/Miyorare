@@ -1907,6 +1907,93 @@ class DownloadedLocalStateTest {
 		assertArrayEquals(bytes, special.readBytes())
 	}
 
+	/** T05: unique directory selection must retain prior identity separately from physical evidence. */
+	@Test fun normalScannerUniqueDirectoryReconcilesPriorIdentityWithCanonicalSibling() = runBlocking {
+		val seed = remote(810_103L)
+		val first = seed.chapters.orEmpty().single().copy(number = 0f)
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, seed).file.canonicalFile
+		val original = File(container, "Chapter 1.cbz")
+		val bytes = original.readBytes()
+		val sibling = File(container, "Chapter 2.cbz")
+		original.copyTo(sibling)
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(original.renameTo(special))
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		val ownerDao = db.getFavouriteDownloadIndexDao()
+		ownerDao.upsert(owner)
+		val legacy = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == "Chapter 1 Special" }
+		val key = ChapterPersonalKey.of(legacy)
+		val page = local.getPages(legacy).first()
+		assertFalse(legacy.id in setOf(first.id, second.id))
+		val personal = ChapterPersonalEntity(manga.id, key.source, key.url, 4, "Prior independent note")
+		val progress = ChapterProgressEntity(manga.id, key.source, key.url, FavouriteSpace.NORMAL.dbValue, 1, 0, 2)
+		val bookmark = BookmarkEntity(manga.id, page.id, legacy.id, 0, 0, page.url, 100L, 0.5f)
+		val history = HistoryEntity(manga.id, 100L, 200L, legacy.id, 0, 0f, 0.5f, 0L, 1)
+		suspend fun resolve() = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL))
+		db.getChapterPersonalDao().upsert(personal)
+		db.getChapterProgressDao().upsert(progress)
+		val keyOnly = resolve()
+		assertEquals(container, keyOnly.uniqueCandidate?.file)
+		val keyEvidence = requireNotNull(keyOnly.directoryIdentity)
+		assertEquals(setOf(key), keyEvidence.evidence.unresolvedLocalKeys)
+		assertNull(keyEvidence.projection)
+		db.getBookmarksDao().insert(bookmark)
+		db.getHistoryDao().insert(history)
+		val unknownId = legacy.id xor 123456789L
+		assertFalse(unknownId in setOf(0L, first.id, second.id, legacy.id))
+		settings.setChapterReadOverrides(manga.id, mapOf(legacy.id to true, unknownId to false))
+		val extra = File(container, "Chapter 0.cbz").apply { writeBytes(bytes) }
+		val reparsed = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == legacy.title }
+		assertNotEquals(legacy.id, reparsed.id)
+		val unresolved = resolve()
+		assertEquals(container, unresolved.uniqueCandidate?.file)
+		val idEvidence = requireNotNull(unresolved.directoryIdentity)
+		assertEquals(legacy.id, idEvidence.evidence.verified.single().id)
+		assertEquals(setOf(unknownId), idEvidence.evidence.unresolvedIds)
+		assertNull(idEvidence.projection)
+		assertEquals(mapOf(legacy.id to true, unknownId to false), settings.getChapterReadOverrides(manga.id))
+		// Explicit fixture correction only; discovery must never rewrite unknown references.
+		settings.setChapterReadOverrides(manga.id, mapOf(legacy.id to true))
+		suspend fun assertReconciled() {
+			val result = resolve()
+			assertEquals(container, result.uniqueCandidate?.file)
+			val identity = requireNotNull(result.directoryIdentity)
+			assertTrue(identity.evidence.unresolvedLocalKeys.isEmpty())
+			assertTrue(identity.evidence.unresolvedIds.isEmpty())
+			val chapters = requireNotNull(identity.projection).manga.chapters.orEmpty()
+			assertTrue(chapters.any { it.id == second.id })
+			assertFalse(chapters.any { it.id == first.id })
+			val restored = chapters.single { it.id == legacy.id }
+			assertEquals(key, ChapterPersonalKey.of(restored))
+			assertEquals(page.url, local.getPages(restored).first().url)
+		}
+		assertReconciled()
+		assertTrue(extra.delete())
+		assertReconciled()
+		// The same durable evidence must be applied to a direct indexed layout, too.
+		val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		sidecar.writeText(MangaIndex(null).apply {
+			setMangaInfo(manga)
+			addChapter(IndexedValue(1, second), sibling.name)
+		}.toString())
+		val indexBytes = sidecar.readBytes()
+		assertReconciled()
+		assertArrayEquals(indexBytes, sidecar.readBytes())
+		assertEquals(listOf(personal), db.getChapterPersonalDao().findAll(listOf(manga.id)))
+		assertEquals(listOf(progress), db.getChapterProgressDao().findAll(listOf(manga.id), FavouriteSpace.NORMAL.dbValue))
+		assertEquals(listOf(bookmark), db.getBookmarksDao().findAll(manga.id))
+		assertEquals(history, db.getHistoryDao().findIncludingDeleted(manga.id))
+		assertEquals(mapOf(legacy.id to true), settings.getChapterReadOverrides(manga.id))
+		assertEquals(owner, ownerDao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertArrayEquals(bytes, special.readBytes())
+		assertArrayEquals(bytes, sibling.readBytes())
+	}
+
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
 		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)
