@@ -23,6 +23,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.Lifecycle
 import org.koitharu.kotatsu.local.ui.LocalListFragment
+import org.koitharu.kotatsu.list.ui.model.SmartLocalPanelModel
+import org.koitharu.kotatsu.list.ui.model.SmartLocalCollectionHeaderModel
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import androidx.compose.ui.test.*
@@ -299,6 +301,42 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	// A retained STARTED/RESUMED fragment alone does not prove its content collector survived.
+	private fun assertLocalContentReady(scenario: ActivityScenario<MainActivity>, query: String = "") {
+		compose.waitUntil(10000) {
+			var ready = false
+			scenario.onActivity { activity ->
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().singleOrNull()
+				val model = local?.viewModel ?: return@onActivity
+				val content = model.content.value
+				ready = model.library.state.value.initialized &&
+					content.any { it is SmartLocalPanelModel && it.query == query } &&
+					content.any { it is SmartLocalCollectionHeaderModel }
+			}
+			ready
+		}
+	}
+
+	@Test fun coldLocalTabTapBuildsContentAndRespondsToQuery() {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
+		launch().use { scenario ->
+			compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle)).performClick()
+			assertLocalContentReady(scenario)
+			scenario.onActivity { activity ->
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertFalse(local.isHidden)
+				assertEquals(Lifecycle.State.RESUMED, local.lifecycle.currentState)
+				local.viewModel.setLocalQuery("B01 fixture query")
+			}
+			assertLocalContentReady(scenario, "B01 fixture query")
+			scenario.onActivity { activity ->
+				activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single().viewModel.setLocalQuery("")
+			}
+			assertLocalContentReady(scenario)
+		}
+	}
+
 	private fun captureNavigationGesture(motion: NavigationMotion, night: Int) {
 		launch().use { scenario ->
 			compose.waitForIdle()
@@ -354,6 +392,7 @@ class DiscoveryNavigationRuntimeTest {
 				send(MotionEvent.ACTION_MOVE, 0.35f, 32)
 				capture("drag-35")
 				assertProgress(0.35f)
+				assertLocalContentReady(scenario)
 				capture("paused-35")
 				assertProgress(0.35f)
 				send(MotionEvent.ACTION_MOVE, 0.65f, 64)
@@ -380,6 +419,7 @@ class DiscoveryNavigationRuntimeTest {
 					}
 					settled
 				}
+				assertLocalContentReady(scenario)
 				capture("settled")
 			} finally {
 				if (!released) send(MotionEvent.ACTION_CANCEL, 0f, 192)
@@ -559,6 +599,7 @@ class DiscoveryNavigationRuntimeTest {
 				assertTrue(preview.isHidden)
 				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
 			}
+			assertLocalContentReady(scenario)
 			compose.waitForIdle()
 			assertEquals(listOf(start, custom, home), tabCenters())
 			send(MotionEvent.ACTION_MOVE, home, 64)
