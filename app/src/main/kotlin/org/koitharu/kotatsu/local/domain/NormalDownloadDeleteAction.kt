@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
 import java.io.IOException
 import java.io.Serializable
+import java.nio.file.Files
 import javax.inject.Inject
 
 /** Ephemeral confirmation snapshot. Neither a read projection nor this snapshot authorizes unlink. */
@@ -170,12 +171,12 @@ class NormalDownloadDeleteAction @Inject internal constructor(
 								} else {
 									for ((file, expected) in approved.victims) {
 										check(stamp(file) == expected) { "Selected file changed; files were kept" }
-										Os.unlink(file.path)
+										Files.delete(file.toPath())
 										removed += file.path
 									}
 									if (approved.containerStamp.directory && approved.removeContainer) {
-										// File-only unlink above; rmdir cannot remove an unapproved new child.
-										Os.rmdir(approved.container.path)
+										// Non-recursive delete rejects a non-empty directory; never remove an unapproved new child.
+										Files.delete(approved.container.toPath())
 										removed += approved.container.path
 									}
 								}
