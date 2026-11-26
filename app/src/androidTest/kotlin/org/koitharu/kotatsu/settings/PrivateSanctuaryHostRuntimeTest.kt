@@ -2,7 +2,10 @@ package org.koitharu.kotatsu.settings
 
 import android.content.Intent
 import android.os.SystemClock
+import android.util.Log
 import android.view.WindowManager
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.preference.PreferenceManager
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -11,7 +14,11 @@ import androidx.work.WorkManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -34,6 +41,7 @@ import org.koitharu.kotatsu.favourites.ui.PrivateWorkspaceFragment
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
+import java.util.concurrent.ConcurrentLinkedQueue
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -147,14 +155,33 @@ class PrivateSanctuaryHostRuntimeTest {
 		val oldProtection = security.protection
 		val oldScreenshots = security.allowPrivateScreenshots
 		val oldUnlocked = session.isUnlocked.value
+		val trace = ConcurrentLinkedQueue<String>()
+		val observerScope = CoroutineScope(Dispatchers.Main.immediate + Job())
+		fun record(event: String) {
+			val entry = "${SystemClock.elapsedRealtime()} $event unlocked=${session.isUnlocked.value}"
+			trace.add(entry)
+			Log.i("PrivateHostDiagnostic", entry)
+		}
+		val observer = LifecycleEventObserver { _, event -> record("process:$event") }
+		instrumentation.runOnMainSync {
+			ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
+			observerScope.launch { session.isUnlocked.collect { record("session:$it") } }
+		}
 		try {
 			security.protection = PrivateFavouritesProtection.BIOMETRIC
 			security.allowPrivateScreenshots = false
 			session.unlock()
 			prefs.edit().putString(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN.name)
 				.putString(MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME, PrivateFavouritesThemePreset.MIYORARE.name).commit()
+			record("fixture before host launch")
 			block()
+			record("host block completed")
+		} catch (failure: Throwable) {
+			record("host block failed:${failure.javaClass.simpleName}")
+			throw AssertionError("Private host lifecycle diagnostic: ${trace.joinToString(" | ")}", failure)
 		} finally {
+			observerScope.cancel()
+			instrumentation.runOnMainSync { ProcessLifecycleOwner.get().lifecycle.removeObserver(observer) }
 			prefs.edit().apply { old.forEach { (key, value) -> if (value == null) remove(key) else putString(key, value) } }.commit()
 			security.protection = oldProtection
 			security.allowPrivateScreenshots = oldScreenshots
