@@ -11,9 +11,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
@@ -138,6 +141,19 @@ internal class PrivateSanctuaryTreatment(
 					else listOf(base, base.copy(alpha = 0.96f), base.copy(alpha = 0.45f)),
 				startX = x.toFloat(), endX = x + imageWidth.toFloat(),
 			)
+			// Feather the artwork AND its readability scrim as one group. Masking only
+			// the bitmap leaves an opaque scrim edge against the underlying gradient.
+			val protectionBlend = if (role == SanctuaryRole.PROTECTION && decorative && image != null) {
+				Brush.horizontalGradient(
+					colors = if (rtl) listOf(Color.White, Color.White, Color.Transparent)
+						else listOf(Color.Transparent, Color.White, Color.White),
+					startX = x.toFloat(), endX = x + imageWidth.toFloat(),
+				)
+			} else null
+			val protectionLayerBounds = protectionBlend?.let {
+				Rect(x.toFloat(), 0f, x + imageWidth.toFloat(), size.height)
+			}
+			val protectionLayerPaint = protectionBlend?.let { Paint() }
 			val glow = Brush.radialGradient(
 				colors = listOf(edge.copy(alpha = if (signature) 0.13f * strength else 0.06f * strength), Color.Transparent),
 				center = Offset(if (rtl) size.width else 0f, 0f),
@@ -147,28 +163,44 @@ internal class PrivateSanctuaryTreatment(
 				drawRect(fill)
 				if (role != SanctuaryRole.DESTRUCTIVE) drawRect(glow)
 				if (decorative && image != null) {
-					// Ornaments are authored in the top-left corner: mirror to the trailing edge.
-					val ornamentRole = role != SanctuaryRole.PROTECTION
-					scale(
-						scaleX = if (ornamentRole && !rtl) -1f else 1f,
-						scaleY = if (role == SanctuaryRole.ACCENTED_STANDARD) -1f else 1f,
-						pivot = Offset(x + imageWidth / 2f, y + imageHeight / 2f),
-					) {
-						drawImage(
-							image = image,
-							srcOffset = IntOffset(if (role == SanctuaryRole.PROTECTION) image.width - srcWidth else 0, (image.height - srcHeight) / 2),
-							srcSize = IntSize(srcWidth, srcHeight),
-							dstOffset = IntOffset(x, y),
-							dstSize = IntSize(imageWidth, imageHeight),
-							alpha = (when (role) {
-								SanctuaryRole.PROTECTION -> 0.90f
-								SanctuaryRole.APPEARANCE -> 1f
-								else -> 0.23f
-							}) * strength,
-						)
+					val canvas = drawContext.canvas
+					if (protectionLayerBounds != null && protectionLayerPaint != null) {
+						canvas.saveLayer(protectionLayerBounds, protectionLayerPaint)
 					}
-					if (role == SanctuaryRole.PROTECTION) {
-						drawRect(scrim, topLeft = Offset(x.toFloat(), 0f), size = androidx.compose.ui.geometry.Size(imageWidth.toFloat(), size.height))
+					try {
+						// Ornaments are authored in the top-left corner: mirror to the trailing edge.
+						val ornamentRole = role != SanctuaryRole.PROTECTION
+						scale(
+							scaleX = if (ornamentRole && !rtl) -1f else 1f,
+							scaleY = if (role == SanctuaryRole.ACCENTED_STANDARD) -1f else 1f,
+							pivot = Offset(x + imageWidth / 2f, y + imageHeight / 2f),
+						) {
+							drawImage(
+								image = image,
+								srcOffset = IntOffset(if (role == SanctuaryRole.PROTECTION) image.width - srcWidth else 0, (image.height - srcHeight) / 2),
+								srcSize = IntSize(srcWidth, srcHeight),
+								dstOffset = IntOffset(x, y),
+								dstSize = IntSize(imageWidth, imageHeight),
+								alpha = (when (role) {
+									SanctuaryRole.PROTECTION -> 0.90f
+									SanctuaryRole.APPEARANCE -> 1f
+									else -> 0.23f
+								}) * strength,
+							)
+						}
+						if (role == SanctuaryRole.PROTECTION) {
+							drawRect(scrim, topLeft = Offset(x.toFloat(), 0f), size = androidx.compose.ui.geometry.Size(imageWidth.toFloat(), size.height))
+						}
+						if (protectionBlend != null) {
+							drawRect(
+								brush = protectionBlend,
+								topLeft = Offset(x.toFloat(), 0f),
+								size = androidx.compose.ui.geometry.Size(imageWidth.toFloat(), size.height),
+								blendMode = BlendMode.DstIn,
+							)
+						}
+					} finally {
+						if (protectionLayerBounds != null && protectionLayerPaint != null) canvas.restore()
 					}
 				}
 				drawContent()
