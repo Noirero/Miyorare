@@ -126,8 +126,8 @@ internal class NormalDownloadObservationStore(
 	private suspend fun refreshRoot(): NormalObservationRoot? {
 		val captured = withContext(Dispatchers.IO) {
 			val roots = destinations.captureNormalScannerRoots()
-			fun path(file: File?) = file?.let {
-				runCatching { it.canonicalPath }.getOrElse { it.absoluteFile.normalize().path }
+			fun path(file: File?) = file?.let { rootFile ->
+				runCatching { rootFile.canonicalPath }.getOrElse { rootFile.absoluteFile.normalize().path }
 			}
 			NormalObservationRoot(
 				roots.generation, path(roots.normalRoot), path(roots.privateRoot),
