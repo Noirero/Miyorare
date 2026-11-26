@@ -1994,6 +1994,83 @@ class DownloadedLocalStateTest {
 		assertArrayEquals(bytes, sibling.readBytes())
 	}
 
+	/** T01/T05/T10: migrated root archive keeps the real embedded Reader selector, not a re-keyed ID. */
+	@Test fun normalScannerMigratedArchiveRetainsExactEmbeddedReadSelectors() = runBlocking {
+		val seed = remote(810_104L)
+		val oldSource = MissingMangaSource("MIHON_2677079941490683989")
+		val first = seed.chapters.orEmpty().single().copy(source = oldSource, url = "/chapter/1")
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2", number = 2f)
+		val old = seed.copy(source = oldSource, chapters = listOf(first, second))
+		val targetSource = MissingMangaSource("TSUKI:MIYORARE:miyorare-id:BACAMI")
+		val newFirst = first.copy(id = first.id + 10, source = targetSource)
+		val newSecond = second.copy(id = second.id + 10, source = targetSource)
+		val target = old.copy(id = 810_105L, source = targetSource, chapters = listOf(newFirst, newSecond))
+		ids += target.id
+		data.storeManga(old, replaceExisting = true)
+		favourite(target)
+		val image = File(root, "migrated-archive.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val output = LocalMangaOutput.getOrCreate(root, old, DownloadFormat.SINGLE_CBZ)
+		val archive = output.rootFile.canonicalFile
+		try {
+			output.addPage(IndexedValue(0, first), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(first))
+			output.addPage(IndexedValue(1, second), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(second))
+			output.finish()
+		} finally { output.close() }
+		val bytes = archive.readBytes()
+		val original = LocalMangaParser(archive).getManga(withDetails = true).manga.chapters.orEmpty()
+		val originalPages = original.associate { it.id to local.getPages(it).single().url }
+		assertEquals(2, originalPages.values.toSet().size)
+		index.rememberVerifiedPath(old.id, archive)
+		requireNotNull(index.prepareDownloadIdentityMove(old.id, target.id,
+			mapOf(first.id to newFirst.id, second.id to newSecond.id)))
+		val alias = requireNotNull(index.getDownloadAliasForScanner(target.id))
+		suspend fun resolve(manga: Manga = target) =
+			requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL))
+		val prepared = resolve()
+		assertNull(prepared.uniqueCandidate)
+		assertNull(prepared.migratedArchiveIdentity)
+		assertTrue(archive in prepared.unresolvedPaths)
+		val owner = FavouriteDownloadIndexEntity(target.id, FavouriteSpace.NORMAL.dbValue, archive.path)
+		val dao = db.getFavouriteDownloadIndexDao()
+		dao.upsert(owner)
+		val verified = resolve()
+		assertEquals(archive, verified.uniqueCandidate?.file)
+		assertNull(verified.directoryIdentity)
+		val identity = requireNotNull(verified.migratedArchiveIdentity)
+		assertEquals(setOf(newFirst.id, newSecond.id), identity.selectorsByRemoteId.keys)
+		assertEquals(setOf(first.id, second.id), identity.physical.manga.chapters.orEmpty().map { it.id }.toSet())
+		for ((oldChapter, targetChapter) in listOf(first to newFirst, second to newSecond)) {
+			val selector = identity.selectorsByRemoteId.getValue(targetChapter.id)
+			assertEquals(oldChapter.id, selector.id)
+			assertEquals(archive.path, android.net.Uri.parse(selector.url).path)
+			assertEquals(originalPages.getValue(oldChapter.id), local.getPages(selector).single().url)
+		}
+		// The direct archive API cannot silently expose a migrated projection without its mapping.
+		assertNull(normalDirectoryDiscovery.verifyArchiveCandidate(target, FavouriteSpace.NORMAL, archive))
+		assertNull(resolve(target.copy(chapters = listOf(newFirst.copy(url = "/wrong"), newSecond))).migratedArchiveIdentity)
+		assertNull(resolve(target.copy(url = "/wrong-manga")).uniqueCandidate)
+		val competing = File(archive.parentFile, archive.nameWithoutExtension + "_8.cbz")
+		archive.copyTo(competing)
+		val multiple = resolve()
+		assertNull(multiple.uniqueCandidate)
+		assertNull(multiple.migratedArchiveIdentity)
+		assertTrue(competing in multiple.unresolvedPaths)
+		assertTrue(competing.delete())
+		val staging = File(archive.path + ".bak.tmp").apply { writeBytes(bytes) }
+		assertNull(resolve().uniqueCandidate)
+		assertNull(resolve().migratedArchiveIdentity)
+		assertTrue(staging.delete())
+		assertNotNull(resolve().migratedArchiveIdentity)
+		assertEquals(alias, index.getDownloadAliasForScanner(target.id))
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, target.id))
+		assertArrayEquals(bytes, archive.readBytes())
+	}
+
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
 		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)

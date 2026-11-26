@@ -41,11 +41,17 @@ internal data class NormalCandidateResolution(
 	// Separate durable identity evidence from container/physical candidate selection.
 	// Null means not assessed or unavailable, never confirmed absence.
 	val directoryIdentity: NormalPriorDirectoryReconciliation? = null,
+	val migratedArchiveIdentity: NormalMigratedArchiveIdentity? = null,
 ) {
 	// This is a candidate choice, NOT publication/read/delete authorization or identity authority.
 	val uniqueCandidate: LocalManga?
 		get() = verified.singleOrNull()?.takeIf { inventoryComplete && unresolvedPaths.isEmpty() }
 }
+
+private data class NormalVerifiedCandidate(
+	val physical: LocalManga,
+	val migratedArchiveIdentity: NormalMigratedArchiveIdentity? = null,
+)
 
 /**
  * One shallow parent inventory, indexed by exact title and positive suffix base.
@@ -233,7 +239,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 	suspend fun verifyIndexedCandidate(
 		manga: Manga, space: FavouriteSpace?, candidate: File,
 		evidence: NormalScannerVerificationEvidence? = null,
-	): LocalManga? = verifyCandidate(manga, space, candidate, indexed = true, evidence = evidence)
+	): LocalManga? = verifyCandidate(manga, space, candidate, indexed = true, evidence = evidence)?.physical
 
 	/**
 	 * Positive sidecar-free subset: exact Normal ownership plus chapter evidence, or a registry-
@@ -243,13 +249,14 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 	suspend fun verifySidecarFreeCandidate(
 		manga: Manga, space: FavouriteSpace?, candidate: File,
 		evidence: NormalScannerVerificationEvidence? = null,
-	): LocalManga? = verifyCandidate(manga, space, candidate, indexed = false, evidence = evidence)
+	): LocalManga? = verifyCandidate(manga, space, candidate, indexed = false, evidence = evidence)?.physical
 
 	/** Embedded-index root archive only. No parser fallback or recovery. */
 	suspend fun verifyArchiveCandidate(
 		manga: Manga, space: FavouriteSpace?, candidate: File,
 		evidence: NormalScannerVerificationEvidence? = null,
 	): LocalManga? = verifyCandidate(manga, space, candidate, indexed = null, evidence = evidence)
+		?.takeIf { it.migratedArchiveIdentity == null }?.physical
 
 	suspend fun resolveCandidates(
 		manga: Manga, space: FavouriteSpace?,
@@ -261,7 +268,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 		val proof = evidence ?: captureVerificationEvidence() ?: return NormalCandidateResolution(emptyList(),
 			candidates.deterministicPaths + candidates.persistedHints + candidates.unresolvedPaths, false)
 		return withContext(Dispatchers.IO) {
-			val verified = ArrayList<LocalManga>()
+			val verified = ArrayList<NormalVerifiedCandidate>()
 			val unresolved = candidates.unresolvedPaths.toMutableSet()
 			for (file in candidates.deterministicPaths + candidates.persistedHints) {
 				currentCoroutineContext().ensureActive()
@@ -269,7 +276,12 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				val copy = verifyCandidate(manga, space, file, layout, proof, candidates)
 				if (copy == null) unresolved += file else verified += copy
 			}
-			val resolution = NormalCandidateResolution(verified, unresolved, candidates.inventoryComplete)
+			val resolution = NormalCandidateResolution(verified.map { it.physical }, unresolved, candidates.inventoryComplete)
+			if (resolution.uniqueCandidate != null) {
+				verified.single().migratedArchiveIdentity?.let {
+					return@withContext resolution.copy(migratedArchiveIdentity = it)
+				}
+			}
 			// A canonical sibling proves neither the ID nor personal key of a local-only
 			// chapter. Reconcile stored evidence only after a unique, complete directory
 			// candidate is established. Keep physical evidence even if identity is unknown.
@@ -286,7 +298,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 		manga: Manga, space: FavouriteSpace?, candidate: File, indexed: Boolean?,
 		evidence: NormalScannerVerificationEvidence?,
 		captured: NormalDirectoryCandidates? = null,
-	): LocalManga? {
+	): NormalVerifiedCandidate? {
 		val candidates = captured ?: discover(manga, space) ?: return null
 		if (!candidates.available) return null
 		val proof = evidence ?: captureVerificationEvidence() ?: return null
@@ -321,17 +333,24 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				if (inPrivate && !exactNormal) return@runCatchingCancellable null
 
 				if (indexed == null) {
-					return@runCatchingCancellable NormalDownloadIndexedArchive.reconcile(manga, physical)
+					NormalDownloadIndexedArchive.reconcile(manga, physical)?.let {
+						return@runCatchingCancellable NormalVerifiedCandidate(it)
+					}
+					if (!exactNormal) return@runCatchingCancellable null
+					val alias = index.getDownloadAliasForScanner(manga.id) ?: return@runCatchingCancellable null
+					val migrated = NormalDownloadIndexedArchive.reconcileMigrated(manga, physical, alias, sourceAliases)
+						?: return@runCatchingCancellable null
+					return@runCatchingCancellable NormalVerifiedCandidate(migrated.physical, migrated)
 				}
 				if (indexed) {
 					NormalDownloadDirectoryReconciler.reconcileIndexed(manga, physical, requireFinalized = true)?.let {
-						return@runCatchingCancellable it
+						return@runCatchingCancellable NormalVerifiedCandidate(it)
 					}
 					if (!exactNormal) return@runCatchingCancellable null
 					val alias = index.getDownloadAliasForScanner(manga.id) ?: return@runCatchingCancellable null
 					return@runCatchingCancellable NormalDownloadDirectoryReconciler.reconcileMigratedIndexed(
 						manga, physical, alias, sourceAliases, requireFinalized = true,
-					)
+					)?.let { NormalVerifiedCandidate(it) }
 				}
 				if (!exactNormal && !hasUnambiguousManualIdentity(manga, normalRoot, physical, proof)) {
 					return@runCatchingCancellable null
@@ -340,7 +359,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 					?: return@runCatchingCancellable null
 				val remoteIds = manga.chapters.orEmpty().mapTo(HashSet()) { it.id }
 				if (projection.manga.chapters.orEmpty().any { it.id in remoteIds }) {
-					return@runCatchingCancellable projection
+					return@runCatchingCancellable NormalVerifiedCandidate(projection)
 				}
 				// At this point either exact Normal ownership or independently verified
 				// source-qualified title/path proof has passed, including space conflicts.
@@ -359,7 +378,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 					copy.manga.chapters.orEmpty().any { chapter ->
 						priorById[chapter.id]?.url == chapter.url
 					}
-				}
+				}?.let { NormalVerifiedCandidate(it) }
 			}.getOrNull()
 		}
 	}
