@@ -18,6 +18,7 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -89,6 +90,7 @@ import org.koitharu.kotatsu.local.data.output.commitRootReplacement
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
 import javax.inject.Inject
@@ -2069,6 +2071,78 @@ class DownloadedLocalStateTest {
 		assertEquals(alias, index.getDownloadAliasForScanner(target.id))
 		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, target.id))
 		assertArrayEquals(bytes, archive.readBytes())
+	}
+
+	/** T01/T05/T10: non-registry writer path needs independent durable locator evidence. */
+	@Test fun normalScannerNonRegistryManualRequiresTypedSourceAndSurvivingPriorLocator() = runBlocking {
+		val seed = remote(810_106L)
+		val source = MihonMangaSource(
+			catalogueSource = object : CatalogueSource {
+				override val id = 810_106_001L
+				override val name = "Scanner Fixture Provider"
+				override val lang = "en"
+				override val supportsLatest = false
+			},
+			pkgName = "test.extension.en.scannerfixture",
+		)
+		val first = seed.chapters.orEmpty().single().copy(source = source, number = 0f)
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2")
+		val manga = seed.copy(source = source, chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, manga.copy(chapters = listOf(first))).file.canonicalFile
+		assertEquals(File(root, "downloads/Scanner Fixture Provider (EN)/${manga.title}"), container)
+		val original = File(container, "Chapter 1.cbz")
+		val bytes = original.readBytes()
+		val sibling = File(container, "Chapter 2.cbz")
+		original.copyTo(sibling)
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(original.renameTo(special))
+		assertFalse(File(container, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+		val ownerDao = db.getFavouriteDownloadIndexDao()
+		suspend fun verify(candidate: Manga = manga) =
+			normalDirectoryDiscovery.verifySidecarFreeCandidate(candidate, FavouriteSpace.NORMAL, container)
+		// A real writer path and canonical sibling alone do not identify the provider.
+		assertNull(verify())
+		val legacy = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == "Chapter 1 Special" }
+		val key = ChapterPersonalKey.of(legacy)
+		val page = local.getPages(legacy).first()
+		val personal = ChapterPersonalEntity(manga.id, key.source, key.url, 4, "Manual non-registry prior")
+		val bookmark = BookmarkEntity(manga.id, page.id, legacy.id, 0, 0, page.url, 100L, 0.5f)
+		db.getChapterPersonalDao().upsert(personal)
+		assertNull(verify())
+		db.getBookmarksDao().insert(bookmark)
+		val result = requireNotNull(verify())
+		val chapters = result.manga.chapters.orEmpty()
+		assertTrue(chapters.any { it.id == second.id })
+		assertFalse(chapters.any { it.id == first.id })
+		val restored = chapters.single { it.id == legacy.id }
+		assertEquals(key, ChapterPersonalKey.of(restored))
+		assertEquals(page.url, local.getPages(restored).first().url)
+		val resolution = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL))
+		assertEquals(container, resolution.uniqueCandidate?.file)
+		assertEquals(legacy.id, requireNotNull(resolution.directoryIdentity?.projection).manga.chapters.orEmpty()
+			.single { it.url == key.url }.id)
+		// Renamed-only is also eligible with the same surviving corroborated locator.
+		assertTrue(sibling.delete())
+		assertEquals(legacy.id, requireNotNull(verify()).manga.chapters.orEmpty().single().id)
+		assertTrue(special.delete())
+		sibling.writeBytes(bytes)
+		assertNull(verify()) // a stale prior locator does not prove the surviving canonical sibling
+		special.writeBytes(bytes)
+		assertNotNull(verify())
+		// Missing-source cached title is not typed source metadata, even with an exact hint.
+		index.rememberVerifiedPath(manga.id, container)
+		assertNull(verify(manga.copy(source = MissingMangaSource(source.name, source.displayName))))
+		val foreign = remote(810_107L).copy(title = manga.title, source = MissingMangaSource("OTHER_FIXTURE_SOURCE"))
+		data.storeManga(foreign, replaceExisting = true)
+		assertNull(verify())
+		assertEquals(listOf(personal), db.getChapterPersonalDao().findAll(listOf(manga.id)))
+		assertEquals(listOf(bookmark), db.getBookmarksDao().findAll(manga.id))
+		assertNull(ownerDao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertFalse(File(container, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+		assertArrayEquals(bytes, special.readBytes())
+		assertArrayEquals(bytes, sibling.readBytes())
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {

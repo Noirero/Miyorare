@@ -7,6 +7,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.dao.NormalScannerTitleClaim
+import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.download.domain.ActiveNormalDownloadRoots
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -16,8 +17,10 @@ import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
 import org.koitharu.kotatsu.sources.compat.VerifiedSourceAliases
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.io.File
 import java.util.TreeMap
 import java.util.Locale
@@ -352,20 +355,23 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 						manga, physical, alias, sourceAliases, requireFinalized = true,
 					)?.let { NormalVerifiedCandidate(it) }
 				}
-				if (!exactNormal && !hasUnambiguousManualIdentity(manga, normalRoot, physical, proof)) {
+				// A non-registry source-qualified path is not enough on its own. Only
+				// permit this narrower manual subset when durable prior locator evidence
+				// is independently corroborated below, even with a canonical sibling.
+				val requiresPrior = !exactNormal && !hasUnambiguousManualIdentity(manga, normalRoot, physical, proof)
+				if (requiresPrior && !hasNonRegistryManualPathEvidence(manga, normalRoot, physical, proof)) {
 					return@runCatchingCancellable null
 				}
 				val projection = NormalDownloadDirectoryReconciler.reconcileSidecarFree(manga, physical, requireFinalized = true)
 					?: return@runCatchingCancellable null
 				val remoteIds = manga.chapters.orEmpty().mapTo(HashSet()) { it.id }
-				if (projection.manga.chapters.orEmpty().any { it.id in remoteIds }) {
+				if (!requiresPrior && projection.manga.chapters.orEmpty().any { it.id in remoteIds }) {
 					return@runCatchingCancellable NormalVerifiedCandidate(projection)
 				}
-				// At this point either exact Normal ownership or independently verified
-				// source-qualified title/path proof has passed, including space conflicts.
-				// A renamed-only directory additionally needs corroborated durable ID/URI
-				// and a surviving artifact. No receipt requirement for a proven manual copy.
-				// Never infer from an ordinal, renamed title or personal key alone.
+				// Renamed-only and non-registry manual candidates need corroborated
+				// durable ID/URI and a surviving artifact. No receipt requirement for a
+				// proven manual copy. Never infer from display name, ordinal, renamed
+				// title or personal key alone.
 				val prior = priorIdentity.read(manga, physical) ?: return@runCatchingCancellable null
 				if (prior.verified.isEmpty() || prior.unresolvedIds.isNotEmpty() ||
 					prior.unresolvedLocalKeys.isNotEmpty()
@@ -381,6 +387,28 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				}?.let { NormalVerifiedCandidate(it) }
 			}.getOrNull()
 		}
+	}
+
+	/**
+	 * Narrow non-registry subset: actual typed source metadata determines the exact
+	 * current writer directory. A cached display title or unknown source cannot supply
+	 * this evidence. All competing normalized title claims remain unresolved. This
+	 * path check is only a prerequisite to persisted ID/locator corroboration.
+	 */
+	private suspend fun hasNonRegistryManualPathEvidence(
+		manga: Manga, root: File, physical: File, proof: NormalScannerVerificationEvidence,
+	): Boolean {
+		val source = manga.source.unwrap()
+		if (source !is MihonMangaSource && source !is TsukiMangaSource) return false
+		val canonicalSource = sourceAliases.canonicalId(manga.source.name)
+		if (VerifiedSourceAliases.entries.any { it.canonicalId == canonicalSource }) return false
+		val downloads = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
+		val sourceRoot = LocalMangaOutput.getSourceDirectory(downloads, manga)
+		if (sourceRoot == downloads || physical.parentFile != sourceRoot) return false
+		if (physical !in LocalMangaOutput.normalScannerDirectoryCandidates(root, manga, null)) return false
+		val claims = proof.titleClaims(manga.title)
+		return claims.any { it.mangaId == manga.id && it.source == manga.source.name && it.url == manga.url } &&
+			claims.none { it.mangaId != manga.id }
 	}
 
 	private suspend fun hasUnambiguousManualIdentity(
