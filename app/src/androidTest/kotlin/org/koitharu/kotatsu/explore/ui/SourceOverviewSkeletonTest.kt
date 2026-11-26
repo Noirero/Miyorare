@@ -1,16 +1,34 @@
 package org.koitharu.kotatsu.explore.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
@@ -111,5 +129,77 @@ class SourceOverviewSkeletonTest {
         compose.runOnIdle { assertEquals(1, retries) }
         compose.runOnIdle { current.value = state(latest) }
         compose.onAllNodesWithTag("source_overview_skeleton_UPDATED").onFirst().assertExists()
+    }
+
+    @Test
+    fun shimmerVariantsDrawOnlyTheirOwnLayerAndEndpointsStayStatic() {
+        val phase = mutableStateOf(0f)
+        val effect = mutableStateOf(OverviewSkeletonEffect.EDGE_AND_SOFT)
+        val light = mutableStateOf(false)
+        compose.setContent {
+            val scheme = if (light.value) lightColorScheme() else darkColorScheme()
+            MaterialTheme(colorScheme = scheme) {
+                Box(
+                    Modifier.size(104.dp, 156.dp).clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .overviewSkeletonShimmer(phase, effect.value, MaterialTheme.colorScheme.onSurface)
+                        .testTag("shimmer_fixture"),
+                )
+            }
+        }
+        val node = compose.onNodeWithTag("shimmer_fixture")
+        for (isLight in listOf(false, true)) {
+            compose.runOnIdle { light.value = isLight; phase.value = 0f }
+            val baseline = node.captureToImage().toPixelMap()
+            val x = baseline.width / 2
+            val y = baseline.height / 2
+            val baseCenter = baseline[x, y]
+            compose.runOnIdle { phase.value = 0.5f; effect.value = OverviewSkeletonEffect.SOFT }
+            val soft = node.captureToImage().toPixelMap()
+            assertTrue("Soft shimmer changes the face", soft[x, y] != baseCenter)
+
+            compose.runOnIdle { effect.value = OverviewSkeletonEffect.EDGE }
+            val edge = node.captureToImage().toPixelMap()
+            assertEquals("Edge shimmer leaves the face unchanged", baseCenter, edge[x, y])
+            assertTrue("Edge shimmer draws a visible stroke", (0 until edge.width).any { col ->
+                (0 until edge.height).any { row -> edge[col, row] != baseline[col, row] }
+            })
+
+            compose.runOnIdle { effect.value = OverviewSkeletonEffect.EDGE_AND_SOFT }
+            val hybrid = node.captureToImage().toPixelMap()
+            assertEquals("Hybrid retains the soft face", soft[x, y], hybrid[x, y])
+            assertTrue("Hybrid includes the edge", (0 until hybrid.width).any { col ->
+                (0 until hybrid.height).any { row -> hybrid[col, row] != soft[col, row] }
+            })
+
+            // The target endpoint is also the Compose zero-duration-scale fallback.
+            compose.runOnIdle { phase.value = 1f }
+            val stopped = node.captureToImage().toPixelMap()
+            assertTrue("Stopped shimmer equals the static skeleton", (0 until stopped.width).all { col ->
+                (0 until stopped.height).all { row -> stopped[col, row] == baseline[col, row] }
+            })
+        }
+    }
+
+    @Test
+    fun sharedShimmerPhaseExistsOnlyForResumedPendingShelves() {
+        val owner = object : LifecycleOwner {
+            val registry = LifecycleRegistry.createUnsafe(this)
+            override val lifecycle: Lifecycle get() = registry
+        }
+        val pending = mutableStateOf(true)
+        var observed: State<Float>? = null
+        compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+        compose.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                val phase = rememberOverviewSkeletonPhase(pending.value)
+                SideEffect { observed = phase }
+            }
+        }
+        compose.runOnIdle { assertNotNull(observed); owner.registry.currentState = Lifecycle.State.STARTED }
+        compose.runOnIdle { assertNull(observed); owner.registry.currentState = Lifecycle.State.RESUMED }
+        compose.runOnIdle { assertNotNull(observed); pending.value = false }
+        compose.runOnIdle { assertNull(observed); pending.value = true }
+        compose.runOnIdle { assertNotNull(observed) }
     }
 }
