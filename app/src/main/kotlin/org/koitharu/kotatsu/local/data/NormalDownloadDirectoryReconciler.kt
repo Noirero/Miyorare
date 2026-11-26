@@ -7,11 +7,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.local.data.index.DownloadPathAlias
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.longHashCode
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
 import java.io.File
 import java.util.Locale
 
@@ -45,11 +47,26 @@ internal object NormalDownloadDirectoryReconciler {
 		verifiedPrevious: Collection<MangaChapter> = emptyList(),
 	): LocalManga? = reconcile(remote, container, indexedLayout = false, verifiedPrevious = verifiedPrevious)
 
+	/**
+	 * Only for an independently space-verified, exact migration container. A redirect is
+	 * accepted only for an indexed old ID with the same source-owned URL as its current target.
+	 * Sidecar-free ordinal redirects never enter this path.
+	 */
+	suspend fun reconcileMigratedIndexed(
+		remote: Manga,
+		container: File,
+		alias: DownloadPathAlias,
+		sourceAliases: SourceAliasRegistry,
+	): LocalManga? = reconcile(remote, container, indexedLayout = true, verifiedPrevious = emptyList(),
+		migration = alias, sourceAliases = sourceAliases)
+
 	private suspend fun reconcile(
 		remote: Manga,
 		container: File,
 		indexedLayout: Boolean,
 		verifiedPrevious: Collection<MangaChapter>,
+		migration: DownloadPathAlias? = null,
+		sourceAliases: SourceAliasRegistry? = null,
 	): LocalManga? = withContext(Dispatchers.IO) {
 		runCatchingCancellable {
 			val root = container.canonicalFile
@@ -64,8 +81,14 @@ internal object NormalDownloadDirectoryReconciler {
 			} else null
 			val indexed = if (index != null) {
 				val info = index.getMangaInfo() ?: return@runCatchingCancellable null
-				if (info.id != remote.id || info.source.name != remote.source.name || info.url != remote.url) {
-					return@runCatchingCancellable null
+				if (info.url != remote.url) return@runCatchingCancellable null
+				if (migration == null) {
+					if (info.id != remote.id || info.source.name != remote.source.name) return@runCatchingCancellable null
+				} else {
+					if (migration.path != root.path || migration.localMangaId != info.id ||
+						info.id == remote.id || sourceAliases == null ||
+						!sourceAliases.areAliases(info.source.name, remote.source.name)
+					) return@runCatchingCancellable null
 				}
 				info
 			} else null
@@ -92,11 +115,28 @@ internal object NormalDownloadDirectoryReconciler {
 			val remoteById = remoteChapters.associateBy { it.id }
 			if (remoteById.size != remoteChapters.size) return@runCatchingCancellable null
 			val indexedChapters = indexed?.chapters.orEmpty()
+			val redirects = migration?.chapterIds.orEmpty()
+			if (migration != null) {
+				// Require actual indexed locators, not just persisted numeric redirects. A map
+				// from an earlier sidecar-free ordinal cannot be trusted on this inventory.
+				if (redirects.isEmpty() || redirects.values.toSet().size != redirects.size) {
+					return@runCatchingCancellable null
+				}
+				val oldById = indexedChapters.associateBy { it.id }
+				for ((oldId, newId) in redirects) {
+					val old = oldById[oldId] ?: return@runCatchingCancellable null
+					val current = remoteById[newId] ?: return@runCatchingCancellable null
+					if (old.url.isBlank() || old.url != current.url ||
+						old.source.name != indexed?.source?.name || current.source.name != remote.source.name
+					) return@runCatchingCancellable null
+				}
+			}
 			val reservedIds = remoteById.keys.toMutableSet()
 			reservedIds.addAll(indexedChapters.map { it.id })
 			val represented = HashSet<String>()
 			val linked = ArrayList<MangaChapter>(artifacts.size)
 			val linkedByName = HashMap<String, Int>()
+			val indexedLinkedIds = HashSet<Long>()
 			for (chapter in indexedChapters) {
 				val name = index?.getChapterFileName(chapter.id) ?: return@runCatchingCancellable null
 				if (name != File(name).name || name.startsWith(".") ||
@@ -109,9 +149,16 @@ internal object NormalDownloadDirectoryReconciler {
 					if (name.lowercase(Locale.ROOT) in foldedNames) return@runCatchingCancellable null
 					continue
 				}
-				val current = remoteById[chapter.id]
+				val current = if (migration == null) remoteById[chapter.id] else {
+					val target = redirects[chapter.id]
+					// A surviving unmapped old ID may be independent, but cannot collide with
+					// a current remote ID. No inference from numeric equality.
+					if (target == null && chapter.id in remoteById) return@runCatchingCancellable null
+					target?.let(remoteById::get)
+				}
 				// A contradictory current source locator cannot be silently re-keyed by a stale ID.
 				if (current != null && current.url != chapter.url) return@runCatchingCancellable null
+				if (!indexedLinkedIds.add((current ?: chapter).id)) return@runCatchingCancellable null
 				linkedByName[name] = linked.size
 				linked += (current ?: chapter).copy(
 					url = Uri.fromFile(file).toString(),

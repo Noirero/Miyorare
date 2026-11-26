@@ -1073,6 +1073,133 @@ class DownloadedLocalStateTest {
 		).deterministicPaths)
 	}
 
+
+	/** T10: direct indexed manual evidence, shared/reverse-nested and foreign owner conflicts. */
+	@Test fun normalScannerVerifiedIndexedContainerRequiresSpaceIsolation() = runBlocking {
+		val manga = remote(810_079L)
+		favourite(manga)
+		val container = download(root, manga).file.canonicalFile
+		val file = File(container, "Chapter 1.cbz")
+		val bytes = file.readBytes()
+		val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		sidecar.writeText(MangaIndex(null).apply {
+			setMangaInfo(manga)
+			addChapter(IndexedValue(0, manga.chapters.orEmpty().single()), file.name)
+		}.toString())
+		val sidecarBytes = sidecar.readBytes()
+		val dao = db.getFavouriteDownloadIndexDao()
+		suspend fun verify() = normalDirectoryDiscovery.verifyIndexedCandidate(manga, FavouriteSpace.NORMAL, container)
+		// Private is nested elsewhere under Normal; the exact sidecar is enough here, without an owner.
+		assertEquals(manga.chapters.orEmpty().single().id, requireNotNull(verify()).manga.chapters.orEmpty().single().id)
+		assertNull(dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertNull(normalDirectoryDiscovery.verifyIndexedCandidate(manga, FavouriteSpace.PRIVATE, container))
+		destinations.setRoot(FavouriteSpace.PRIVATE, root)
+		assertNull(verify())
+		val normalOwner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		dao.upsert(normalOwner)
+		assertNotNull(verify())
+		val privateOwner = normalOwner.copy(space = FavouriteSpace.PRIVATE.dbValue)
+		dao.upsert(privateOwner)
+		assertNull(verify())
+		dao.delete(FavouriteSpace.PRIVATE.dbValue, manga.id)
+
+		// A foreign child owner cannot be masked by the exact Normal directory row.
+		val foreign = remote(810_080L)
+		data.storeManga(foreign, replaceExisting = true)
+		val foreignOwner = FavouriteDownloadIndexEntity(foreign.id, FavouriteSpace.PRIVATE.dbValue, file.canonicalPath)
+		dao.upsert(foreignOwner)
+		assertNull(verify())
+		dao.delete(FavouriteSpace.PRIVATE.dbValue, foreign.id)
+		assertNotNull(verify())
+		assertEquals(normalOwner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertArrayEquals(bytes, file.readBytes())
+		assertArrayEquals(sidecarBytes, sidecar.readBytes())
+
+		// A selected Private root inside the container itself is excluded before parsing.
+		val privateInside = File(container, "private-inside")
+		destinations.setRoot(FavouriteSpace.PRIVATE, privateInside)
+		assertNull(verify())
+		destinations.setRoot(FavouriteSpace.PRIVATE, root)
+		assertTrue(privateInside.deleteRecursively())
+		assertNotNull(verify())
+
+		// Reverse nesting: Normal destination lives inside Private's selected root.
+		val nested = File(root, "scanner-nested-normal")
+		destinations.setRoot(FavouriteSpace.NORMAL, nested)
+		val nestedContainer = download(nested, manga).file.canonicalFile
+		val nestedSidecar = File(nestedContainer, LocalMangaOutput.ENTRY_NAME_INDEX)
+		val nestedBytes = File(nestedContainer, file.name).readBytes()
+		nestedSidecar.writeBytes(sidecarBytes)
+		assertNull(normalDirectoryDiscovery.verifyIndexedCandidate(manga, FavouriteSpace.NORMAL, nestedContainer))
+		val nestedOwner = normalOwner.copy(path = nestedContainer.path)
+		dao.upsert(nestedOwner)
+		assertNotNull(normalDirectoryDiscovery.verifyIndexedCandidate(manga, FavouriteSpace.NORMAL, nestedContainer))
+		assertNull(verify()) // old root still exists but is not active
+		assertEquals(nestedOwner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertArrayEquals(nestedBytes, File(nestedContainer, file.name).readBytes())
+		assertArrayEquals(sidecarBytes, nestedSidecar.readBytes())
+	}
+
+	/** T05/T10: a persisted migrated indexed redirect needs exact path, source and chapter locator. */
+	@Test fun normalScannerVerifiedMigratedIndexedAliasRequiresMatchingLocators() = runBlocking {
+		val seed = remote(810_081L)
+		val oldSource = MissingMangaSource("MIHON_2677079941490683989")
+		val oldChapter = seed.chapters.orEmpty().single().copy(source = oldSource, url = "/chapter/1")
+		val old = seed.copy(source = oldSource, chapters = listOf(oldChapter))
+		val targetSource = MissingMangaSource("TSUKI:MIYORARE:miyorare-id:BACAMI")
+		val targetChapter = oldChapter.copy(id = oldChapter.id + 10L, source = targetSource)
+		val target = old.copy(id = 810_082L, source = targetSource, chapters = listOf(targetChapter))
+		ids += target.id
+		data.storeManga(old, replaceExisting = true)
+		favourite(target)
+		val container = download(root, old).file.canonicalFile
+		val file = File(container, "Chapter 1.cbz")
+		val bytes = file.readBytes()
+		val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		fun writeIndex(chapter: org.koitharu.kotatsu.parsers.model.MangaChapter) {
+			sidecar.writeText(MangaIndex(null).apply {
+				setMangaInfo(old)
+				addChapter(IndexedValue(0, chapter), file.name)
+			}.toString())
+		}
+		writeIndex(oldChapter)
+		val originalIndex = sidecar.readBytes()
+		index.rememberVerifiedPath(old.id, container)
+		requireNotNull(index.prepareDownloadIdentityMove(old.id, target.id, mapOf(oldChapter.id to targetChapter.id)))
+		val alias = requireNotNull(index.getDownloadAliasForScanner(target.id))
+		suspend fun verify() = normalDirectoryDiscovery.verifyIndexedCandidate(target, FavouriteSpace.NORMAL, container)
+		assertNull(verify()) // prepare is not proof of a committed Normal transfer
+		val owner = FavouriteDownloadIndexEntity(target.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		db.getFavouriteDownloadIndexDao().upsert(owner)
+		val resolved = requireNotNull(verify()).manga.chapters.orEmpty().single()
+		assertEquals(targetChapter.id, resolved.id)
+		assertEquals(file.canonicalPath, android.net.Uri.parse(resolved.url).path)
+		assertTrue(local.getPages(resolved).isNotEmpty())
+		assertEquals(alias, index.getDownloadAliasForScanner(target.id))
+		assertArrayEquals(originalIndex, sidecar.readBytes())
+
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(file.renameTo(special))
+		val renamed = requireNotNull(verify()).manga.chapters.orEmpty().single()
+		assertNotEquals(targetChapter.id, renamed.id)
+		assertEquals(special.name, android.net.Uri.parse(renamed.url).fragment)
+		assertTrue(local.getPages(renamed).isNotEmpty())
+		assertArrayEquals(originalIndex, sidecar.readBytes())
+		assertTrue(special.renameTo(file))
+		assertEquals(targetChapter.id, requireNotNull(verify()).manga.chapters.orEmpty().single().id)
+
+		writeIndex(oldChapter.copy(url = "/different-chapter"))
+		val staleIndex = sidecar.readBytes()
+		assertNull(verify())
+		assertArrayEquals(staleIndex, sidecar.readBytes())
+		assertTrue(sidecar.delete())
+		assertNull(verify()) // no ordinal-based redirect when the sidecar is gone
+		assertFalse(sidecar.exists())
+		assertEquals(alias, index.getDownloadAliasForScanner(target.id))
+		assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, target.id))
+		assertArrayEquals(bytes, file.readBytes())
+	}
+
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
 		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)
