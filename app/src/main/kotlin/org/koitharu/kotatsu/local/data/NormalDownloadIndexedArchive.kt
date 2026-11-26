@@ -92,9 +92,15 @@ internal object NormalDownloadIndexedArchive {
 				if (migration != null) {
 					if (redirects.isEmpty() || redirects.values.toSet().size != redirects.size) return@runCatchingCancellable null
 					val oldById = stored.associateBy { it.id }
+					// A confirmed partial filter removes an embedded index entry, not the
+					// historical migration map. Missing old IDs cannot authorize a selector.
+					// Require at least one surviving exact locator and verify every surviving
+					// redirect; the complete archive inventory below must still be valid.
+					if (redirects.keys.none { it in oldById }) return@runCatchingCancellable null
 					for ((oldId, newId) in redirects) {
-						val old = oldById[oldId] ?: return@runCatchingCancellable null
 						val target = remoteById[newId] ?: return@runCatchingCancellable null
+						if (target.source.name != remote.source.name || target.url.isBlank()) return@runCatchingCancellable null
+						val old = oldById[oldId] ?: continue
 						if (old.url.isBlank() || old.url != target.url ||
 							old.source.name != info.source.name || target.source.name != remote.source.name
 						) return@runCatchingCancellable null

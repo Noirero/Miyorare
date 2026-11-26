@@ -3004,6 +3004,134 @@ class DownloadedLocalStateTest {
 		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
 	}
 
+	/** Q24: actual migrated archive partial delete preserves old embedded ID and existing redirect map. */
+	@Test fun normalDeleteMigratedArchivePreservesSurvivingLocatorAndAlias() = runBlocking {
+		val seed = remote(810_139L)
+		val oldSource = MissingMangaSource("MIHON_2677079941490683989")
+		val first = seed.chapters.orEmpty().single().copy(source = oldSource, url = "/chapter/1")
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2", number = 2f)
+		val retired = second.copy(id = second.id + 1, title = "Retired", url = "/retired", number = 3f)
+		val old = seed.copy(source = oldSource, chapters = listOf(first, second, retired))
+		val newSource = MissingMangaSource("TSUKI:MIYORARE:miyorare-id:BACAMI")
+		val newFirst = first.copy(id = first.id + 10, source = newSource)
+		val newSecond = second.copy(id = second.id + 10, source = newSource)
+		val target = old.copy(id = 810_140L, source = newSource, chapters = listOf(newFirst, newSecond))
+		ids += target.id
+		data.storeManga(old, replaceExisting = true)
+		favourite(target)
+		val image = File(root, "delete-migrated.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val output = LocalMangaOutput.getOrCreate(root, old, DownloadFormat.SINGLE_CBZ)
+		val archive = output.rootFile.canonicalFile
+		try {
+			output.addPage(IndexedValue(0, first), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(first))
+			output.addPage(IndexedValue(1, second), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(second))
+			output.addPage(IndexedValue(2, retired), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(retired))
+			output.finish()
+		} finally { output.close() }
+		val bytes = archive.readBytes()
+		val originals = LocalMangaParser(archive).getManga(withDetails = true).manga.chapters.orEmpty()
+			.associate { it.id to local.getPages(it).single().url }
+		index.rememberVerifiedPath(old.id, archive)
+		requireNotNull(index.prepareDownloadIdentityMove(old.id, target.id, mapOf(first.id to newFirst.id, second.id to newSecond.id)))
+		val space = FavouriteSpace.NORMAL
+		val owner = FavouriteDownloadIndexEntity(target.id, space.dbValue, archive.path)
+		db.getFavouriteDownloadIndexDao().upsert(owner)
+		val alias = requireNotNull(index.getDownloadAliasForScanner(target.id))
+		val store = observationStore()
+		val reader = normalReader(store)
+		val action = NormalDownloadDeleteAction(normalDownloadScope, store, destinations,
+			NormalDownloadMutationFence(normalDownloadScope, store), MangaLock(), local)
+		val copy = requireNotNull(reader.resolve(target, space))
+		val selectors = requireNotNull(copy.normalReaderSelectors)
+		val selected = selectors.getValue(newFirst.id)
+		assertTrue(runCatching { action.preview(target, space, archive, selectors.mapValues { it.value.url }) }.isFailure)
+		assertArrayEquals(bytes, archive.readBytes())
+		val approval = requireNotNull(action.preview(target, space, archive, mapOf(newFirst.id to selected.url)))
+		assertEquals(setOf(first.id), approval.embeddedIds)
+		assertFalse(approval.removeContainer)
+		val pending = requireNotNull(store.begin(target, space))
+		val oldResult = requireNotNull(normalDirectoryDiscovery.resolveCandidates(target, space))
+		assertTrue(action.execute(target, space, approval))
+		assertFalse(store.publish(pending, oldResult))
+		val remaining = requireNotNull(reader.resolve(target, space)?.normalReaderSelectors)
+		assertEquals(setOf(newSecond.id), remaining.keys)
+		assertEquals(second.id, remaining.getValue(newSecond.id).id)
+		assertTrue(runCatching { action.preview(target, space, archive, remaining.mapValues { it.value.url }) }.isFailure)
+		assertEquals(originals.getValue(second.id), local.getPages(remaining.getValue(newSecond.id)).single().url)
+		assertEquals(alias, index.getDownloadAliasForScanner(target.id))
+		assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, target.id))
+		assertTrue(store.scan(target, space))
+		assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(target), space)[target.id]?.fact?.status)
+		assertTrue(runCatching { action.execute(target, space, approval) }.isFailure)
+		assertTrue(runCatching { reader.resolve(target.copy(chapters = listOf(newFirst, newSecond.copy(url = "/wrong"))), space) }.isFailure)
+		// Restoring the original archive still resolves both exact selectors: deletion did not rewrite aliases.
+		archive.writeBytes(bytes)
+		assertEquals(setOf(newFirst.id, newSecond.id), requireNotNull(reader.resolve(target, space)?.normalReaderSelectors).keys)
+		assertTrue(action.execute(target, space, requireNotNull(action.preview(target, space, archive))))
+		assertFalse(archive.exists())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, target.id))
+	}
+
+	/** Q24/T15: indexed metadata is proof, not permission to delete arbitrary cover/staging paths. */
+	@Test fun normalDeleteIndexedDirectoryChecksSidecarAndPreservesForeignContent() = runBlocking {
+		val seed = remote(810_141L)
+		val first = seed.chapters.orEmpty().single()
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2", number = 2f)
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, manga.copy(chapters = listOf(first))).file.canonicalFile
+		val firstFile = File(container, "Chapter 1.cbz")
+		val secondFile = File(container, "Chapter 2.cbz").apply { writeBytes(firstFile.readBytes()) }
+		val bytes = secondFile.readBytes()
+		val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		val foreign = File(container, "foreign.tmp").apply { writeText("keep") }
+		fun metadata(cover: String? = null) = MangaIndex(null).apply {
+			setMangaInfo(manga)
+			addChapter(IndexedValue(0, first), firstFile.name)
+			addChapter(IndexedValue(1, second), secondFile.name)
+			cover?.let(::setCoverEntry)
+		}.toString()
+		sidecar.writeText(metadata(foreign.name))
+		val space = FavouriteSpace.NORMAL
+		val owner = FavouriteDownloadIndexEntity(manga.id, space.dbValue, container.path)
+		db.getFavouriteDownloadIndexDao().upsert(owner)
+		val store = observationStore()
+		val reader = normalReader(store)
+		val action = NormalDownloadDeleteAction(normalDownloadScope, store, destinations,
+			NormalDownloadMutationFence(normalDownloadScope, store), MangaLock(), local)
+		val selected = requireNotNull(reader.resolve(manga, space)?.normalReaderSelectors?.get(first.id))
+		val selection = mapOf(first.id to selected.url)
+		suspend fun preview() = requireNotNull(action.preview(manga, space, container, selection))
+		assertTrue(runCatching { action.preview(manga, space, container) }.isFailure)
+		assertEquals("keep", foreign.readText())
+		val old = preview()
+		sidecar.writeText(metadata())
+		assertTrue(runCatching { action.execute(manga, space, old) }.isFailure)
+		assertTrue(firstFile.exists())
+		assertArrayEquals(bytes, secondFile.readBytes())
+		val approved = preview()
+		val staleWork = requireNotNull(store.begin(manga, space))
+		val staleResult = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+		assertTrue(action.execute(manga, space, approved))
+		assertFalse(store.publish(staleWork, staleResult))
+		assertFalse(firstFile.exists())
+		assertArrayEquals(bytes, secondFile.readBytes())
+		assertEquals("keep", foreign.readText())
+		assertTrue(sidecar.exists())
+		assertEquals(setOf(second.id), requireNotNull(reader.resolve(manga, space)?.normalReaderSelectors).keys)
+		assertTrue(runCatching { action.preview(manga, space, container) }.isFailure)
+		assertTrue(foreign.delete())
+		assertTrue(action.execute(manga, space, requireNotNull(action.preview(manga, space, container))))
+		assertFalse(container.exists())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
+	}
+
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
 		data.storeManga(manga, replaceExisting = true)
 		val category = repository.createCategory("Batch 11 ${manga.id}", ListSortOrder.NEWEST, false, false, true, space)

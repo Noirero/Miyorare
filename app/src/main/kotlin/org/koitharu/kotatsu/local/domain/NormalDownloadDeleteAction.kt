@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.core.util.MimeTypes
+import org.koitharu.kotatsu.core.util.ext.isImage
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.domain.NormalDownloadMutationFence
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -36,6 +38,7 @@ internal data class NormalDeleteApproval(
 	val containerStamp: NormalDeleteStamp,
 	val selected: Map<Long, String>?,
 	val victims: Map<File, NormalDeleteStamp>,
+	val proofFiles: Map<File, NormalDeleteStamp>,
 	val removeContainer: Boolean,
 	val embeddedIds: Set<Long>,
 ) : Serializable
@@ -94,6 +97,7 @@ class NormalDownloadDeleteAction @Inject internal constructor(
 		check(chapters.isNotEmpty() && chapters.map { it.id }.toSet().size == chapters.size)
 		check(selected == null || selected.isNotEmpty())
 		val victims = linkedMapOf<File, NormalDeleteStamp>()
+		val proofFiles = linkedMapOf<File, NormalDeleteStamp>()
 		var removeContainer: Boolean
 		var embeddedIds: Set<Long> = emptySet()
 		if (parent.directory) {
@@ -113,11 +117,13 @@ class NormalDownloadDeleteAction @Inject internal constructor(
 			val allowed = files.values.toMutableSet()
 			val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
 			if (sidecar in listing) {
+				proofFiles[sidecar] = before[sidecar] ?: throw IOException("Cannot verify download metadata")
 				val index = MangaIndex.read(sidecar) ?: throw IOException("Cannot verify download metadata")
 				allowed += sidecar
 				index.getCoverEntry()?.let { name ->
 					val cover = File(container, name)
-					if (cover.parentFile == container && cover in before) allowed += cover
+					if (cover.parentFile == container && cover in before && !cover.name.startsWith(".") &&
+						MimeTypes.getMimeTypeFromExtension(cover.name)?.isImage == true) allowed += cover
 				}
 			}
 			removeContainer = requested == files.values.toSet() && listing == allowed && before.keys.containsAll(allowed)
@@ -135,10 +141,17 @@ class NormalDownloadDeleteAction @Inject internal constructor(
 			}.toSet()
 			check(selected == null || embeddedIds.size == selected.size)
 			removeContainer = embeddedIds == chapters.mapTo(hashSetOf()) { it.id }
+			// Do not strand an unmapped old archive remainder without any surviving
+			// verified migration locator. Whole-container approval is a distinct action.
+			if (!removeContainer) result.migratedArchiveIdentity?.let { migration ->
+				check(migration.selectorsByRemoteId.values.any { it.id !in embeddedIds }) {
+					"Remaining migrated archive identity cannot be verified; files were kept"
+				}
+			}
 			if (removeContainer) victims[container] = parent
 		}
 		val approval = NormalDeleteApproval(manga.id, manga.source.name, manga.url, space, roots.generation, context,
-			container, parent, selected?.toMap(), victims, removeContainer, embeddedIds)
+			container, parent, selected?.toMap(), victims, proofFiles, removeContainer, embeddedIds)
 		check(observations.actionContext(manga, space) == context) { "Download context changed" }
 		destinations.withDestinationMutationLock { verifyPhysical(approval) }
 		return approval
@@ -196,7 +209,8 @@ class NormalDownloadDeleteAction @Inject internal constructor(
 	private fun verifyPhysical(approval: NormalDeleteApproval) {
 		check(approval.generation == destinations.normalScannerRootChanges.value &&
 			stamp(approval.container) == approval.containerStamp &&
-			approval.victims.all { (file, expected) -> stamp(file) == expected }) {
+			approval.victims.all { (file, expected) -> stamp(file) == expected } &&
+			approval.proofFiles.all { (file, expected) -> stamp(file) == expected }) {
 			"Selected download changed; files were kept"
 		}
 		if (!approval.containerStamp.directory) {
