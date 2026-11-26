@@ -40,6 +40,7 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -88,6 +89,7 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var index: LocalMangaIndex
 	@Inject lateinit var local: LocalMangaRepository
 	@Inject lateinit var resolver: DownloadedMangaResolver
+	@Inject lateinit var normalDownloadScope: NormalDownloadScope
 	@Inject lateinit var deleteLocal: DeleteLocalMangaUseCase
 	@Inject lateinit var ownership: FavouriteDownloadOwnershipIndex
 	@Inject lateinit var destinations: DownloadDestinationStore
@@ -638,6 +640,80 @@ class DownloadedLocalStateTest {
 		val orphanId = requireNotNull(orphan).id
 		assertNotEquals(first.id, orphanId)
 		assertNotEquals(second.id, orphanId)
+	}
+
+
+	/** T06/T10/T11 foundation: membership, explicit provenance and protected source boundaries. */
+	@Test fun normalScannerScopeRequiresActualNormalMembershipAndVerifiedContext() = runBlocking {
+		val normal = remote(810_065L)
+		val dual = remote(810_066L)
+		val privateOnly = remote(810_067L)
+		val nonFavourite = remote(810_068L)
+		favourite(normal)
+		favourite(dual)
+		favourite(dual, FavouriteSpace.PRIVATE)
+		favourite(privateOnly, FavouriteSpace.PRIVATE)
+		data.storeManga(nonFavourite, replaceExisting = true)
+
+		assertTrue(normalDownloadScope.appliesTo(normal, FavouriteSpace.NORMAL))
+		assertTrue(normalDownloadScope.appliesTo(normal, null))
+		assertFalse(normalDownloadScope.appliesTo(normal, FavouriteSpace.PRIVATE))
+		assertTrue(normalDownloadScope.appliesTo(dual, FavouriteSpace.NORMAL))
+		assertFalse(normalDownloadScope.appliesTo(dual, null))
+		assertFalse(normalDownloadScope.appliesTo(dual, FavouriteSpace.PRIVATE))
+		assertFalse(normalDownloadScope.appliesTo(privateOnly, FavouriteSpace.NORMAL))
+		assertFalse(normalDownloadScope.appliesTo(privateOnly, null))
+		assertFalse(normalDownloadScope.appliesTo(nonFavourite, FavouriteSpace.NORMAL))
+
+		// Exercise the metadata guard even when the ID has actual Normal membership.
+		for (source in listOf(
+			LocalMangaSource,
+			MissingMangaSource("LN_SCANNER_FIXTURE"),
+			MissingMangaSource("TSUKI:MIYORARE:miyorare-global:EXHENTAI"),
+			MissingMangaSource("TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"),
+			MissingMangaSource("TSUKI:OTHER:fixture:EXHENTAI"),
+			MissingMangaSource("MIHON_57122881048805941"),
+		)) {
+			assertFalse(source.name, normalDownloadScope.appliesTo(normal.copy(source = source), FavouriteSpace.NORMAL))
+		}
+
+		val memberships = repository.getCategoriesIds(dual.id, FavouriteSpace.NORMAL)
+		repository.updateCategoryMemberships(listOf(dual), memberships.associateWith { false }, FavouriteSpace.NORMAL)
+		assertFalse(normalDownloadScope.appliesTo(dual, FavouriteSpace.NORMAL))
+		assertFalse(normalDownloadScope.appliesTo(dual, null))
+		assertTrue(repository.isFavorite(dual.id, FavouriteSpace.PRIVATE))
+	}
+
+	/** T06/T07/T10 foundation: current root containment is not legacy or ownership lookup. */
+	@Test fun normalScannerScopeRejectsHistoricalUnavailableAndNestedPrivatePaths() = runBlocking {
+		val manga = remote(810_069L)
+		favourite(manga)
+		val activeA = File(root, "scope-a").apply { check(mkdirs()) }
+		val activeB = File(root, "scope-b").apply { check(mkdirs()) }
+		val nestedPrivate = File(activeA, "private").apply { check(mkdirs()) }
+		val artifactA = File(activeA, "Chapter 1.cbz").apply { writeBytes(byteArrayOf(1)) }
+		val artifactB = File(activeB, "Chapter 1.cbz").apply { writeBytes(byteArrayOf(2)) }
+		val privateArtifact = File(nestedPrivate, "Chapter 1.cbz").apply { writeBytes(byteArrayOf(3)) }
+		val missingRoot = File(root, "unavailable")
+		val siblingPrefix = File(root, "scope-a-other").apply { check(mkdirs()) }
+		val foreignArtifact = File(siblingPrefix, "Chapter 1.cbz").apply { writeBytes(byteArrayOf(4)) }
+
+		assertTrue(normalDownloadScope.isWithinActiveRoot(artifactA, activeA, nestedPrivate))
+		assertFalse(normalDownloadScope.isWithinActiveRoot(privateArtifact, activeA, nestedPrivate))
+		assertFalse(normalDownloadScope.isWithinActiveRoot(nestedPrivate, activeA, nestedPrivate))
+		assertFalse(normalDownloadScope.isWithinActiveRoot(foreignArtifact, activeA, nestedPrivate))
+		// Shared and reverse-nested roots pass containment, not ownership/identity.
+		assertTrue(normalDownloadScope.isWithinActiveRoot(artifactA, activeA, activeA))
+		assertTrue(normalDownloadScope.isWithinActiveRoot(artifactA, activeA, root))
+		assertFalse(normalDownloadScope.isWithinActiveRoot(artifactA, activeB, nestedPrivate))
+		assertTrue(normalDownloadScope.isWithinActiveRoot(artifactB, activeB, nestedPrivate))
+		assertFalse(normalDownloadScope.isWithinActiveRoot(artifactA, missingRoot, nestedPrivate))
+		assertFalse(normalDownloadScope.isWithinActiveRoot(artifactA, null, nestedPrivate))
+		assertFalse(missingRoot.exists())
+		assertTrue(normalDownloadScope.appliesTo(manga, FavouriteSpace.NORMAL))
+		assertArrayEquals(byteArrayOf(1), artifactA.readBytes())
+		assertArrayEquals(byteArrayOf(2), artifactB.readBytes())
+		assertArrayEquals(byteArrayOf(3), privateArtifact.readBytes())
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
