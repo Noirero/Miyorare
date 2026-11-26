@@ -16,6 +16,7 @@ import com.google.android.material.tabs.TabLayout
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.MiyorareNeonGlassColors
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.explicitPrivateViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.neonGlass
 import kotlin.math.roundToInt
@@ -52,7 +53,8 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 	}
 
 	private fun applyModernPresentationIfNeeded() {
-		val palette = context.miyorareViewPaletteFromPreferences() ?: return
+		val privatePalette = context.explicitPrivateViewPaletteFromPreferences()
+		val palette = privatePalette ?: context.miyorareViewPaletteFromPreferences() ?: return
 		val density = resources.displayMetrics.density
 		val radius = MiyorareVisualTokens.RADIUS_CONTROL_DP * density
 		val strokeWidth = density.roundToInt().coerceAtLeast(1)
