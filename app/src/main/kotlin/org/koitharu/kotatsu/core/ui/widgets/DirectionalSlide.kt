@@ -67,8 +67,8 @@ internal class DirectionalSlidePresentation {
 					if (state === pair) finish()
 				}
 			})
-			start()
 		}
+		animator?.start()
 	}
 
 	fun finish() {

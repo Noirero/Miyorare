@@ -23,6 +23,8 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.settings.AdvancedNetworkSettingsFragment
 import org.koitharu.kotatsu.settings.AppearanceAdvancedSettingsFragment
 import org.koitharu.kotatsu.settings.AppearanceSettingsFragment
+import org.koitharu.kotatsu.settings.nav.NavigationTransitionSettingsFragment
+import org.koitharu.kotatsu.core.prefs.NavigationTransitionPreferences
 import org.koitharu.kotatsu.settings.BackupSettingsFragment
 import org.koitharu.kotatsu.settings.ConnectedServicesSettingsFragment
 import org.koitharu.kotatsu.settings.DownloadsSettingsFragment
@@ -170,6 +172,10 @@ class SettingsSearchHelper @Inject constructor(
             group(sectionCrumbs, R.string.main_screen) { crumbs ->
                 addItem(AppSettings.KEY_SEARCH_SUGGESTION_TYPES, R.string.search_suggestions, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(AppSettings.KEY_NAV_MAIN, R.string.main_screen_sections, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+                addItem("navigation_transition", R.string.navigation_transition_title, R.string.navigation_transition_summary, crumbs, AppearanceSettingsFragment::class.java)
+                val motionCrumbs = crumbs + ctx.getString(R.string.navigation_transition_title)
+                addItem(NavigationTransitionPreferences.KEY_MOTION, R.string.navigation_motion_title, breadcrumbs = motionCrumbs, fragmentClass = NavigationTransitionSettingsFragment::class.java, keywordRes = intArrayOf(R.string.navigation_motion_classic, R.string.navigation_motion_elastic, R.string.navigation_motion_fluid))
+                addItem(NavigationTransitionPreferences.KEY_TRANSITION, R.string.navigation_screen_transition_title, breadcrumbs = motionCrumbs, fragmentClass = NavigationTransitionSettingsFragment::class.java, keywordRes = intArrayOf(R.string.navigation_transition_directional))
                 addItem(AppSettings.KEY_MAIN_FAB, R.string.main_screen_fab, R.string.main_screen_fab_summary, crumbs, AppearanceSettingsFragment::class.java)
                 addItem(AppSettings.KEY_NAV_LABELS, R.string.show_labels_in_navbar, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 val feedCrumbs = crumbs + ctx.getString(R.string.settings_feed)

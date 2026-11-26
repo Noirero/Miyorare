@@ -125,7 +125,7 @@ internal class NavigationTabDrag(
 					if (pressed) clearIndicator()
 				} else if (along > touchSlop && along > across) {
 					drag.captured = true
-				pressed = true
+					pressed = true
 					val cancel = MotionEvent.obtain(event)
 					try {
 						cancel.action = MotionEvent.ACTION_CANCEL
@@ -140,6 +140,7 @@ internal class NavigationTabDrag(
 				val slot = hit(drag.slots, x, y)
 				showPreview(slot?.first)
 				if (slot != null && previewId == slot.first && !drag.rejected) {
+					pressed = true
 					val rect = slot.second
 					val axis = if (vertical) y else x
 					val first = drag.slots.minOf { center(it.second) }

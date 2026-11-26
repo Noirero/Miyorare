@@ -149,6 +149,57 @@ class DiscoveryNavigationRuntimeTest {
 		assertTabDragPreviewsCustomTabAndHome(legacy = true)
 	}
 
+	@Test fun elasticFloatingDragPreservesPreviewAndCommitLifecycle() {
+		NavigationTransitionPreferences(app).setMotion(NavigationMotion.ELASTIC_GLIDE)
+		assertTabDragPreviewsCustomTabAndHome(legacy = false)
+	}
+
+	@Test fun fluidLegacyDragPreservesPreviewAndCommitLifecycle() {
+		NavigationTransitionPreferences(app).setMotion(NavigationMotion.FLUID_LENS)
+		assertTabDragPreviewsCustomTabAndHome(legacy = true)
+	}
+
+	@Test fun rapidUserTabSelectionsKeepLastDestinationWithoutExtraBackStack() {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		launch().use { scenario ->
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				bar.selectFromUser(R.id.nav_discovery_hub)
+				bar.selectFromUser(R.id.nav_local)
+				bar.selectFromUser(R.id.nav_favorites)
+				bar.selectFromUser(R.id.nav_discovery_hub)
+			}
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val fm = activity.supportFragmentManager
+				val active = fm.fragments.filter { it.id == R.id.container && it.isAdded && !it.isHidden }
+				assertEquals(1, active.size)
+				assertTrue(active.single() is DiscoveryHubFragment)
+				assertEquals(Lifecycle.State.RESUMED, active.single().lifecycle.currentState)
+				assertEquals(R.id.nav_discovery_hub, activity.bottomNav!!.selectedItemId)
+				assertEquals(0, fm.backStackEntryCount)
+			}
+		}
+	}
+
+	@Test fun navigationPreferenceFallbackAndResetAreIsolated() {
+		val raw = PreferenceManager.getDefaultSharedPreferences(app)
+		val prefs = NavigationTransitionPreferences(app)
+		val originalLabels = raw.getBoolean(AppSettings.KEY_NAV_LABELS, true)
+		raw.edit().putInt(NavigationTransitionPreferences.KEY_MOTION, 42)
+			.putString(NavigationTransitionPreferences.KEY_TRANSITION, "unsupported").commit()
+		assertEquals(NavigationMotion.CLASSIC_GLIDE, prefs.motion)
+		assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
+		prefs.setMotion(NavigationMotion.FLUID_LENS)
+		assertEquals(NavigationMotion.FLUID_LENS, NavigationTransitionPreferences(app).motion)
+		prefs.reset()
+		assertEquals(NavigationMotion.CLASSIC_GLIDE, prefs.motion)
+		assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
+		assertEquals(originalLabels, raw.getBoolean(AppSettings.KEY_NAV_LABELS, true))
+	}
+
 	@Test fun dragIndicatorMovesWithinOneSlotWithoutRepeatedPreview() {
 		InstrumentationRegistry.getInstrumentation().runOnMainSync {
 			val host = View(app)

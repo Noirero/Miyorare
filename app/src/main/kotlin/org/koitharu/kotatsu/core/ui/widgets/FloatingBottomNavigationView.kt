@@ -195,7 +195,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	internal var isUserSelection = false
 		private set
 
-	private fun selectFromUser(@IdRes itemId: Int) {
+	internal fun selectFromUser(@IdRes itemId: Int) {
 		val before = selectedItemId
 		isUserSelection = true
 		try {
