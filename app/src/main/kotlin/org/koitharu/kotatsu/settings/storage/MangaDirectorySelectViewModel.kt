@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.settings.storage
 
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,6 +12,7 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isWriteable
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import javax.inject.Inject
@@ -19,10 +21,13 @@ import javax.inject.Inject
 class MangaDirectorySelectViewModel @Inject constructor(
 	private val storageManager: LocalStorageManager,
 	private val destinationStore: DownloadDestinationStore,
+	private val savedStateHandle: SavedStateHandle,
 ) : BaseViewModel() {
 
 	val items = MutableStateFlow(emptyList<DirectoryModel>())
-	val selectedSpace = MutableStateFlow(FavouriteSpace.NORMAL)
+	val selectedSpace = MutableStateFlow(
+		FavouriteSpace.fromArgument(savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue),
+	)
 	val privateUsesOwnRoot = MutableStateFlow(destinationStore.privateUsesOwnRoot())
 	val destinationsOverlap = MutableStateFlow(destinationStore.rootsOverlap())
 	val onDismissDialog = MutableEventFlow<Unit>()
@@ -35,6 +40,7 @@ class MangaDirectorySelectViewModel @Inject constructor(
 
 	fun selectSpace(space: FavouriteSpace) {
 		if (selectedSpace.value == space) return
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] = space.dbValue
 		selectedSpace.value = space
 		refresh()
 	}

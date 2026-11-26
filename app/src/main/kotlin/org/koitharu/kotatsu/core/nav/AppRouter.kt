@@ -490,8 +490,10 @@ class AppRouter private constructor(
         }.showDistinct()
     }
 
-    fun showDirectorySelectDialog() {
-        MangaDirectorySelectDialog().showDistinct()
+    fun showDirectorySelectDialog(initialSpace: FavouriteSpace = FavouriteSpace.NORMAL) {
+        MangaDirectorySelectDialog().withArgs(1) {
+            putInt(EXTRA_FAVOURITE_SPACE, initialSpace.dbValue)
+        }.showDistinct()
     }
 
     fun showFavoriteDialog(manga: Manga, accentColor: Int? = null) = showFavoriteDialog(setOf(manga), accentColor)
