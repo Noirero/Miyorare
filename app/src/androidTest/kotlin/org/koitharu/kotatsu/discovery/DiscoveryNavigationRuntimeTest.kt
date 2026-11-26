@@ -22,7 +22,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import org.koitharu.kotatsu.local.ui.LocalListFragment
+import org.koitharu.kotatsu.local.ui.LocalListViewModel
 import org.koitharu.kotatsu.list.ui.model.SmartLocalPanelModel
 import org.koitharu.kotatsu.list.ui.model.SmartLocalCollectionHeaderModel
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
@@ -301,13 +303,16 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	private fun LocalListFragment.localContentModel(): LocalListViewModel =
+		ViewModelProvider(this)[LocalListViewModel::class.java]
+
 	// A retained STARTED/RESUMED fragment alone does not prove its content collector survived.
 	private fun assertLocalContentReady(scenario: ActivityScenario<MainActivity>, query: String = "") {
 		compose.waitUntil(10000) {
 			var ready = false
 			scenario.onActivity { activity ->
 				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().singleOrNull()
-				val model = local?.viewModel ?: return@onActivity
+				val model = local?.localContentModel() ?: return@onActivity
 				val content = model.content.value
 				ready = model.library.state.value.initialized &&
 					content.any { it is SmartLocalPanelModel && it.query == query } &&
@@ -327,11 +332,11 @@ class DiscoveryNavigationRuntimeTest {
 				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
 				assertFalse(local.isHidden)
 				assertEquals(Lifecycle.State.RESUMED, local.lifecycle.currentState)
-				local.viewModel.setLocalQuery("B01 fixture query")
+				local.localContentModel().setLocalQuery("B01 fixture query")
 			}
 			assertLocalContentReady(scenario, "B01 fixture query")
 			scenario.onActivity { activity ->
-				activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single().viewModel.setLocalQuery("")
+				activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single().localContentModel().setLocalQuery("")
 			}
 			assertLocalContentReady(scenario)
 		}
