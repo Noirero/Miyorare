@@ -302,7 +302,9 @@ class DiscoveryNavigationRuntimeTest {
 	private fun captureNavigationGesture(motion: NavigationMotion, night: Int) {
 		launch().use { scenario ->
 			compose.waitForIdle()
-			val prefix = "${motion.name.lowercase()}-night-$night"
+			var actualNight = 0
+			scenario.onActivity { actualNight = it.resources.configuration.uiMode and AndroidConfiguration.UI_MODE_NIGHT_MASK }
+			val prefix = "${motion.name.lowercase()}-requested-$night-actual-$actualNight"
 			fun capture(stage: String) {
 				compose.waitForIdle()
 				writeNavigationCapture("$prefix-$stage")
@@ -312,7 +314,7 @@ class DiscoveryNavigationRuntimeTest {
 			val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
 				.fetchSemanticsNode().boundsInWindow.center
 			val direction = if (to.x > from.x) 1f else -1f
-			val down = SystemClock.uptimeMillis()
+			var down = 0L
 			fun point(fraction: Float) = Offset(from.x + (to.x - from.x) * fraction, from.y)
 			fun send(action: Int, fraction: Float, elapsed: Long) = scenario.onActivity { activity ->
 				val bar = checkNotNull(activity.bottomNav)
@@ -343,11 +345,16 @@ class DiscoveryNavigationRuntimeTest {
 				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
 			}
 			capture("idle")
-			send(MotionEvent.ACTION_DOWN, 0f, 0)
-			capture("hold")
+			down = SystemClock.uptimeMillis()
+			var released = false
 			try {
+				// Capture the drag before waiting for screenshots. Holding DOWN on Favorites
+				// until a screenshot finishes could invoke its existing Private long-click.
+				send(MotionEvent.ACTION_DOWN, 0f, 0)
 				send(MotionEvent.ACTION_MOVE, 0.35f, 32)
 				capture("drag-35")
+				assertProgress(0.35f)
+				capture("paused-35")
 				assertProgress(0.35f)
 				send(MotionEvent.ACTION_MOVE, 0.65f, 64)
 				capture("drag-65")
@@ -357,6 +364,7 @@ class DiscoveryNavigationRuntimeTest {
 				assertProgress(0.35f)
 				send(MotionEvent.ACTION_MOVE, 0.75f, 128)
 				send(MotionEvent.ACTION_UP, 0.75f, 160)
+				released = true
 				compose.waitUntil(5000) {
 					var settled = false
 					scenario.onActivity { activity ->
@@ -374,7 +382,7 @@ class DiscoveryNavigationRuntimeTest {
 				}
 				capture("settled")
 			} finally {
-				send(MotionEvent.ACTION_CANCEL, 0f, 192)
+				if (!released) send(MotionEvent.ACTION_CANCEL, 0f, 192)
 			}
 		}
 	}
