@@ -13,6 +13,12 @@ import android.widget.FrameLayout
 import androidx.compose.ui.geometry.Rect as SlotRect
 import android.graphics.Rect
 import android.os.SystemClock
+import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Log
+import android.view.FrameMetrics
+import android.view.Window
 import android.view.MotionEvent
 import android.view.View
 import androidx.compose.ui.platform.ComposeView
@@ -339,6 +345,253 @@ class DiscoveryNavigationRuntimeTest {
 				activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single().localContentModel().setLocalQuery("")
 			}
 			assertLocalContentReady(scenario)
+		}
+	}
+
+	/** Diagnostic samples, not a device-independent performance gate. No screenshot capture in measured windows. */
+	@Test fun navigationMotionFrameTimingAndRapidSelectionEvidence() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		val previousNight = androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode()
+		try {
+			shell("settings put global animator_duration_scale 1")
+			assertEquals(1f, android.provider.Settings.Global.getFloat(app.contentResolver,
+				android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f), 0.01f)
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+			PreferenceManager.getDefaultSharedPreferences(app).edit()
+				.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+				.putBoolean(AppSettings.KEY_NAV_LABELS, true).commit()
+			for (night in listOf(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES,
+				androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO)) {
+				instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(night) }
+				for (motion in NavigationMotion.entries) {
+					NavigationTransitionPreferences(app).setMotion(motion)
+					launch().use { scenario ->
+						fun select(id: Int) = scenario.onActivity { activity ->
+							checkNotNull(activity.bottomNav as? FloatingBottomNavigationView).selectFromUser(id)
+						}
+						fun settled(id: Int) {
+							compose.waitForIdle()
+							scenario.onActivity { activity ->
+								assertEquals(id, activity.bottomNav!!.selectedItemId)
+								val fm = activity.supportFragmentManager
+								assertEquals(0, fm.backStackEntryCount)
+								val active = fm.fragments.filter { it.id == R.id.container && it.isAdded && !it.isHidden }
+								assertEquals(1, active.size)
+								assertEquals(Lifecycle.State.RESUMED, active.single().lifecycle.currentState)
+								assertEquals(0f, active.single().requireView().translationX, 0.1f)
+								assertTrue(active.single().requireView().visibility == View.VISIBLE)
+								assertTrue(when (id) {
+									R.id.nav_local -> active.single() is LocalListFragment
+									R.id.nav_favorites -> active.single() is FavouritesContainerFragment
+									R.id.nav_discovery_hub -> active.single() is DiscoveryHubFragment
+									else -> false
+								})
+							}
+						}
+						// Warm retained tabs and their data once, before recording.
+						select(R.id.nav_local)
+						assertLocalContentReady(scenario)
+						select(R.id.nav_discovery_hub)
+						compose.waitUntil(10000) { compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty() }
+						select(R.id.nav_favorites)
+						SystemClock.sleep(600)
+						settled(R.id.nav_favorites)
+						lateinit var window: Window
+						var refreshHz = 0f
+						var actualNight = 0
+						scenario.onActivity {
+							window = it.window
+							refreshHz = it.window.decorView.display?.refreshRate ?: 0f
+							actualNight = it.resources.configuration.uiMode and AndroidConfiguration.UI_MODE_NIGHT_MASK
+						}
+						assertTrue("A measured display refresh rate is required", refreshHz > 0f)
+						val prefix = "motion=${motion.storedValue} requested_night=$night actual_night=$actualNight refresh_hz=$refreshHz"
+						val budgetNs = (1_000_000_000.0 / refreshHz).toLong()
+						repeat(3) { repeatIndex ->
+							fun sample(name: String, lastId: Int, block: () -> Unit) {
+								measureNavigationFrames(scenario, window, budgetNs,
+									"$prefix scenario=$name repeat=${repeatIndex + 1}", block)
+								settled(lastId)
+							}
+							sample("adjacent_roundtrip", R.id.nav_favorites) {
+								select(R.id.nav_local); SystemClock.sleep(500)
+								select(R.id.nav_favorites); SystemClock.sleep(500)
+							}
+							sample("nonadjacent_roundtrip", R.id.nav_favorites) {
+								select(R.id.nav_discovery_hub); SystemClock.sleep(500)
+								select(R.id.nav_favorites); SystemClock.sleep(500)
+							}
+							sample("rapid_redirect", R.id.nav_favorites) {
+								select(R.id.nav_local); SystemClock.sleep(48)
+								select(R.id.nav_discovery_hub); SystemClock.sleep(48)
+								select(R.id.nav_favorites); SystemClock.sleep(500)
+							}
+							val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+								.fetchSemanticsNode().boundsInWindow.center
+							val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+								.fetchSemanticsNode().boundsInWindow.center
+							sample("drag_reverse_release", R.id.nav_local) {
+								val down = SystemClock.uptimeMillis()
+								fun send(action: Int, fraction: Float) = scenario.onActivity { activity ->
+									val bar = checkNotNull(activity.bottomNav)
+									val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+									val point = from + (to - from) * fraction
+									val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,
+										point.x - origin[0], point.y - origin[1], 0)
+									try { assertTrue(bar.dispatchTouchEvent(event)) } finally { event.recycle() }
+								}
+								var released = false
+								try {
+									send(MotionEvent.ACTION_DOWN, 0f)
+									for (fraction in listOf(0.2f, 0.35f, 0.5f, 0.65f, 0.8f, 0.65f, 0.5f, 0.35f, 0.5f, 0.65f, 0.8f, 1f)) {
+										SystemClock.sleep(16)
+										send(MotionEvent.ACTION_MOVE, fraction)
+									}
+									send(MotionEvent.ACTION_UP, 1f)
+									released = true
+									SystemClock.sleep(500)
+								} finally {
+									if (!released) send(MotionEvent.ACTION_CANCEL, 0f)
+								}
+							}
+							// Return outside the measured drag window.
+							select(R.id.nav_favorites)
+							SystemClock.sleep(500)
+							settled(R.id.nav_favorites)
+						}
+					}
+				}
+			}
+		} finally {
+			instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(previousNight) }
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
+	private data class NavigationFrameSample(val totalNs: Long, val deadlineNs: Long, val firstDraw: Boolean)
+
+	private fun measureNavigationFrames(
+		scenario: ActivityScenario<MainActivity>, window: Window, budgetNs: Long, label: String, block: () -> Unit,
+	) {
+		val worker = HandlerThread("NavigationFrameMetrics").apply { start() }
+		val samples = java.util.Collections.synchronizedList(mutableListOf<NavigationFrameSample>())
+		val dropped = AtomicInteger()
+		val listener = Window.OnFrameMetricsAvailableListener { _, metrics, count ->
+			val total = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
+			val deadline = if (Build.VERSION.SDK_INT >= 31) metrics.getMetric(FrameMetrics.DEADLINE) else budgetNs
+			dropped.addAndGet(count.coerceAtLeast(0))
+			if (total >= 0) samples.add(NavigationFrameSample(total, deadline.takeIf { it > 0 } ?: budgetNs,
+				metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L))
+		}
+		var registered = false
+		try {
+			scenario.onActivity {
+				window.addOnFrameMetricsAvailableListener(listener, Handler(worker.looper))
+				registered = true
+			}
+			block()
+			// Allow queued reports to arrive; no screenshots or forced redraws.
+			SystemClock.sleep(100)
+		} finally {
+			try {
+				if (registered) scenario.onActivity { window.removeOnFrameMetricsAvailableListener(listener) }
+			} finally {
+				worker.quitSafely()
+				worker.join(5000)
+			}
+		}
+		assertFalse("FrameMetrics worker must terminate", worker.isAlive)
+		val all = synchronized(samples) { samples.toList() }
+		val measured = all.filterNot { it.firstDraw }
+		assertTrue("No usable frames: $label", measured.isNotEmpty())
+		val totals = measured.map { it.totalNs }.sorted()
+		fun percentile(p: Double) = totals[((totals.size - 1) * p).toInt()]
+		val missed = measured.count { it.totalNs > it.deadlineNs }
+		Log.i("MiyorareNavPerf", "$label frames=${measured.size} first_draw=${all.size - measured.size} " +
+			"dropped=${dropped.get()} missed=$missed p50_ns=${percentile(0.50)} p95_ns=${percentile(0.95)} " +
+			"max_ns=${totals.last()} budget_ns=$budgetNs")
+		// Raw pairs support post-run reanalysis without retaining screenshot or user data.
+		measured.chunked(60).forEachIndexed { index, chunk ->
+			Log.i("MiyorareNavPerf", "$label chunk=$index total_deadline_ns=" +
+				chunk.joinToString(",") { "${it.totalNs}:${it.deadlineNs}" })
+		}
+	}
+
+	@Test fun reducedMotionDragCancelAndPreferencePersistence() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		try {
+			shell("settings put global animator_duration_scale 0")
+			assertEquals(0f, android.provider.Settings.Global.getFloat(app.contentResolver,
+				android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f), 0.01f)
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+			PreferenceManager.getDefaultSharedPreferences(app).edit()
+				.putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
+			for (motion in NavigationMotion.entries) {
+				val prefs = NavigationTransitionPreferences(app)
+				prefs.setMotion(motion)
+				launch().use { scenario ->
+					compose.waitForIdle()
+					scenario.onActivity { activity ->
+						checkNotNull(activity.bottomNav as? FloatingBottomNavigationView).selectFromUser(R.id.nav_favorites)
+					}
+					compose.waitForIdle()
+					val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+						.fetchSemanticsNode().boundsInWindow.center
+					val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+						.fetchSemanticsNode().boundsInWindow.center
+					val down = SystemClock.uptimeMillis()
+					fun send(action: Int, point: Offset, elapsed: Long) = scenario.onActivity { activity ->
+						val bar = checkNotNull(activity.bottomNav)
+						val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+						val event = MotionEvent.obtain(down, down + elapsed, action, point.x - origin[0], point.y - origin[1], 0)
+						try { bar.dispatchTouchEvent(event) } finally { event.recycle() }
+					}
+					send(MotionEvent.ACTION_DOWN, from, 0)
+					try {
+						send(MotionEvent.ACTION_MOVE, to, 32)
+						scenario.onActivity { activity ->
+							val target = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+							assertTrue(target.isHidden)
+							assertEquals(Lifecycle.State.STARTED, target.lifecycle.currentState)
+							assertEquals(View.VISIBLE, target.requireView().visibility)
+							assertEquals(0f, target.requireView().translationX, 0.01f)
+							assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+						}
+					} finally { send(MotionEvent.ACTION_CANCEL, to, 64) }
+					scenario.onActivity { activity ->
+						val fm = activity.supportFragmentManager
+						assertEquals(View.GONE, fm.fragments.filterIsInstance<LocalListFragment>().single().requireView().visibility)
+						assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+						checkNotNull(activity.bottomNav as? FloatingBottomNavigationView).selectFromUser(R.id.nav_local)
+					}
+					assertLocalContentReady(scenario)
+					scenario.recreate()
+					compose.waitForIdle()
+					scenario.onActivity { activity ->
+						assertEquals(R.id.nav_local, activity.bottomNav!!.selectedItemId)
+						val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+						assertFalse(local.isHidden)
+						assertEquals(Lifecycle.State.RESUMED, local.lifecycle.currentState)
+						assertEquals(0f, local.requireView().translationX, 0.01f)
+					}
+					assertEquals(motion, NavigationTransitionPreferences(app).motion)
+					assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
+				}
+			}
+		} finally {
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
 		}
 	}
 
