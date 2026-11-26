@@ -65,11 +65,13 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.DownloadVerification
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.MangaIndex
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
@@ -85,6 +87,7 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var index: LocalMangaIndex
 	@Inject lateinit var local: LocalMangaRepository
+	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var deleteLocal: DeleteLocalMangaUseCase
 	@Inject lateinit var ownership: FavouriteDownloadOwnershipIndex
 	@Inject lateinit var destinations: DownloadDestinationStore
@@ -531,6 +534,110 @@ class DownloadedLocalStateTest {
 		assertEquals(titles.map { it.id }.toSet(), selectedIds)
 		assertEquals(selectedIds, vm.resolveSelectedManga(selectedIds, loaded)?.map { it.id }?.toSet())
 		assertNull(vm.resolveSelectedManga(selectedIds + Long.MAX_VALUE, loaded))
+	}
+
+	/** Phase 0 lower-layer T02/T15 probe: actual manual bytes, not a worker completion receipt. */
+	@Test fun corruptManualStandaloneRemainsMappedAndCanBeDeletedAtExactLocalTarget() = runBlocking {
+		val seed = remote(810_061L)
+		val first = seed.chapters.orEmpty().single()
+		val second = first.copy(id = first.id + 1L, title = "Chapter 2", number = 2f, url = "/chapter/2")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, seed).file
+		val corrupt = File(container, "Chapter 1.cbz")
+		assertTrue("The fixture must use the real standalone chapter layout", corrupt.isFile)
+		val sibling = File(container, "Chapter 2.cbz")
+		corrupt.copyTo(sibling)
+		val siblingBytes = sibling.readBytes()
+		val corruptBytes = byteArrayOf(1, 2, 3, 4)
+		corrupt.writeBytes(corruptBytes)
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+
+		val resolved = requireNotNull(local.findSavedMangaAtPath(manga, container, rememberIdentity = false))
+		val chapters = resolved.manga.chapters.orEmpty()
+		assertEquals(setOf(first.id, second.id), chapters.map { it.id }.toSet())
+		val selected = chapters.single { it.id == first.id }
+		assertTrue("The local archive read must not produce pages from corrupt bytes",
+			runCatching { local.getPages(selected) }.getOrNull().isNullOrEmpty())
+		assertArrayEquals(corruptBytes, corrupt.readBytes())
+		assertArrayEquals(siblingBytes, sibling.readBytes())
+		assertNull("Read-only lookup must not mint ownership",
+			db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+
+		// This is the lower-level operation on an explicit physical snapshot, not a proof
+		// of Q24 UI/action-time authorization. The scoped action gate must be tested separately.
+		local.deleteChapters(resolved.manga, setOf(first.id))
+		assertFalse(corrupt.exists())
+		assertArrayEquals(siblingBytes, sibling.readBytes())
+	}
+
+	/** Phase 0 T06 probe: active status must diverge from historical maintenance evidence. */
+	@Test fun normalFavouriteHistoricalCopyDoesNotQualifyForActiveDownloadedShelf() = runBlocking {
+		val manga = remote(810_062L)
+		val nonFavourite = remote(810_063L)
+		favourite(manga)
+		data.storeManga(nonFavourite, replaceExisting = true)
+		val oldCopy = download(root, manga)
+		val controlCopy = download(root, nonFavourite)
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, oldCopy.file.canonicalPath)
+		db.getFavouriteDownloadIndexDao().upsert(listOf(owner,
+			FavouriteDownloadIndexEntity(nonFavourite.id, FavouriteSpace.NORMAL.dbValue, controlCopy.file.canonicalPath)))
+		suspend fun shelfIds() = repository.observeDownloaded(
+			ListSortOrder.ALPHABETIC, emptySet(), limit = 100,
+		).first().map { it.id }.toSet()
+		assertEquals(setOf(manga.id, nonFavourite.id), shelfIds())
+
+		val oldFile = oldCopy.file.listFiles().orEmpty().single { it.extension.equals("cbz", true) }
+		val bytes = oldFile.readBytes()
+		val nextRoot = File(root, "active-normal-b")
+		destinations.setRoot(FavouriteSpace.NORMAL, nextRoot)
+		assertEquals(nextRoot.canonicalFile, destinations.effectiveRoot(FavouriteSpace.NORMAL)?.canonicalFile)
+		assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertTrue("Historical maintenance must retain the known download",
+			manga.id in classifier.getKnownDownloadedIds(FavouriteSpace.NORMAL, listOf(manga.id)))
+		assertArrayEquals(bytes, oldFile.readBytes())
+		assertEquals("Only the eligible Normal favourite loses historical status; non-favourite is unchanged",
+			setOf(nonFavourite.id), shelfIds())
+	}
+
+	/** Phase 0 T05 probe: exercise the scoped resolver with a real stale directory sidecar. */
+	@Test fun indexedNormalFavouriteRetainsRenamedArtifactAsIndependentLocalChapter() = runBlocking {
+		val seed = remote(810_064L)
+		val first = seed.chapters.orEmpty().single()
+		val second = first.copy(id = first.id + 1L, title = "Chapter 2", number = 2f, url = "/chapter/2")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, seed).file
+		val original = File(container, "Chapter 1.cbz")
+		assertTrue(original.isFile)
+		val sibling = File(container, "Chapter 2.cbz")
+		original.copyTo(sibling)
+		val bytes = original.readBytes()
+		val indexFile = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		indexFile.writeText(MangaIndex(null).apply {
+			setMangaInfo(manga)
+			manga.chapters.orEmpty().withIndex().forEach { addChapter(it, "${it.value.title}.cbz") }
+		}.toString())
+		val indexBytes = indexFile.readBytes()
+		db.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.canonicalPath),
+		)
+		val before = requireNotNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL))
+		assertEquals(setOf(first.id, second.id), before.manga.chapters.orEmpty().map { it.id }.toSet())
+
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(original.renameTo(special))
+		val after = requireNotNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL))
+		val chapters = after.manga.chapters.orEmpty()
+		assertTrue("The untouched canonical chapter must survive", chapters.any { it.id == second.id })
+		assertFalse("The missing canonical filename must not remain mapped", chapters.any { it.id == first.id })
+		assertArrayEquals(indexBytes, indexFile.readBytes())
+		assertArrayEquals(bytes, special.readBytes())
+		val orphan = chapters.singleOrNull { it.title == "Chapter 1 Special" }
+		assertNotNull("The unmatched physical chapter must remain visible despite the stale sidecar", orphan)
+		val orphanId = requireNotNull(orphan).id
+		assertNotEquals(first.id, orphanId)
+		assertNotEquals(second.id, orphanId)
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
