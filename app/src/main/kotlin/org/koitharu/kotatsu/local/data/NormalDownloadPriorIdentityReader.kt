@@ -11,6 +11,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.URI_SCHEME_ZIP
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.longHashCode
@@ -23,6 +25,12 @@ internal data class NormalPriorIdentityEvidence(
 	val verified: List<MangaChapter>,
 	val unresolvedLocalKeys: Set<ChapterPersonalKey>,
 	val unresolvedIds: Set<Long>,
+)
+
+/** Prior evidence remains separate from already verified physical presence. */
+internal data class NormalPriorDirectoryReconciliation(
+	val evidence: NormalPriorIdentityEvidence,
+	val projection: LocalManga?,
 )
 
 /**
@@ -68,10 +76,13 @@ internal class NormalDownloadPriorIdentityReader @Inject constructor(
 				if (uri.scheme != URI_SCHEME_ZIP || uri.fragment.isNullOrBlank() ||
 					uri.query != null || !uri.authority.isNullOrEmpty()
 				) continue
-				val path = uri.path?.let(::File)?.canonicalFile ?: continue
+				val path = uri.path?.let(::File)?.takeIf { it.isAbsolute }?.canonicalFile ?: continue
+				// The old ordinal hash excludes the container root. A credible persisted
+				// bookmark for the same ID at another root is conflicting evidence, even
+				// though that root is not a positive discovery location.
+				pathsById.getOrPut(bookmark.chapterId) { LinkedHashSet() }.add(path)
 				if (!isStandaloneChild(path, root)) continue
 				idsByPath.getOrPut(path) { LinkedHashSet() }.add(bookmark.chapterId)
-				pathsById.getOrPut(bookmark.chapterId) { LinkedHashSet() }.add(path)
 			}
 			val verified = ArrayList<MangaChapter>()
 			val resolvedKeys = HashSet<ChapterPersonalKey>()
@@ -95,6 +106,29 @@ internal class NormalDownloadPriorIdentityReader @Inject constructor(
 			}
 			NormalPriorIdentityEvidence(verified, keys - resolvedKeys, unresolvedIds)
 		}.getOrNull()
+	}
+
+	/**
+	 * Reconcile a caller-verified directory using persisted evidence. Unknown personal keys/IDs
+	 * withhold this identity projection, not the caller's independently verified physical
+	 * presence. No new identity becomes authoritative even when the prior evidence is complete.
+	 * Migrated/other layouts require a separate compatible reconciliation path.
+	 */
+	suspend fun reconcileVerifiedDirectory(
+		remote: Manga, candidate: LocalManga,
+	): NormalPriorDirectoryReconciliation? = withContext(Dispatchers.IO) {
+		if (candidate.manga.id != remote.id || candidate.manga.source != LocalMangaSource ||
+			!candidate.file.isDirectory
+		) return@withContext null
+		val evidence = read(remote, candidate.file) ?: return@withContext null
+		val projection = if (evidence.unresolvedIds.isNotEmpty() || evidence.unresolvedLocalKeys.isNotEmpty()) {
+			null
+		} else if (File(candidate.file, LocalMangaOutput.ENTRY_NAME_INDEX).exists()) {
+			NormalDownloadDirectoryReconciler.reconcileIndexed(remote, candidate.file, evidence.verified, requireFinalized = true)
+		} else {
+			NormalDownloadDirectoryReconciler.reconcileSidecarFree(remote, candidate.file, evidence.verified, requireFinalized = true)
+		}
+		NormalPriorDirectoryReconciliation(evidence, projection)
 	}
 
 	private fun chapterFile(url: String, root: File): File? {

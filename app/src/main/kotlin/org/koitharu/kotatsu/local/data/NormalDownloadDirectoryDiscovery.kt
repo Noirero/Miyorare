@@ -20,6 +20,7 @@ import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
 import org.koitharu.kotatsu.sources.compat.VerifiedSourceAliases
 import java.io.File
 import java.util.TreeMap
+import java.util.Locale
 import javax.inject.Inject
 
 /** Bounded candidates, not a confirmed presence/absence observation or authorization. */
@@ -28,7 +29,20 @@ internal data class NormalDirectoryCandidates(
 	val available: Boolean,
 	val deterministicPaths: Set<File>,
 	val persistedHints: Set<File>,
+	val unresolvedPaths: Set<File> = emptySet(),
+	val inventoryComplete: Boolean = true,
 )
+
+/** All candidates retained; neither an unresolved inventory nor multiple copies selects a winner. */
+internal data class NormalCandidateResolution(
+	val verified: List<LocalManga>,
+	val unresolvedPaths: Set<File>,
+	val inventoryComplete: Boolean,
+) {
+	// This is a candidate choice, NOT publication/read/delete authorization or identity authority.
+	val uniqueCandidate: LocalManga?
+		get() = verified.singleOrNull()?.takeIf { inventoryComplete && unresolvedPaths.isEmpty() }
+}
 
 /**
  * Read-only metadata snapshot, reusable across a scanner work batch. Canonicalizing persisted
@@ -59,10 +73,13 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 	private val db: MangaDatabase,
 	private val index: LocalMangaIndex,
 ) {
-	suspend fun discover(manga: Manga, space: FavouriteSpace?): NormalDirectoryCandidates? {
+	suspend fun discover(
+		manga: Manga, space: FavouriteSpace?,
+		parentListings: MutableMap<File, List<File>?> = HashMap(),
+	): NormalDirectoryCandidates? {
 		val roots = scope.resolveActiveLookup(manga, space) ?: return null
 		return withContext(Dispatchers.IO) {
-			val root = roots.normalRoot
+			val root = roots.normalRoot?.let { runCatching { it.canonicalFile }.getOrNull() }
 			if (root == null || !root.isDirectory || !root.canRead()) {
 				return@withContext NormalDirectoryCandidates(roots, false, emptySet(), emptySet())
 			}
@@ -76,14 +93,76 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				db.getLocalMangaIndexDao().findPath(manga.id)?.let { add(File(it)) }
 				index.getDownloadAliasPaths(listOf(manga.id))[manga.id]?.let { add(File(it)) }
 			}
-			fun containedDirectories(files: Collection<File>): Set<File> = files.mapNotNullTo(LinkedHashSet()) { file ->
-				if (!scope.isWithinActiveRoot(file, root, roots.privateRoot)) return@mapNotNullTo null
+			val unresolved = LinkedHashSet<File>()
+			var complete = true
+			val discovered = LinkedHashSet<File>()
+			// Enumerate only immediate children of known layout parents, once per work batch.
+			// Numeric suffixes may have gaps; never walk arbitrary descendants or stop at _1.
+			for ((parent, bases) in paths.groupBy { it.parentFile }) {
+				currentCoroutineContext().ensureActive()
+				if (parent == null) continue
+				if (parent != root && !scope.isWithinActiveRoot(parent, root, roots.privateRoot)) continue
+				val canonical = runCatching { parent.canonicalFile }.getOrNull()
+				if (canonical != parent) {
+					complete = false
+					continue
+				}
+				if (!parent.exists()) continue
+				if (!parentListings.containsKey(parent)) parentListings[parent] = parent.listFiles()?.toList()
+				val children = parentListings[parent]
+				if (children == null) {
+					complete = false
+					continue
+				}
+				val titleKeys = bases.mapTo(HashSet()) { it.name.lowercase(Locale.ROOT) }
+				for (file in children) {
+					val lower = file.name.lowercase(Locale.ROOT)
+					if (lower.startsWith(".")) continue
+					val staging = lower.endsWith(LocalMangaOutput.SUFFIX_TMP)
+					val finalName = if (staging) lower.removeSuffix(LocalMangaOutput.SUFFIX_TMP).removeSuffix(".bak") else lower
+					val archive = finalName.endsWith(".cbz") || finalName.endsWith(".zip")
+					val stem = if (archive) finalName.substringBeforeLast('.') else finalName
+					val suffix = stem.substringAfterLast('_', "").toIntOrNull()
+					if (stem !in titleKeys &&
+						(suffix == null || suffix <= 0 || stem.substringBeforeLast('_') !in titleKeys)) continue
+					if (staging && archive) {
+						val withoutTmp = file.name.dropLast(LocalMangaOutput.SUFFIX_TMP.length)
+						val target = File(parent, if (withoutTmp.endsWith(".bak", true)) withoutTmp.dropLast(4) else withoutTmp)
+						if (scope.isWithinActiveRoot(target, root, roots.privateRoot)) unresolved += target
+						continue
+					}
+					if (file.isDirectory || archive) discovered += file
+				}
+			}
+			fun containedCandidates(files: Collection<File>, deterministic: Boolean): Set<File> =
+				files.mapNotNullTo(LinkedHashSet()) { file ->
+				val physical = runCatching { file.canonicalFile }.getOrNull()
+				if (physical == null) {
+					complete = false
+					return@mapNotNullTo null
+				}
+				// Do not follow deterministic symlink candidates into another title or root.
+				// Persisted hints can use a legacy absolute representation; their canonical
+				// target still requires independent space and metadata proof.
+				if (deterministic && physical != file.absoluteFile.normalize()) {
+					unresolved += file.absoluteFile.normalize()
+					return@mapNotNullTo null
+				}
+				if (!scope.isWithinActiveRoot(physical, root, roots.privateRoot)) return@mapNotNullTo null
 				runCatching {
-					file.canonicalFile.takeIf { it.isDirectory && !it.name.startsWith(".") &&
-						!File(it, ".notamanga").exists() }
+					if (!physical.canRead()) {
+						unresolved += physical
+						return@runCatching null
+					}
+					physical.takeIf { !it.name.startsWith(".") &&
+						((it.isDirectory && !File(it, ".notamanga").exists()) ||
+							(it.isFile && (it.extension.equals("cbz", true) || it.extension.equals("zip", true)))) }
 				}.getOrNull()
 			}
-			NormalDirectoryCandidates(roots, true, containedDirectories(paths), containedDirectories(hints))
+			val deterministic = containedCandidates(discovered, deterministic = true)
+			// Missing persisted hints are not a candidate and must not mask an active copy.
+			val persisted = containedCandidates(hints.filter { it.exists() }, deterministic = false)
+			NormalDirectoryCandidates(roots, true, deterministic, persisted, unresolved, complete)
 		}
 	}
 
@@ -136,17 +215,46 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 		evidence: NormalScannerVerificationEvidence? = null,
 	): LocalManga? = verifyCandidate(manga, space, candidate, indexed = false, evidence = evidence)
 
+	/** Embedded-index root archive only. No parser fallback or recovery. */
+	suspend fun verifyArchiveCandidate(
+		manga: Manga, space: FavouriteSpace?, candidate: File,
+		evidence: NormalScannerVerificationEvidence? = null,
+	): LocalManga? = verifyCandidate(manga, space, candidate, indexed = null, evidence = evidence)
+
+	suspend fun resolveCandidates(
+		manga: Manga, space: FavouriteSpace?,
+		evidence: NormalScannerVerificationEvidence? = null,
+		parentListings: MutableMap<File, List<File>?> = HashMap(),
+	): NormalCandidateResolution? {
+		val candidates = discover(manga, space, parentListings) ?: return null
+		if (!candidates.available) return NormalCandidateResolution(emptyList(), emptySet(), false)
+		val proof = evidence ?: captureVerificationEvidence() ?: return NormalCandidateResolution(emptyList(),
+			candidates.deterministicPaths + candidates.persistedHints + candidates.unresolvedPaths, false)
+		return withContext(Dispatchers.IO) {
+			val verified = ArrayList<LocalManga>()
+			val unresolved = candidates.unresolvedPaths.toMutableSet()
+			for (file in candidates.deterministicPaths + candidates.persistedHints) {
+				currentCoroutineContext().ensureActive()
+				val layout = if (file.isFile) null else File(file, LocalMangaOutput.ENTRY_NAME_INDEX).exists()
+				val copy = verifyCandidate(manga, space, file, layout, proof, candidates)
+				if (copy == null) unresolved += file else verified += copy
+			}
+			NormalCandidateResolution(verified, unresolved, candidates.inventoryComplete)
+		}
+	}
+
 	private suspend fun verifyCandidate(
-		manga: Manga, space: FavouriteSpace?, candidate: File, indexed: Boolean,
+		manga: Manga, space: FavouriteSpace?, candidate: File, indexed: Boolean?,
 		evidence: NormalScannerVerificationEvidence?,
+		captured: NormalDirectoryCandidates? = null,
 	): LocalManga? {
-		val candidates = discover(manga, space) ?: return null
+		val candidates = captured ?: discover(manga, space) ?: return null
 		if (!candidates.available) return null
 		val proof = evidence ?: captureVerificationEvidence() ?: return null
 		return withContext(Dispatchers.IO) {
 			runCatchingCancellable {
 				val physical = candidate.canonicalFile
-				if (physical !in candidates.deterministicPaths && physical !in candidates.persistedHints) {
+				if (physical in candidates.unresolvedPaths || (physical !in candidates.deterministicPaths && physical !in candidates.persistedHints)) {
 					return@runCatchingCancellable null
 				}
 				val normalRoot = candidates.roots.normalRoot?.canonicalFile ?: return@runCatchingCancellable null
@@ -171,6 +279,9 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				}
 				if (inPrivate && !exactNormal) return@runCatchingCancellable null
 
+				if (indexed == null) {
+					return@runCatchingCancellable NormalDownloadIndexedArchive.reconcile(manga, physical)
+				}
 				if (indexed) {
 					NormalDownloadDirectoryReconciler.reconcileIndexed(manga, physical, requireFinalized = true)?.let {
 						return@runCatchingCancellable it

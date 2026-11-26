@@ -11,6 +11,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
+import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.Configuration
@@ -79,6 +80,9 @@ import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.local.data.output.RootFileCommitOps
+import org.koitharu.kotatsu.local.data.output.RealRootFileCommitOps
+import org.koitharu.kotatsu.local.data.output.commitRootReplacement
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -1405,6 +1409,231 @@ class DownloadedLocalStateTest {
 		assertArrayEquals(bytes, special.readBytes())
 		assertArrayEquals(bytes, sibling.readBytes())
 		assertEquals(owner, ownerDao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+	}
+
+
+	/** T01/T03: actual SINGLE_CBZ writer commits embedded identity only on finish, including legacy ZIP suffix. */
+	@Test fun normalScannerSingleArchiveVerifiesEmbeddedIndexAfterFinish() = runBlocking {
+		val seed = remote(810_091L)
+		val first = seed.chapters.orEmpty().single()
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2", number = 2f)
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val image = File(root, "archive-fixture.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val output = LocalMangaOutput.getOrCreate(root, manga, DownloadFormat.SINGLE_CBZ)
+		val target = output.rootFile.canonicalFile
+		try {
+			output.addPage(IndexedValue(0, first), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(first))
+			assertFalse(target.exists())
+			assertNull(normalDirectoryDiscovery.verifyArchiveCandidate(manga, FavouriteSpace.NORMAL, target))
+			output.addPage(IndexedValue(1, second), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(second))
+			output.finish()
+		} finally { output.close() }
+		val bytes = target.readBytes()
+		val result = requireNotNull(normalDirectoryDiscovery.verifyArchiveCandidate(manga, FavouriteSpace.NORMAL, target))
+		assertEquals(setOf(first.id, second.id), result.manga.chapters.orEmpty().map { it.id }.toSet())
+		for (chapter in result.manga.chapters.orEmpty()) {
+			assertEquals(target.canonicalPath, android.net.Uri.parse(chapter.url).path)
+			assertEquals(1, local.getPages(chapter).size)
+		}
+		assertNull(normalDirectoryDiscovery.verifyArchiveCandidate(manga.copy(url = "/wrong-manga"), FavouriteSpace.NORMAL, target))
+		val stale = manga.copy(chapters = listOf(first.copy(url = "/wrong-chapter"), second))
+		assertNull(normalDirectoryDiscovery.verifyArchiveCandidate(stale, FavouriteSpace.NORMAL, target))
+		val legacy = File(target.parentFile, target.nameWithoutExtension + "_7.zip")
+		assertTrue(target.renameTo(legacy))
+		val candidates = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL))
+		assertEquals(legacy, candidates.uniqueCandidate?.file)
+		assertArrayEquals(bytes, legacy.readBytes())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+	}
+
+	/** T01/T06/T10: suffix gaps and multiple copies are retained, never first-match selection. */
+	@Test fun normalScannerMultiCandidateInventoryDoesNotChooseAmbiguousCopy() = runBlocking {
+		val manga = remote(810_092L)
+		favourite(manga)
+		val original = download(root, manga).file.canonicalFile
+		val cbz = File(original, "Chapter 1.cbz")
+		val sidecar = File(original, LocalMangaOutput.ENTRY_NAME_INDEX)
+		sidecar.writeText(MangaIndex(null).apply {
+			setMangaInfo(manga)
+			addChapter(IndexedValue(0, manga.chapters.orEmpty().single()), cbz.name)
+		}.toString())
+		val suffix = File(original.parentFile, original.name + "_9")
+		original.copyRecursively(suffix)
+		val other = File(original.parentFile, original.name + "_12")
+		original.copyRecursively(other)
+		val foreign = remote(810_093L)
+		File(other, sidecar.name).writeText(MangaIndex(null).apply {
+			setMangaInfo(foreign)
+			addChapter(IndexedValue(0, foreign.chapters.orEmpty().single()), cbz.name)
+		}.toString())
+		val before = cbz.readBytes()
+		val evidence = requireNotNull(normalDirectoryDiscovery.captureVerificationEvidence())
+		val result = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL, evidence))
+		assertEquals(setOf(original, suffix), result.verified.map { it.file }.toSet())
+		assertEquals(setOf(other), result.unresolvedPaths)
+		assertNull(result.uniqueCandidate)
+		assertTrue(other.deleteRecursively())
+		assertTrue(original.deleteRecursively())
+		val only = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL, evidence))
+		assertEquals(suffix, only.uniqueCandidate?.file)
+		assertArrayEquals(before, File(suffix, cbz.name).readBytes())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+	}
+
+	/** T03: force the actual root commit helper's rename-failure fallback and observe its copy window. */
+	@Test fun normalScannerSingleArchiveRejectsActualForcedCopyWindowAndBackupOnlyState() = runBlocking {
+		val manga = remote(810_094L)
+		favourite(manga)
+		val image = File(root, "copy-fixture.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val output = LocalMangaOutput.getOrCreate(root, manga, DownloadFormat.SINGLE_CBZ)
+		val target = output.rootFile.canonicalFile
+		try {
+			val chapter = manga.chapters.orEmpty().single()
+			output.addPage(IndexedValue(0, chapter), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(chapter))
+			output.finish()
+		} finally { output.close() }
+		val bytes = target.readBytes()
+		val temp = File(target.path + ".tmp").apply { writeBytes(bytes) }
+		val backup = File(target.path + ".bak.tmp")
+		var copyObserved = false
+		commitRootReplacement(target, temp, object : RootFileCommitOps by RealRootFileCommitOps {
+			override fun rename(source: File, targetFile: File): Boolean =
+				if (source == temp) false else RealRootFileCommitOps.rename(source, targetFile)
+			override fun copy(source: File, targetFile: File) {
+				assertEquals(temp, source)
+				assertEquals(target, targetFile)
+				targetFile.outputStream().use { stream ->
+					stream.write(bytes, 0, bytes.size / 2)
+					stream.flush()
+					assertTrue(temp.exists())
+					assertTrue(backup.exists())
+					assertNull(runBlocking {
+						normalDirectoryDiscovery.verifyArchiveCandidate(manga, FavouriteSpace.NORMAL, target)
+					})
+					stream.write(bytes, bytes.size / 2, bytes.size - bytes.size / 2)
+					copyObserved = true
+				}
+			}
+		})
+		assertTrue(copyObserved)
+		assertFalse(temp.exists())
+		assertFalse(backup.exists())
+		assertArrayEquals(bytes, target.readBytes())
+		assertNotNull(normalDirectoryDiscovery.verifyArchiveCandidate(manga, FavouriteSpace.NORMAL, target))
+		assertTrue(target.renameTo(backup))
+		val unresolved = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL))
+		assertNull(unresolved.uniqueCandidate)
+		assertTrue(target in unresolved.unresolvedPaths)
+		assertFalse(target.exists())
+		assertArrayEquals(bytes, backup.readBytes())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+	}
+
+
+	/** T05/T13: actual on-disk Room close/reopen, not a process-kill test or an identity migration. */
+	@Test fun normalScannerPriorIdentityReopenedDatabaseWithholdsUnresolvedProjection() = runBlocking {
+		val seed = remote(810_095L)
+		val first = seed.chapters.orEmpty().single().copy(number = 0f)
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, seed).file.canonicalFile
+		val original = File(container, "Chapter 1.cbz")
+		val sibling = File(container, "Chapter 2.cbz")
+		original.copyTo(sibling)
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(original.renameTo(special))
+		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(
+			manga.id, FavouriteSpace.NORMAL.dbValue, container.path,
+		))
+		val candidate = requireNotNull(normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, container))
+		val legacy = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == "Chapter 1 Special" }
+		val page = local.getPages(legacy).first()
+		val key = ChapterPersonalKey.of(legacy)
+		// Real pre-scanner ID collision: identical relative names/order in a different root.
+		val privateContainer = File(privateRoot, "prior-collision")
+		assertTrue(container.copyRecursively(privateContainer))
+		val privateLegacy = LocalMangaParser(privateContainer).getManga(withDetails = true).manga.chapters.orEmpty()
+			.single { it.title == legacy.title }
+		assertEquals(legacy.id, privateLegacy.id)
+		val privatePage = local.getPages(privateLegacy).first()
+		assertNotEquals(page.url, privatePage.url)
+		assertNotEquals(page.id, privatePage.id)
+		val entity = requireNotNull(db.getMangaDao().find(manga.id)).manga
+		val personal = ChapterPersonalEntity(manga.id, key.source, key.url, 4, "Persisted prior note")
+		val progress = ChapterProgressEntity(manga.id, key.source, key.url, FavouriteSpace.NORMAL.dbValue, 1, 0, 2)
+		val bookmark = BookmarkEntity(manga.id, page.id, legacy.id, 0, 0, page.url, 100L, 0.5f)
+		val conflictingBookmark = bookmark.copy(pageId = privatePage.id, imageUrl = privatePage.url)
+		val unknownId = legacy.id xor 123456789L
+		assertFalse(unknownId in setOf(0L, first.id, second.id, legacy.id))
+		val history = HistoryEntity(manga.id, 100L, 200L, unknownId, 0, 0f, 0.5f, 0L, 2)
+		val name = "normal-prior-${System.nanoTime()}.db"
+		fun open() = Room.databaseBuilder(context, MangaDatabase::class.java, name).build()
+		try {
+			val initial = open()
+			try {
+				initial.getMangaDao().upsert(entity)
+				initial.getChapterPersonalDao().upsert(personal)
+				initial.getChapterProgressDao().upsert(progress)
+				initial.getBookmarksDao().insert(bookmark)
+				initial.getBookmarksDao().insert(conflictingBookmark)
+				initial.getHistoryDao().insert(history)
+			} finally { initial.close() }
+			val extra = File(container, "Chapter 0.cbz").apply { writeBytes(special.readBytes()) }
+			val reparsed = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty()
+				.single { it.title == legacy.title }
+			assertNotEquals(legacy.id, reparsed.id)
+			val reopened = open()
+			try {
+				val reader = NormalDownloadPriorIdentityReader(reopened, AppSettings(context))
+				val conflict = requireNotNull(reader.reconcileVerifiedDirectory(manga, candidate))
+				assertTrue(conflict.evidence.verified.isEmpty())
+				assertEquals(setOf(key), conflict.evidence.unresolvedLocalKeys)
+				assertEquals(setOf(unknownId, legacy.id), conflict.evidence.unresolvedIds)
+				assertNull(conflict.projection)
+				assertEquals(setOf(bookmark, conflictingBookmark), reopened.getBookmarksDao().findAll(manga.id).toSet())
+				// Explicit test cleanup removes only the conflicting record, not a scanner migration.
+				reopened.getBookmarksDao().delete(conflictingBookmark)
+				val result = requireNotNull(reader.reconcileVerifiedDirectory(manga, candidate))
+				assertEquals(legacy.id, result.evidence.verified.single().id)
+				assertEquals(key, ChapterPersonalKey.of(result.evidence.verified.single()))
+				assertEquals(setOf(unknownId), result.evidence.unresolvedIds)
+				assertNull(result.projection)
+				assertEquals(history, reopened.getHistoryDao().findIncludingDeleted(manga.id))
+				assertEquals(listOf(personal), reopened.getChapterPersonalDao().findAll(listOf(manga.id)))
+				assertEquals(listOf(progress), reopened.getChapterProgressDao().findAll(listOf(manga.id), FavouriteSpace.NORMAL.dbValue))
+				assertEquals(listOf(bookmark), reopened.getBookmarksDao().findAll(manga.id))
+				// Explicit fixture mutation supplies the missing ID evidence. The scanner did not
+				// rewrite the unknown record; the next cold read uses the actual known prior ID.
+				reopened.getHistoryDao().update(history.copy(chapterId = legacy.id))
+			} finally { reopened.close() }
+			assertTrue(extra.delete())
+			val again = open()
+			try {
+				val result = requireNotNull(NormalDownloadPriorIdentityReader(again, AppSettings(context))
+					.reconcileVerifiedDirectory(manga, candidate))
+				assertTrue(result.evidence.unresolvedIds.isEmpty())
+				assertTrue(result.evidence.unresolvedLocalKeys.isEmpty())
+				val restored = requireNotNull(result.projection).manga.chapters.orEmpty().single { it.id == legacy.id }
+				assertEquals(key, ChapterPersonalKey.of(restored))
+				assertEquals(page.url, local.getPages(restored).first().url)
+				assertEquals(history.copy(chapterId = legacy.id), again.getHistoryDao().findIncludingDeleted(manga.id))
+				assertEquals(listOf(personal), again.getChapterPersonalDao().findAll(listOf(manga.id)))
+				assertEquals(listOf(progress), again.getChapterProgressDao().findAll(listOf(manga.id), FavouriteSpace.NORMAL.dbValue))
+				assertEquals(listOf(bookmark), again.getBookmarksDao().findAll(manga.id))
+			} finally { again.close() }
+		} finally { context.deleteDatabase(name) }
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
