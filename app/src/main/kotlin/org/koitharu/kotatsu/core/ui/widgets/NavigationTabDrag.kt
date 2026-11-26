@@ -37,6 +37,7 @@ internal class NavigationTabDrag(
 ) {
 	var preview: ((Int?) -> Boolean)? = null
 	var commit: ((Int) -> Unit)? = null
+	var slideFrame: ((TabSlideFrame) -> Unit)? = null
 	private val touchSlop = ViewConfiguration.get(host.context).scaledTouchSlop
 	private val origin = IntArray(2)
 	private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -172,6 +173,7 @@ internal class NavigationTabDrag(
 					pressed = true
 					val rect = slot.second
 					val axis = if (vertical) y else x
+					emitSlideFrame(drag, axis, slot.first)
 					val first = drag.slots.minOf { center(it.second) }
 					val last = drag.slots.maxOf { center(it.second) }
 					val offset = axis.coerceIn(first, last) - center(rect)
@@ -191,7 +193,13 @@ internal class NavigationTabDrag(
 				try {
 					if (action == MotionEvent.ACTION_UP && !drag.rejected) {
 						host.getLocationInWindow(origin)
-						hit(drag.slots, event.x + origin[0], event.y + origin[1])?.let { commit?.invoke(it.first) }
+						val x = event.x + origin[0]
+						val y = event.y + origin[1]
+						hit(drag.slots, x, y)?.let { slot ->
+							showPreview(slot.first)
+							if (previewId == slot.first) emitSlideFrame(drag, if (vertical) y else x, slot.first)
+							commit?.invoke(slot.first)
+						}
 					}
 				} finally {
 					showPreview(null)
@@ -202,6 +210,14 @@ internal class NavigationTabDrag(
 			}
 		}
 		return drag.captured || dispatchDefault(event)
+	}
+
+	private fun emitSlideFrame(drag: Stream, axis: Float, hoveredId: Int) {
+		val listener = slideFrame ?: return
+		// Use the same frozen slot geometry as the indicator; no time-driven motion while held.
+		val frame = if (motionEnabled) TabSlideFrame.at(drag.slots.map { it.first to center(it.second) }, axis)
+			else TabSlideFrame.single(hoveredId)
+		frame?.let(listener)
 	}
 
 	private fun showPreview(id: Int?) {

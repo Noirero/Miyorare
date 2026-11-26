@@ -13,6 +13,8 @@ import org.koitharu.kotatsu.core.prefs.NavigationMotion
 import org.koitharu.kotatsu.core.prefs.ScreenTransition
 import org.koitharu.kotatsu.core.ui.widgets.DirectionalSlide
 import org.koitharu.kotatsu.core.ui.widgets.DirectionalSlidePresentation
+import org.koitharu.kotatsu.core.ui.widgets.InteractiveTabSlidePresentation
+import org.koitharu.kotatsu.core.ui.widgets.TabSlideFrame
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import com.google.android.material.R as materialR
@@ -23,6 +25,7 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 	private val pages = FrameLayout(context)
 	private val bar = FloatingBottomNavigationView(context)
 	private val presentation = DirectionalSlidePresentation()
+	private val interactive = InteractiveTabSlidePresentation()
 	private val pageViews = linkedMapOf<Int, View>()
 	private var committed = items.first().id
 	private var visible = committed
@@ -58,11 +61,12 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 		bar.setTabDragListeners(
 			preview = { id ->
 				if (detached) true else if (id == null || id in pageViews) {
-					if (id == null) restoreCommitted() else render(id)
+					if (id == null && interactive.isActive) restoreCommitted()
 					true
 				} else false
 			},
-			commit = { id -> if (!detached && id in pageViews) bar.selectedItemId = id },
+			commit = ::commitDrag,
+			slideFrame = ::seekDrag,
 		)
 	}
 
@@ -78,10 +82,30 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 		bar.setComposeLabeled(labels)
 	}
 
+	private fun seekDrag(frame: TabSlideFrame) {
+		if (detached) return
+		val current = pageViews[committed] ?: return
+		if (!interactive.isActive) presentation.finish()
+		if (!interactive.seek(frame, committed, current) { pageViews[it] }) restoreCommitted()
+	}
+
+	private fun commitDrag(id: Int) {
+		if (detached || id !in pageViews) return
+		val handoff = interactive.captureHandoff(id)
+		val matched = interactive.contains(id)
+		interactive.finish()
+		if (matched) {
+			// Local commit only. Suppress a second automatic slide after an interactive drag.
+			visible = id
+			pageViews.forEach { (key, view) -> view.visibility = if (key == id) View.VISIBLE else View.INVISIBLE }
+		}
+		bar.selectedItemId = id
+		handoff?.let(presentation::resume)
+	}
+
 	private fun restoreCommitted() {
-		// A final null after a successful selection leaves the accepted animation running.
-		if (visible == committed) return
 		presentation.finish()
+		interactive.finish()
 		visible = committed
 		pageViews.forEach { (id, view) -> view.visibility = if (id == committed) View.VISIBLE else View.INVISIBLE }
 	}
@@ -106,9 +130,7 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 
 	override fun onDetachedFromWindow() {
 		detached = true
-		presentation.finish()
-		visible = committed
-		pageViews.forEach { (id, view) -> view.visibility = if (id == committed) View.VISIBLE else View.INVISIBLE }
+		restoreCommitted()
 		super.onDetachedFromWindow()
 	}
 

@@ -7,6 +7,8 @@ import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
 import org.koitharu.kotatsu.core.ui.widgets.NavigationTabDrag
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.core.ui.widgets.DirectionalSlidePresentation
+import org.koitharu.kotatsu.core.ui.widgets.InteractiveTabSlidePresentation
+import org.koitharu.kotatsu.core.ui.widgets.TabSlideFrame
 import android.widget.FrameLayout
 import androidx.compose.ui.geometry.Rect as SlotRect
 import android.graphics.Rect
@@ -218,6 +220,43 @@ class DiscoveryNavigationRuntimeTest {
 			assertEquals(View.INVISIBLE, first.visibility)
 			assertEquals(View.INVISIBLE, second.visibility)
 			assertEquals(View.VISIBLE, third.visibility)
+			assertEquals(3f, first.translationX, 0.01f)
+			assertEquals(5f, second.translationX, 0.01f)
+			assertEquals(7f, third.translationX, 0.01f)
+		}
+	}
+
+	@Test fun interactiveSlideFollowsProgressAndReversalWithoutTimeDrivenAnimation() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val parent = FrameLayout(app)
+			val first = View(app).apply { translationX = 3f }
+			val second = View(app).apply { translationX = 5f; visibility = View.GONE }
+			val third = View(app).apply { translationX = 7f; visibility = View.GONE }
+			val pages = mapOf(1 to first, 2 to second, 3 to third)
+			for (child in pages.values) parent.addView(child, FrameLayout.LayoutParams(300, 100))
+			parent.layout(0, 0, 300, 100)
+			val slide = InteractiveTabSlidePresentation()
+			fun seek(frame: TabSlideFrame) = assertTrue(slide.seek(frame, 1, first) { pages[it] })
+			seek(TabSlideFrame(1, 2, 0.25f))
+			assertEquals(-72f, first.translationX, 0.01f)
+			assertEquals(230f, second.translationX, 0.01f)
+			seek(TabSlideFrame(1, 2, 0.75f))
+			assertEquals(-222f, first.translationX, 0.01f)
+			seek(TabSlideFrame(1, 2, 0.25f))
+			assertEquals(-72f, first.translationX, 0.01f)
+			val back = checkNotNull(slide.captureHandoff(1))
+			assertEquals(-75f, back.incomingOffset, 0.01f)
+			assertEquals(-300f, back.distance, 0.01f)
+			seek(TabSlideFrame.single(2))
+			assertEquals(5f, second.translationX, 0.01f)
+			seek(TabSlideFrame(2, 3, 0.4f))
+			assertEquals(View.INVISIBLE, first.visibility)
+			assertEquals(-115f, second.translationX, 0.01f)
+			assertEquals(187f, third.translationX, 0.01f)
+			slide.finish()
+			assertEquals(View.VISIBLE, first.visibility)
+			assertEquals(View.GONE, second.visibility)
+			assertEquals(View.GONE, third.visibility)
 			assertEquals(3f, first.translationX, 0.01f)
 			assertEquals(5f, second.translationX, 0.01f)
 			assertEquals(7f, third.translationX, 0.01f)

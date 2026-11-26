@@ -305,13 +305,18 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		rebuildComposeItems()
 	}
 
-	internal fun setTabDragListeners(preview: (Int?) -> Boolean, commit: (Int) -> Unit) {
+	internal fun setTabDragListeners(
+		preview: (Int?) -> Boolean,
+		commit: (Int) -> Unit,
+		slideFrame: ((TabSlideFrame) -> Unit)? = null,
+	) {
 		tabDrag.preview = { id ->
 			val accepted = preview(id)
 			previewIdState.value = id.takeIf { accepted }
 			accepted
 		}
 		tabDrag.commit = commit
+		tabDrag.slideFrame = slideFrame
 	}
 
 	internal fun cancelTabDrag() = tabDrag.cancel()

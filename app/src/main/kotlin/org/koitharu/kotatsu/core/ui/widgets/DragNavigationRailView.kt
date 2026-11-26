@@ -57,9 +57,14 @@ class DragNavigationRailView @JvmOverloads constructor(
 	internal fun setNavigationMotion(motion: NavigationMotion) = drag.setMotion(motion)
 	internal fun animateTabSelection(from: Int, to: Int) = drag.animateSelection(from, to)
 
-	internal fun setTabDragListeners(preview: (Int?) -> Boolean, commit: (Int) -> Unit) {
+	internal fun setTabDragListeners(
+		preview: (Int?) -> Boolean,
+		commit: (Int) -> Unit,
+		slideFrame: ((TabSlideFrame) -> Unit)? = null,
+	) {
 		drag.preview = preview
 		drag.commit = commit
+		drag.slideFrame = slideFrame
 	}
 
 	internal fun cancelTabDrag() = drag.cancel()
