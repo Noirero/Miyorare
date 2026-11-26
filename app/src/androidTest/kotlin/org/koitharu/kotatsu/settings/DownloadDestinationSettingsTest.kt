@@ -56,7 +56,9 @@ class DownloadDestinationSettingsTest {
 			val context = InstrumentationRegistry.getInstrumentation().targetContext
 			WorkManager.initialize(context, Configuration.Builder().build())
 		}
-		hilt.inject()
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			hilt.inject()
+		}
 		// Production warms the network singleton off-main; HiltTestApplication does not.
 		runBlocking { withContext(Dispatchers.IO) { baseHttpClient.get() } }
 	}
