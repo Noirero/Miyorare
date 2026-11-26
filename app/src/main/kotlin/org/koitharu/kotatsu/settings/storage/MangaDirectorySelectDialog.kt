@@ -136,66 +136,63 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 			icon = painterResource(R.drawable.ic_storage),
 			title = stringResource(R.string.manga_save_location),
 		) {
-			Text(
-				text = stringResource(R.string.download_destination_root_hint),
-				style = MaterialTheme.typography.bodySmall,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-				modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-			)
-			Text(
-				text = stringResource(R.string.download_destination_space),
-				style = MaterialTheme.typography.labelLarge,
-				color = MaterialTheme.colorScheme.primary,
-				modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
-			)
-			DestinationSpaceRow(
-				title = stringResource(R.string.download_destination_normal),
-				selected = selectedSpace == FavouriteSpace.NORMAL,
-				onClick = { viewModel.selectSpace(FavouriteSpace.NORMAL) },
-			)
-			DestinationSpaceRow(
-				title = stringResource(R.string.download_destination_private),
-				selected = selectedSpace == FavouriteSpace.PRIVATE,
-				onClick = { viewModel.selectSpace(FavouriteSpace.PRIVATE) },
-			)
-			if (selectedSpace == FavouriteSpace.PRIVATE && !privateUsesOwnRoot) {
+			// One bounded scroll viewport keeps every destination and action reachable on short screens.
+			Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
 				Text(
-					text = stringResource(R.string.download_destination_private_follows_normal),
+					text = stringResource(R.string.download_destination_root_hint),
 					style = MaterialTheme.typography.bodySmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 					modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
 				)
-			}
-			if (destinationsOverlap) {
 				Text(
-					text = stringResource(R.string.download_destination_same_warning),
-					style = MaterialTheme.typography.bodySmall,
-					color = MaterialTheme.colorScheme.error,
-					modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+					text = stringResource(R.string.download_destination_space),
+					style = MaterialTheme.typography.labelLarge,
+					color = MaterialTheme.colorScheme.primary,
+					modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
 				)
-			}
-			if (selectedRoot != null) {
-				Text(
-					text = stringResource(R.string.download_destination_preview, selectedRoot.path.trimEnd('/')),
-					style = MaterialTheme.typography.bodySmall,
-					color = MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+				DestinationSpaceRow(
+					title = stringResource(R.string.download_destination_normal),
+					selected = selectedSpace == FavouriteSpace.NORMAL,
+					onClick = { viewModel.selectSpace(FavouriteSpace.NORMAL) },
 				)
-			}
-			if (selectedItem != null && !selectedItem.isAvailable) {
-				Text(
-					text = stringResource(R.string.download_destination_unavailable),
-					style = MaterialTheme.typography.bodySmall,
-					color = MaterialTheme.colorScheme.error,
-					modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+				DestinationSpaceRow(
+					title = stringResource(R.string.download_destination_private),
+					selected = selectedSpace == FavouriteSpace.PRIVATE,
+					onClick = { viewModel.selectSpace(FavouriteSpace.PRIVATE) },
 				)
-			}
+				if (selectedSpace == FavouriteSpace.PRIVATE && !privateUsesOwnRoot) {
+					Text(
+						text = stringResource(R.string.download_destination_private_follows_normal),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+					)
+				}
+				if (destinationsOverlap) {
+					Text(
+						text = stringResource(R.string.download_destination_same_warning),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.error,
+						modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+					)
+				}
+				if (selectedRoot != null) {
+					Text(
+						text = stringResource(R.string.download_destination_preview, selectedRoot.path.trimEnd('/')),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+					)
+				}
+				if (selectedItem != null && !selectedItem.isAvailable) {
+					Text(
+						text = stringResource(R.string.download_destination_unavailable),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.error,
+						modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+					)
+				}
 
-			Column(
-				modifier = Modifier
-					.heightIn(max = 320.dp)
-					.verticalScroll(rememberScrollState()),
-			) {
 				items.filter { it.file != null }.forEach { item ->
 					Row(
 						modifier = Modifier
@@ -233,22 +230,22 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 						}
 					}
 				}
+				if (selectedSpace == FavouriteSpace.PRIVATE && privateUsesOwnRoot) {
+					ExpressiveDialogTextButton(
+						text = stringResource(R.string.download_destination_private_use_normal),
+					) { viewModel.useNormalDestinationForPrivate() }
+				}
+				items.filter { it.file == null }.forEach { item ->
+					Spacer(Modifier.size(12.dp))
+					ExpressivePillButton(
+						text = item.title ?: stringResource(item.titleRes),
+						icon = painterResource(R.drawable.ic_folder_file),
+						primary = true,
+					) { viewModel.onItemClick(item) }
+				}
+				Spacer(Modifier.size(8.dp))
+				ExpressiveDialogTextButton(text = stringResource(android.R.string.cancel)) { dismiss() }
 			}
-			if (selectedSpace == FavouriteSpace.PRIVATE && privateUsesOwnRoot) {
-				ExpressiveDialogTextButton(
-					text = stringResource(R.string.download_destination_private_use_normal),
-				) { viewModel.useNormalDestinationForPrivate() }
-			}
-			items.filter { it.file == null }.forEach { item ->
-				Spacer(Modifier.size(12.dp))
-				ExpressivePillButton(
-					text = item.title ?: stringResource(item.titleRes),
-					icon = painterResource(R.drawable.ic_folder_file),
-					primary = true,
-				) { viewModel.onItemClick(item) }
-			}
-			Spacer(Modifier.size(8.dp))
-			ExpressiveDialogTextButton(text = stringResource(android.R.string.cancel)) { dismiss() }
 		}
 	}
 

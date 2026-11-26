@@ -1,18 +1,17 @@
 package org.koitharu.kotatsu.settings
 
 import android.content.Intent
-import android.content.SharedPreferences
-import android.util.Log
 import android.view.WindowManager
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.core.content.edit
-import androidx.lifecycle.ViewModelProvider
 import androidx.preference.PreferenceManager
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,11 +19,7 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -44,9 +39,7 @@ import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.settings.storage.MangaDirectorySelectDialog
-import org.koitharu.kotatsu.settings.storage.MangaDirectorySelectViewModel
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -142,82 +135,39 @@ class DownloadDestinationSettingsTest {
 				scenario.onActivity {
 					val settings = it.supportFragmentManager.findFragmentById(R.id.container) as PrivateFavouritesSettingsFragment
 					val dialog = settings.childFragmentManager.fragments.filterIsInstance<MangaDirectorySelectDialog>().single()
-					assertTrue(checkNotNull(dialog.dialog?.window).attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+					val window = checkNotNull(dialog.dialog?.window)
+					assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+					// Exercise the real dialog under a compact viewport, not a mock layout.
+					val compactHeight = (480 * it.resources.displayMetrics.density).toInt()
+					val height = minOf(window.decorView.height, compactHeight)
+					check(height > 0)
+					window.setLayout(window.attributes.width, height)
 				}
-				compose.onNodeWithText(context.getString(R.string.download_destination_normal)).performClick()
+				compose.onNodeWithText(context.getString(R.string.download_destination_normal))
+					.performScrollTo().assertIsDisplayed().performTouchInput { click() }
 				awaitSummary(context.getString(R.string.download_destination_preview, normal.path))
 				assertEquals(privateRoot, destinations.effectiveRoot(FavouriteSpace.PRIVATE))
-				compose.onNodeWithText(context.getString(R.string.download_destination_private)).performClick()
+				compose.onNodeWithText(context.getString(R.string.download_destination_private))
+					.performScrollTo().assertIsDisplayed().performTouchInput { click() }
 				awaitSummary(context.getString(R.string.download_destination_preview, privateRoot.path))
-				// Inspect the actual dialog-owned ViewModel, not a second instance or a mock.
-				lateinit var model: MangaDirectorySelectViewModel
-				scenario.onActivity {
-					val settings = it.supportFragmentManager.findFragmentById(R.id.container) as PrivateFavouritesSettingsFragment
-					val dialog = settings.childFragmentManager.fragments.filterIsInstance<MangaDirectorySelectDialog>().single()
-					model = ViewModelProvider(dialog)[MangaDirectorySelectViewModel::class.java]
-				}
-				val actionLabel = context.getString(R.string.download_destination_private_use_normal)
-				val hint = context.getString(R.string.download_destination_private_follows_normal)
-				val button = compose.onNodeWithText(actionLabel)
-				val loadingSeen = AtomicBoolean(false)
-				val mutationSeen = AtomicBoolean(false)
-				val observerScope = CoroutineScope(Dispatchers.Main.immediate + Job())
-				val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-					if (key == privateKey) mutationSeen.set(true)
-				}
-				fun snapshot(): String {
-					// Compare only synthetic fixture roots; never dump arbitrary paths or Private UI text.
-					val state = "space=${model.selectedSpace.value}, " +
-						"configuredPrivatePresent=${destinations.configuredRoot(FavouriteSpace.PRIVATE) != null}, " +
-						"configuredPrivateIsFixture=${destinations.configuredRoot(FavouriteSpace.PRIVATE) == privateRoot}, " +
-						"normalUnchanged=${destinations.effectiveRoot(FavouriteSpace.NORMAL) == normal}, " +
-						"effectivePrivateIsNormal=${destinations.effectiveRoot(FavouriteSpace.PRIVATE) == normal}, " +
-						"storeOwnRoot=${destinations.privateUsesOwnRoot()}, modelOwnRoot=${model.privateUsesOwnRoot.value}, " +
-						"checkedRootIsNormal=${model.items.value.firstOrNull { it.isChecked }?.file == normal}, " +
-						"loading=${model.isLoading.value}, loadingSeen=${loadingSeen.get()}, mutationSeen=${mutationSeen.get()}"
-					val semantics = runCatching {
-						"buttonActions=${compose.onAllNodes(hasText(actionLabel) and hasClickAction()).fetchSemanticsNodes().size}, " +
-							"buttonDisplayed=${runCatching { button.assertIsDisplayed() }.isSuccess}, " +
-							"buttonBounds=${runCatching { button.fetchSemanticsNode().boundsInRoot }.getOrNull()}, " +
-							"hintNodes=${compose.onAllNodes(hasText(hint), useUnmergedTree = true).fetchSemanticsNodes().size}"
-					}.getOrElse { "semanticsError=${it.javaClass.simpleName}" }
-					return "$state; $semantics"
-				}
-				prefs.registerOnSharedPreferenceChangeListener(listener)
-				try {
-					compose.runOnIdle {
-						observerScope.launch { model.isLoading.collect { if (it) loadingSeen.set(true) } }
-					}
-					val before = snapshot()
-					Log.i("FollowNormalDiagnostic", "before UI click: $before")
-					try {
-						button.performClick()
-						awaitSummary(hint)
-						Log.i("FollowNormalDiagnostic", "after UI click: ${snapshot()}")
-					} catch (failure: Throwable) {
-						val after = runCatching { snapshot() }.getOrElse { "snapshotError=${it.javaClass.simpleName}" }
-						// A controlled downstream probe is allowed only when the original UI action left
-						// the fixture untouched and no mutation is in flight. It can never rescue the test.
-						val probe = if (destinations.configuredRoot(FavouriteSpace.PRIVATE) == privateRoot &&
-							model.selectedSpace.value == FavouriteSpace.PRIVATE && !model.isLoading.value &&
-							!loadingSeen.get() && !mutationSeen.get()
-						) {
-							val result = runCatching {
-								compose.runOnIdle { model.useNormalDestinationForPrivate() }
-								awaitSummary(hint)
-							}
-							"directModelProbe=${if (result.isSuccess) "hint reached" else result.exceptionOrNull()?.javaClass?.simpleName}; " +
-								runCatching { snapshot() }.getOrElse { "snapshotError=${it.javaClass.simpleName}" }
-						} else "directModelProbe=not run (mutation or loading observed)"
-						val evidence = "Follow Normal UI action failed; before={$before}; after={$after}; $probe"
-						Log.e("FollowNormalDiagnostic", evidence)
-						throw AssertionError(evidence, failure)
-					}
-				} finally {
-					observerScope.cancel()
-					prefs.unregisterOnSharedPreferenceChangeListener(listener)
-				}
-				compose.onNodeWithText(context.getString(android.R.string.cancel)).performClick()
+				// Bottom actions must be reachable, even when the unavailable root and warnings
+				// make the content taller than the dialog window. Do not launch the OS picker.
+				compose.onNodeWithText(context.getString(R.string.pick_custom_directory))
+					.performScrollTo().assertIsDisplayed().assertHasClickAction()
+				compose.onNodeWithText(context.getString(android.R.string.cancel))
+					.performScrollTo().assertIsDisplayed().assertHasClickAction()
+				val followNormal = compose.onNodeWithText(context.getString(R.string.download_destination_private_use_normal))
+				followNormal.performScrollTo().assertIsDisplayed().assertHasClickAction()
+				val bounds = followNormal.fetchSemanticsNode().boundsInRoot
+				assertTrue("Follow Normal must have a nonzero hit area", bounds.width > 0f && bounds.height > 0f)
+				followNormal.performTouchInput { click() }
+				awaitSummary(context.getString(R.string.download_destination_private_follows_normal))
+				compose.onNodeWithText(context.getString(R.string.download_destination_private_follows_normal))
+					.performScrollTo().assertIsDisplayed()
+				assertEquals(null, destinations.configuredRoot(FavouriteSpace.PRIVATE))
+				assertEquals(normal, destinations.effectiveRoot(FavouriteSpace.PRIVATE))
+				compose.onNodeWithText(context.getString(android.R.string.cancel))
+					.performScrollTo().assertIsDisplayed().performTouchInput { click() }
 				awaitSummary(normalSummary)
 				compose.onNodeWithText(privateSummary).assertDoesNotExist()
 				assertEquals(normal, destinations.effectiveRoot(FavouriteSpace.NORMAL))
