@@ -18,8 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsCompat
@@ -80,7 +82,7 @@ class SourceOverviewActivity : BaseActivity<ActivitySourceOverviewBinding>() {
 }
 
 @Composable
-private fun SourceOverview(
+internal fun SourceOverview(
     title: String,
     state: SourceOverviewViewModel.State,
     onBack: () -> Unit,
@@ -142,7 +144,7 @@ private fun SourceOverview(
                     TextButton(onClick = onCatalog) { Text(stringResource(R.string.source_overview_see_all)) }
                 }
                 else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().testTag("source_overview_shelves"),
                     contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -173,13 +175,24 @@ private fun SourceOverview(
                                     Text(stringResource(R.string.source_overview_load_failed))
                                     TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                                 }
-                                entries == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
-                                entries.isEmpty() -> Text(stringResource(R.string.nothing_found), Modifier.padding(16.dp))
+                                entries?.isEmpty() == true -> Text(stringResource(R.string.nothing_found), Modifier.padding(16.dp))
                                 else -> LazyRow(
+                                    modifier = Modifier.testTag("source_overview_shelf_${shelf.order.name}"),
                                     contentPadding = PaddingValues(12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    userScrollEnabled = entries != null,
                                 ) {
-                                    items(entries, key = { it.id }) { manga -> OverviewCover(manga) { onManga(manga) } }
+                                    if (entries == null) {
+                                        // Match the shelf's existing maximum; only visible placeholders are composed.
+                                        items(12) {
+                                            OverviewCoverFrame(
+                                                title = null,
+                                                modifier = Modifier.testTag("source_overview_skeleton_${shelf.order.name}"),
+                                            ) {}
+                                        }
+                                    } else {
+                                        items(entries, key = { it.id }) { manga -> OverviewCover(manga) { onManga(manga) } }
+                                    }
                                 }
                             }
                         }
@@ -196,15 +209,38 @@ private fun OverviewCover(manga: Manga, onClick: () -> Unit) {
     val request = remember(context, manga) {
         ImageRequest.Builder(context).data(manga.coverUrl).mangaExtra(manga).build()
     }
-    Column(Modifier.width(104.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)) {
+    OverviewCoverFrame(title = manga.title, modifier = Modifier.clickable(onClick = onClick)) {
         AsyncImage(
             model = request,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.matchParentSize(),
         )
-        Text(manga.title, Modifier.padding(top = 6.dp).heightIn(min = 48.dp),
-            maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun OverviewCoverFrame(
+    title: String?,
+    modifier: Modifier = Modifier,
+    cover: @Composable BoxScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(Modifier.width(104.dp).clip(shape).then(modifier)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            content = cover,
+        )
+        // Reserve the same two-line typography space at every font scale, without a visible fake title.
+        val titleModifier = Modifier.padding(top = 6.dp).heightIn(min = 48.dp)
+        Text(
+            text = title.orEmpty(),
+            modifier = if (title == null) titleModifier.clearAndSetSemantics {} else titleModifier,
+            minLines = 2,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
