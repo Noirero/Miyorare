@@ -42,6 +42,21 @@ class DownloadTask(
 		allowDiagnosticExport = data.getBoolean(ALLOW_DIAGNOSTIC_EXPORT, false),
 	)
 
+	/** Only new-task admission may replace the proposed destination. */
+	internal fun withDestination(root: File) = DownloadTask(
+		mangaId = mangaId,
+		isPaused = isPaused,
+		isSilent = isSilent,
+		chaptersIds = chaptersIds,
+		destination = root,
+		format = format,
+		allowMeteredNetwork = allowMeteredNetwork,
+		favouriteSpace = favouriteSpace,
+		appendGalleryIdToChapterFile = appendGalleryIdToChapterFile,
+		downloadSeparateCopy = downloadSeparateCopy,
+		allowDiagnosticExport = allowDiagnosticExport,
+	)
+
 	fun toData(): Data = Data.Builder()
 		.putLong(MANGA_ID, mangaId)
 		.putBoolean(START_PAUSED, isPaused)

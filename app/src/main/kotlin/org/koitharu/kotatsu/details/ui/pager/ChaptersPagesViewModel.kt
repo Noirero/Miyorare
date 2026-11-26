@@ -105,6 +105,7 @@ abstract class ChaptersPagesViewModel(
 	protected val chapterProgressRepository: ChapterProgressRepository,
     private val localContentReader: LocalContentReader,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
+	private val downloadSpaceProvenance: FavouriteSpace? = null,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
@@ -811,7 +812,7 @@ abstract class ChaptersPagesViewModel(
 				favouriteSpace = favouriteSpace,
 				allowDiagnosticExport = allowDiagnosticExport,
 			)
-			downloadScheduler.schedule(setOf(manga to task))
+			downloadScheduler.schedule(setOf(manga to task), explicitSpace = downloadSpaceProvenance)
 			onDownloadStarted.call(Unit)
 		}
 	}

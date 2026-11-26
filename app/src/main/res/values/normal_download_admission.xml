@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="normal_download_fixed_destination">Active Normal Favorites destination: %1$s</string>
+    <string name="normal_download_mixed_destination">Eligible Normal Favorites use %1$s. The selected folder applies to other items only.</string>
+    <string name="normal_download_destination_changed">Normal Favorites destination or selection changed. Reopen the download dialog and try again.</string>
+</resources>

@@ -25,6 +25,7 @@ import org.koitharu.kotatsu.core.util.ext.isWriteable
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.download.domain.NormalDownloadAdmissionPlan
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -80,6 +81,7 @@ class DownloadDialogViewModel @Inject constructor(
 	val onScheduled = MutableEventFlow<Boolean>()
 	val defaultFormat = MutableStateFlow<DownloadFormat?>(null)
 	val availableDestinations = MutableStateFlow(listOf(defaultDestination()))
+	internal val normalDestinationPlan = MutableStateFlow<NormalDownloadAdmissionPlan?>(null)
 	val chaptersSelectOptions = MutableStateFlow(
 		ChapterSelectOptions(
 			wholeManga = ChaptersSelectMacro.WholeManga(0),
@@ -116,8 +118,10 @@ class DownloadDialogViewModel @Inject constructor(
 		val allowDiagnosticExport = !settings.isIncognitoModeEnabled
 		launchLoadingJob(Dispatchers.Default) {
 			val space = resolveFavouriteSpace()
+			val plan = checkNotNull(normalDestinationPlan.value)
 			val configuredRoot = destinationStore.effectiveRoot(space)
-			val selectedRoot = destination?.file ?: configuredRoot
+			val selectedRoot = if (plan.eligibleIds.size == manga.size && manga.isNotEmpty()) plan.root
+				else destination?.file ?: configuredRoot
 			if (selectedRoot != null && !selectedRoot.isWriteable()) {
 				throw kotlin.io.AccessDeniedException(selectedRoot)
 			}
@@ -141,7 +145,8 @@ class DownloadDialogViewModel @Inject constructor(
 					allowDiagnosticExport = allowDiagnosticExport,
 				)
 			}
-			scheduler.schedule(tasks)
+			scheduler.schedule(tasks, explicitSpace = explicitSpace ?: space.takeIf { it == FavouriteSpace.PRIVATE },
+				normalSelection = plan)
 			onScheduled.call(startNow)
 		}
 	}
@@ -238,6 +243,22 @@ class DownloadDialogViewModel @Inject constructor(
 
 	private fun loadAvailableDestinations() = launchJob(Dispatchers.Default) {
 		val space = resolveFavouriteSpace()
+		val provenance = explicitSpace ?: space.takeIf { it == FavouriteSpace.PRIVATE }
+		val plan = scheduler.previewNormalDestination(manga, provenance)
+		if (manga.isNotEmpty() && plan.eligibleIds.size == manga.size) {
+			// For wholly eligible selections the user sees the only permitted destination.
+			val root = plan.root
+			availableDestinations.value = listOf(if (root == null) defaultDestination().copy(isAvailable = false)
+				else DirectoryModel(
+					title = localStorageManager.getDirectoryDisplayName(root, isFullPath = true),
+					titleRes = 0, file = root, isChecked = true, isRemovable = false,
+					isAvailable = root.isDirectory && root.isWriteable(),
+				))
+			normalDestinationPlan.value = plan
+			return@launchJob
+		}
+		// In a mixed selection keep the existing picker for noneligible items; eligible
+		// Normal items have a separate, explicitly displayed fixed destination.
 		val configuredRoot = destinationStore.effectiveRoot(space)
 		val defaultDir = if (space == FavouriteSpace.PRIVATE && destinationStore.privateUsesOwnRoot()) {
 			configuredRoot
@@ -273,6 +294,7 @@ class DownloadDialogViewModel @Inject constructor(
 				)
 			}
 		}
+		normalDestinationPlan.value = plan
 	}
 
 	private suspend fun resolveFavouriteSpace(): FavouriteSpace {

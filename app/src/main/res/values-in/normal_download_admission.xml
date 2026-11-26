@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="normal_download_fixed_destination">Destination Favorites Normal aktif: %1$s</string>
+    <string name="normal_download_mixed_destination">Favorites Normal yang memenuhi syarat menggunakan %1$s. Folder pilihan hanya berlaku untuk item lainnya.</string>
+    <string name="normal_download_destination_changed">Destination atau pilihan Favorites Normal berubah. Buka kembali dialog download dan coba lagi.</string>
+</resources>

@@ -322,7 +322,7 @@ class TrackWorker @AssistedInject constructor(
 			favouriteSpace = FavouriteSpace.NORMAL,
 			allowDiagnosticExport = !settings.isIncognitoModeEnabled,
 		)
-		downloadSchedulerLazy.get().schedule(setOf(mangaUpdates.manga to task))
+		downloadSchedulerLazy.get().schedule(setOf(mangaUpdates.manga to task), explicitSpace = FavouriteSpace.NORMAL)
 	}
 
 	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {

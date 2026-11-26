@@ -165,6 +165,7 @@ class DetailsViewModel @Inject constructor(
 	favouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
 	),
+	downloadSpaceProvenance = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let { FavouriteSpace.fromArgument(it) },
 	deleteLocalMangaUseCase = deleteLocalMangaUseCase,
 	localStorageChanges = localStorageChanges,
 	mangaDataRepository = mangaDataRepository,

@@ -59,6 +59,8 @@ import org.koitharu.kotatsu.details.data.ChapterPersonalEntity
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.download.domain.NormalDownloadTaskAdmission
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -2442,6 +2444,97 @@ class DownloadedLocalStateTest {
 		assertTrue(store.scan(manga, space))
 		assertEquals(2, writes)
 		assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(manga), space)[manga.id]?.fact?.status)
+	}
+
+	private fun admissionTask(manga: Manga, destination: File?, space: FavouriteSpace = FavouriteSpace.NORMAL) =
+		DownloadTask(manga.id, true, true, manga.chapters.orEmpty().map { it.id }.toLongArray(),
+			destination, DownloadFormat.MULTIPLE_CBZ, false, space, allowDiagnosticExport = false)
+
+	/** T06/T10: only eligible tasks are pinned; explicit Private and nullable dual remain unchanged. */
+	@Test fun normalTaskAdmissionPinsOnlyEligibleAndPreservesMixedSelection() = runBlocking {
+		val normal = remote(810_117L)
+		val dual = remote(810_118L)
+		val privateOnly = remote(810_119L)
+		val other = remote(810_120L)
+		favourite(normal)
+		favourite(dual)
+		favourite(dual, FavouriteSpace.PRIVATE)
+		favourite(privateOnly, FavouriteSpace.PRIVATE)
+		data.storeManga(other, replaceExisting = true)
+		val old = File(root, "other-choice").apply { check(mkdirs()) }
+		val admission = NormalDownloadTaskAdmission(normalDownloadScope, destinations, context)
+		val tasks = listOf(normal to admissionTask(normal, null), dual to admissionTask(dual, old),
+			privateOnly to admissionTask(privateOnly, old, FavouriteSpace.PRIVATE), other to admissionTask(other, old))
+		val (nullable, routed) = admission.prepare(tasks, null)
+		assertEquals(setOf(normal.id), nullable.eligibleIds)
+		assertEquals(root, routed[0].second.destination)
+		assertEquals(tasks.drop(1), routed.drop(1))
+		val pinned = routed[0].second
+		assertEquals(pinned, DownloadTask(pinned.toData()))
+		assertEquals(tasks[0].second.withDestination(root), pinned)
+		val (explicit, routedNormal) = admission.prepare(tasks, FavouriteSpace.NORMAL)
+		assertEquals(setOf(normal.id, dual.id), explicit.eligibleIds)
+		assertEquals(root, routedNormal[1].second.destination)
+		assertEquals(tasks.drop(2), routedNormal.drop(2))
+		val (_, routedPrivate) = admission.prepare(tasks, FavouriteSpace.PRIVATE)
+		assertEquals(tasks, routedPrivate)
+		val categories = db.getFavouritesDao().findCategoriesIds(normal.id)
+		repository.updateCategoryMemberships(listOf(normal), categories.associateWith { false }, FavouriteSpace.NORMAL)
+		assertTrue(runCatching { admission.prepare(tasks, null, nullable) }.isFailure)
+	}
+
+	/** T06/T08: stale preview and late enqueue reject even on A -> B -> A; serialized old task stays pinned. */
+	@Test fun normalTaskAdmissionRejectsStaleDialogAndEnqueueButKeepsPinnedTask() = runBlocking {
+		val manga = remote(810_121L)
+		favourite(manga)
+		val admission = NormalDownloadTaskAdmission(normalDownloadScope, destinations, context)
+		val tasks = listOf(manga to admissionTask(manga, root))
+		val (preview, admitted) = admission.prepare(tasks, FavouriteSpace.NORMAL)
+		val persisted = admitted.single().second.toData()
+		val file = download(root, manga).file
+		val next = File(root, "new-normal")
+		destinations.setRoot(FavouriteSpace.NORMAL, next)
+		assertTrue(runCatching { admission.prepare(tasks, FavouriteSpace.NORMAL, preview) }.isFailure)
+		var enqueued = false
+		assertTrue(runCatching { admission.enqueueIfCurrent(preview) { enqueued = true } }.isFailure)
+		assertFalse(enqueued)
+		val (_, newTasks) = admission.prepare(tasks, FavouriteSpace.NORMAL)
+		assertEquals(next, newTasks.single().second.destination)
+		val pinned = DownloadTask(persisted)
+		assertEquals(root, pinned.destination)
+		assertEquals(root, local.getOutputDir(manga, pinned.destination))
+		assertTrue(file.exists())
+		destinations.setRoot(FavouriteSpace.NORMAL, root)
+		assertTrue(runCatching { admission.prepare(tasks, FavouriteSpace.NORMAL, preview) }.isFailure)
+		assertTrue(runCatching { admission.enqueueIfCurrent(preview) { enqueued = true } }.isFailure)
+		assertFalse(enqueued)
+		val (fresh, _) = admission.prepare(tasks, FavouriteSpace.NORMAL)
+		admission.enqueueIfCurrent(fresh) { enqueued = true }
+		assertTrue(enqueued)
+	}
+
+	/** T07: unavailable configured target cannot fall back to a writable historical root. */
+	@Test fun normalTaskAdmissionUnavailableRootRejectsWithoutFallback() = runBlocking {
+		val manga = remote(810_122L)
+		favourite(manga)
+		val copy = download(root, manga).file
+		val bytes = File(copy, "Chapter 1.cbz").readBytes()
+		val next = File(root, "unmounted")
+		destinations.setRoot(FavouriteSpace.NORMAL, next)
+		assertTrue(next.deleteRecursively())
+		val admission = NormalDownloadTaskAdmission(normalDownloadScope, destinations, context)
+		val tasks = listOf(manga to admissionTask(manga, root))
+		val preview = admission.plan(listOf(manga to FavouriteSpace.NORMAL))
+		assertEquals(setOf(manga.id), preview.eligibleIds)
+		assertEquals(next, preview.root)
+		assertTrue(runCatching { admission.prepare(tasks, FavouriteSpace.NORMAL, preview) }.isFailure)
+		assertNull(local.getOutputDir(manga, next))
+		assertFalse(next.exists())
+		assertArrayEquals(bytes, File(copy, "Chapter 1.cbz").readBytes())
+		assertTrue(next.mkdirs())
+		val (_, routed) = admission.prepare(tasks, FavouriteSpace.NORMAL)
+		assertEquals(next, routed.single().second.destination)
+		assertArrayEquals(bytes, File(copy, "Chapter 1.cbz").readBytes())
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {

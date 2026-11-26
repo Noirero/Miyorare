@@ -86,6 +86,8 @@ import org.koitharu.kotatsu.core.util.ext.withTicker
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.download.domain.NormalDownloadTaskAdmission
+import org.koitharu.kotatsu.download.domain.NormalDownloadAdmissionPlan
 import org.koitharu.kotatsu.download.domain.DownloadPhase
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadObservation
@@ -998,7 +1000,11 @@ class DownloadWorker @AssistedInject constructor(
 		@ApplicationContext private val context: Context,
 		private val mangaDataRepository: MangaDataRepository,
 		private val workManager: WorkManager,
+		private val normalAdmission: NormalDownloadTaskAdmission,
 	) {
+
+		internal suspend fun previewNormalDestination(mangas: Collection<Manga>, provenance: FavouriteSpace?) =
+			normalAdmission.plan(mangas.map { it to provenance })
 
 		fun observeWorks(): Flow<List<WorkInfo>> = workManager.getWorkInfosByTagFlow(TAG)
 
@@ -1080,11 +1086,19 @@ class DownloadWorker @AssistedInject constructor(
 			}
 		}
 
-		suspend fun schedule(tasks: Collection<Pair<Manga, DownloadTask>>) {
+		suspend fun schedule(
+			tasks: Collection<Pair<Manga, DownloadTask>>,
+			explicitSpace: FavouriteSpace? = null,
+			normalSelection: NormalDownloadAdmissionPlan? = null,
+		) {
 			if (tasks.isEmpty()) return
-			val requests = LinkedHashMap<String, androidx.work.OneTimeWorkRequest>(tasks.size)
-			for ((manga, task) in tasks) {
-				mangaDataRepository.storeManga(manga, replaceExisting = true)
+			// Reject a stale dialog before storing/enqueuing any of the selected tasks.
+			val (plan, _) = normalAdmission.prepare(tasks, explicitSpace, normalSelection)
+			for ((manga, _) in tasks) mangaDataRepository.storeManga(manga, replaceExisting = true)
+			// Membership/source inputs and root may have changed while metadata was stored.
+			val (verified, admitted) = normalAdmission.prepare(tasks, explicitSpace, plan)
+			val requests = LinkedHashMap<String, androidx.work.OneTimeWorkRequest>(admitted.size)
+			for ((_, task) in admitted) {
 				val request = OneTimeWorkRequestBuilder<DownloadWorker>()
 					.setConstraints(createConstraints(task.allowMeteredNetwork))
 					.addTag(TAG)
@@ -1095,8 +1109,10 @@ class DownloadWorker @AssistedInject constructor(
 					.build()
 				requests.putIfAbsent(task.uniqueWorkName(), request)
 			}
-			val operations = requests.map { (uniqueName, request) ->
-				workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, request)
+			val operations = normalAdmission.enqueueIfCurrent(verified) {
+				requests.map { (uniqueName, request) ->
+					workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, request)
+				}
 			}
 			for (operation in operations) operation.await()
 		}

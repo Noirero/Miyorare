@@ -86,6 +86,7 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 		val context = LocalContext.current
 		val options by viewModel.chaptersSelectOptions.collectAsState()
 		val destinations by viewModel.availableDestinations.collectAsState()
+		val normalPlan by viewModel.normalDestinationPlan.collectAsState()
 		val defaultFormat by viewModel.defaultFormat.collectAsState()
 		val isLoading by viewModel.isLoading.collectAsState()
 		val isOptionsLoading by viewModel.isOptionsLoading.collectAsState()
@@ -332,11 +333,24 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 				}
 			}
 
+			normalPlan?.takeIf { it.eligibleIds.isNotEmpty() }?.let { plan ->
+				val path = plan.root?.path ?: stringResource(R.string.cannot_find_available_storage)
+				Text(
+					text = stringResource(
+						if (plan.eligibleIds.size == viewModel.manga.size) R.string.normal_download_fixed_destination
+						else R.string.normal_download_mixed_destination,
+						path,
+					),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.padding(top = 8.dp),
+				)
+			}
 			Spacer(Modifier.size(16.dp))
 			ExpressivePillButton(
 				text = stringResource(R.string.download),
 				primary = true,
-				enabled = !isLoading,
+				enabled = !isLoading && normalPlan != null,
 			) {
 				router.askForDownloadOverMeteredNetwork { allowMetered ->
 					schedule(
