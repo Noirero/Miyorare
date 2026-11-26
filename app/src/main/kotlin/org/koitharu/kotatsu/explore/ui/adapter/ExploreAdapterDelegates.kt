@@ -30,6 +30,7 @@ import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.ui.explicitPrivateViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
@@ -61,7 +62,8 @@ fun exploreButtonsAD(
 ) = adapterDelegateViewBinding<ExploreButtons, ListModel, ItemExploreButtonsBinding>(
 	{ layoutInflater, parent -> ItemExploreButtonsBinding.inflate(layoutInflater, parent, false) },
 ) {
-	val modernPalette = context.miyorareViewPaletteFromPreferences()
+	val privatePalette = context.explicitPrivateViewPaletteFromPreferences()
+	val modernPalette = privatePalette ?: context.miyorareViewPaletteFromPreferences()
 	binding.buttonDownloads.setOnClickListener(clickListener)
 	binding.buttonLocal.setOnClickListener(clickListener)
 	binding.buttonMigration.setOnClickListener {
@@ -88,6 +90,11 @@ fun exploreButtonsAD(
 	}
 	bind {
 		binding.applyModernResolvedPalette(modernPalette)
+		privatePalette?.let { palette ->
+			for (button in listOf(binding.buttonLocal, binding.buttonDownloads, binding.buttonMigration)) {
+				button.rippleColor = ColorStateList.valueOf(palette.glow)
+			}
+		}
 	}
 }
 
@@ -99,6 +106,15 @@ fun exploreSourceFiltersAD(
 ) {
 	binding.buttonOrigin.setOnClickListener { view -> onOriginClick(view) }
 	binding.buttonLanguage.setOnClickListener { view -> onLanguageClick(view) }
+	context.explicitPrivateViewPaletteFromPreferences()?.let { palette ->
+		binding.textViewTitle.setTextColor(palette.onSurface)
+		for (button in listOf(binding.buttonOrigin, binding.buttonLanguage)) {
+			button.setTextColor(palette.onSurfaceVariant)
+			button.iconTint = ColorStateList.valueOf(palette.onSurfaceVariant)
+			button.strokeColor = ColorStateList.valueOf(palette.outlineVariant)
+			button.rippleColor = ColorStateList.valueOf(palette.glow)
+		}
+	}
 	bind {
 		val origin = context.getString(item.origin.titleRes())
 		binding.buttonOrigin.text = "${context.getString(R.string.explore_source_origin_filter)}: $origin"
@@ -115,6 +131,7 @@ fun exploreListHeaderAD(
 ) {
 	val preferences = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
 	val defaultHeaderTitleColors = binding.textViewTitle.textColors
+	val privatePalette = context.explicitPrivateViewPaletteFromPreferences()
 
 	binding.buttonMore.setOnClickListener {
 		listener?.onListHeaderClick(item, it)
@@ -167,7 +184,7 @@ fun exploreListHeaderAD(
 		binding.textViewTitle.drawableStart = if (pinnedSection != null) {
 			ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
 				icon.setTint(
-					MaterialColors.getColor(
+					privatePalette?.secondary ?: MaterialColors.getColor(
 						binding.textViewTitle,
 						com.google.android.material.R.attr.colorSecondary,
 					),
@@ -181,7 +198,20 @@ fun exploreListHeaderAD(
 		} else {
 			0
 		}
-		if (sourceSection?.section == ExploreSourceSection.MIYORARE_PACKS) {
+		if (privatePalette != null) {
+			binding.textViewTitle.setTextColor(if (sourceSection?.section == ExploreSourceSection.MIYORARE_PACKS) privatePalette.primary else privatePalette.onSurface)
+			binding.textViewCount.setTextColor(privatePalette.onSurfaceVariant)
+			(binding.textViewCount.background?.mutate() as? GradientDrawable)?.setColor(privatePalette.surfaceContainerHigh)
+			(binding.root.background?.mutate() as? GradientDrawable)?.apply {
+				setColor(privatePalette.surfaceContainerLow)
+				setStroke(context.resources.displayMetrics.density.toInt().coerceAtLeast(1), privatePalette.outlineVariant)
+			}
+			for (button in listOf(binding.buttonVisibility, binding.buttonMore)) {
+				button.setTextColor(privatePalette.primary)
+				button.iconTint = ColorStateList.valueOf(privatePalette.primary)
+				button.rippleColor = ColorStateList.valueOf(privatePalette.glow)
+			}
+		} else if (sourceSection?.section == ExploreSourceSection.MIYORARE_PACKS) {
 			binding.textViewTitle.setTextColor(
 				MaterialColors.getColor(binding.textViewTitle, androidx.appcompat.R.attr.colorPrimary),
 			)
@@ -260,6 +290,10 @@ fun recommendationCarouselItemAD(
 	binding.progressView.isVisible = false
 	binding.iconsView.isVisible = false
 	binding.badge.isVisible = false
+	context.explicitPrivateViewPaletteFromPreferences()?.let { palette ->
+		binding.textViewTitle.setTextColor(palette.onSurface)
+		binding.imageViewCover.setBackgroundColor(palette.surfaceContainer)
+	}
 
 	bind {
 		binding.textViewTitle.text = item.manga.title
@@ -282,7 +316,9 @@ fun exploreSourceListItemAD(
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
 	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
-	val modernPalette = context.miyorareViewPaletteFromPreferences()
+	val privatePalette = context.explicitPrivateViewPaletteFromPreferences()
+	privatePalette?.let { iconPinned?.mutate()?.setTint(it.onSurfaceVariant) }
+	val modernPalette = privatePalette ?: context.miyorareViewPaletteFromPreferences()
 
 	bind {
 		val origin = item.exploreSourceOrigin()
@@ -293,7 +329,7 @@ fun exploreSourceListItemAD(
 		binding.textViewSubtitle.text = formatExploreSourceListSummary(origin, item.summary, compactSummary)
 		binding.textViewOrigin.bindExploreSourceOriginBadge(origin)
 		binding.imageViewIcon.applyExternalSourceStyle(isExternal)
-		binding.applyModernResolvedPalette(modernPalette, isExternal)
+		binding.applyModernResolvedPalette(modernPalette, isExternal, preserveOriginIdentity = privatePalette != null)
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
 			item.source.mangaSource.isNovelSource,
@@ -318,6 +354,8 @@ fun exploreSourceGridItemAD(
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
 	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
+	val privatePalette = context.explicitPrivateViewPaletteFromPreferences()
+	privatePalette?.let { iconPinned?.mutate()?.setTint(it.onSurfaceVariant) }
 
 	bind {
 		val baseTitle = item.source.getTitle(context)
@@ -347,7 +385,15 @@ fun exploreSourceGridItemAD(
 		binding.textViewTitle.text = title
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
 		binding.textViewOrigin.bindExploreSourceOriginBadge(origin)
-		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
+		val isExternal = item.source.mangaSource.isExternalSource()
+		binding.imageViewIcon.applyExternalSourceStyle(isExternal)
+		privatePalette?.let { palette ->
+			binding.textViewTitle.setTextColor(palette.onSurface)
+			if (!isExternal) {
+				binding.imageViewIcon.setBackgroundColor(palette.surfaceContainer)
+				binding.imageViewIcon.strokeColor = ColorStateList.valueOf(palette.outline)
+			}
+		}
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
 			item.source.mangaSource.isNovelSource,
@@ -373,6 +419,7 @@ private fun MaterialButton.applyResolvedExploreButtonPalette(container: Int, con
 private fun ItemExploreSourceListBinding.applyModernResolvedPalette(
 	palette: MiyorareViewPalette?,
 	isExternalSource: Boolean,
+	preserveOriginIdentity: Boolean,
 ) {
 	palette ?: return
 	val context = root.context
@@ -385,11 +432,14 @@ private fun ItemExploreSourceListBinding.applyModernResolvedPalette(
 	)
 	textViewTitle.setTextColor(palette.onSurface)
 	textViewSubtitle.setTextColor(palette.onSurfaceVariant)
-	textViewOrigin.setTextColor(palette.onSurfaceVariant)
-	textViewOrigin.background = GradientDrawable().apply {
-		shape = GradientDrawable.RECTANGLE
-		setColor(palette.surfaceContainerHighest)
-		cornerRadius = 999f * context.resources.displayMetrics.density
+	// Source provenance badges encode origin, not theme identity.
+	if (!preserveOriginIdentity) {
+		textViewOrigin.setTextColor(palette.onSurfaceVariant)
+		textViewOrigin.background = GradientDrawable().apply {
+			shape = GradientDrawable.RECTANGLE
+			setColor(palette.surfaceContainerHighest)
+			cornerRadius = 999f * context.resources.displayMetrics.density
+		}
 	}
 	if (!isExternalSource) {
 		imageViewIcon.setBackgroundColor(palette.surfaceContainer)
