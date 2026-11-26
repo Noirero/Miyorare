@@ -67,6 +67,7 @@ import org.koitharu.kotatsu.list.ui.model.DownloadVerification
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.MangaIndex
+import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryReconciler
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -789,6 +790,113 @@ class DownloadedLocalStateTest {
 		assertEquals(selected.normalRoot, selected.privateRoot)
 		assertEquals(externalExisted, external?.exists())
 		assertEquals(internalExisted, internal.exists())
+	}
+
+
+	/** Phase 2 T05/T03: indexed extras, exact locator, ordinal independence and staging exclusion. */
+	@Test fun normalScannerIndexedReconciliationRetainsIndependentArtifactAcrossListingChanges() = runBlocking {
+		val seed = remote(810_074L)
+		val first = seed.chapters.orEmpty().single().copy(number = 0f)
+		val second = first.copy(id = first.id + 1L, title = "Chapter 2", url = "/chapter/2")
+		val retired = first.copy(id = first.id + 2L, title = "Retired chapter", url = "/retired")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, seed).file.canonicalFile
+		val original = File(container, "Chapter 1.cbz")
+		val sibling = File(container, "Chapter 2.cbz")
+		original.copyTo(sibling)
+		val retiredFile = File(container, "Retired chapter.cbz")
+		original.copyTo(retiredFile)
+		val bytes = original.readBytes()
+		val indexFile = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		indexFile.writeText(MangaIndex(null).apply {
+			setMangaInfo(manga)
+			(manga.chapters.orEmpty() + retired).withIndex().forEach { addChapter(it, "${it.value.title}.cbz") }
+		}.toString())
+		val indexBytes = indexFile.readBytes()
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.canonicalPath)
+		val dao = db.getFavouriteDownloadIndexDao()
+		dao.upsert(listOf(owner))
+		val scope = requireNotNull(normalDownloadScope.resolveActiveLookup(manga, FavouriteSpace.NORMAL))
+		assertTrue(normalDownloadScope.isWithinActiveRoot(container, scope.normalRoot, scope.privateRoot))
+
+		suspend fun chapters() = requireNotNull(
+			NormalDownloadDirectoryReconciler.reconcileIndexed(manga, container),
+		).manga.chapters.orEmpty()
+		val initial = chapters()
+		assertEquals(setOf(first.id, second.id, retired.id), initial.map { it.id }.toSet())
+		val retained = initial.single { it.id == retired.id }
+		assertEquals(retiredFile.canonicalPath, android.net.Uri.parse(retained.url).path)
+		val special = File(container, "Chapter 1 Special.cbz")
+		assertTrue(original.renameTo(special))
+		val staging = File(container, "Chapter 1.cbz.tmp").apply { writeBytes(bytes) }
+		val backup = File(container, "Chapter 1.cbz.bak.tmp").apply { writeBytes(bytes) }
+		val renamed = chapters()
+		assertEquals(3, renamed.size)
+		assertEquals(retained, renamed.single { it.id == retired.id })
+		assertTrue(renamed.any { it.id == second.id })
+		assertFalse(renamed.any { it.id == first.id })
+		val orphan = renamed.single { it.title == "Chapter 1 Special" }
+		assertNotEquals(first.id, orphan.id)
+		assertNotEquals(second.id, orphan.id)
+		assertEquals(0f, orphan.number, 0f)
+		val uri = android.net.Uri.parse(orphan.url)
+		assertEquals(container.canonicalPath, uri.path)
+		assertEquals(special.name, uri.fragment)
+		assertTrue(local.getPages(orphan).isNotEmpty())
+
+		// A file sorting before Special cannot shift its ID or personal locator.
+		val unrelated = File(container, "Chapter 0.cbz").apply { writeBytes(bytes) }
+		assertEquals(orphan, chapters().single { it.title == orphan.title })
+		assertTrue(unrelated.delete())
+		assertEquals(orphan, chapters().single { it.title == orphan.title })
+		val corrupt = byteArrayOf(1, 2, 3, 4)
+		special.writeBytes(corrupt)
+		assertEquals(orphan, chapters().single { it.title == orphan.title })
+		original.writeBytes(bytes)
+		val restored = chapters()
+		assertEquals(setOf(first.id, second.id, retired.id, orphan.id), restored.map { it.id }.toSet())
+		assertEquals(retained, restored.single { it.id == retired.id })
+		assertEquals(orphan, restored.single { it.id == orphan.id })
+		assertArrayEquals(indexBytes, indexFile.readBytes())
+		assertArrayEquals(bytes, original.readBytes())
+		assertArrayEquals(bytes, sibling.readBytes())
+		assertArrayEquals(bytes, retiredFile.readBytes())
+		assertArrayEquals(bytes, staging.readBytes())
+		assertArrayEquals(bytes, backup.readBytes())
+		assertArrayEquals(corrupt, special.readBytes())
+		assertEquals(owner, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+	}
+
+	/** Contradictory sidecar identity and duplicate physical mapping are not confirmed absence. */
+	@Test fun normalScannerIndexedReconciliationRejectsContradictoryMetadata() = runBlocking {
+		val seed = remote(810_075L)
+		val first = seed.chapters.orEmpty().single()
+		val second = first.copy(id = first.id + 1L, title = "Chapter 2", url = "/chapter/2")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val container = download(root, seed).file.canonicalFile
+		val file = File(container, "Chapter 1.cbz")
+		val bytes = file.readBytes()
+		val indexFile = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		fun writeIndex(metadata: Manga, duplicate: Boolean = false) {
+			indexFile.writeText(MangaIndex(null).apply {
+				setMangaInfo(metadata)
+				metadata.chapters.orEmpty().withIndex().forEach {
+					addChapter(it, if (duplicate) file.name else "${it.value.title}.cbz")
+				}
+			}.toString())
+		}
+		writeIndex(manga.copy(source = MissingMangaSource("OTHER_SCANNER_FIXTURE")))
+		assertNull(NormalDownloadDirectoryReconciler.reconcileIndexed(manga, container))
+		writeIndex(manga, duplicate = true)
+		assertNull(NormalDownloadDirectoryReconciler.reconcileIndexed(manga, container))
+		writeIndex(manga.copy(chapters = listOf(first.copy(url = "/stale"), second)))
+		val stale = indexFile.readBytes()
+		assertNull(NormalDownloadDirectoryReconciler.reconcileIndexed(manga, container))
+		assertArrayEquals(stale, indexFile.readBytes())
+		assertArrayEquals(bytes, file.readBytes())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
