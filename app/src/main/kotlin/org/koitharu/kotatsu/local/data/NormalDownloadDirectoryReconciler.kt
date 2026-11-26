@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.local.data
 
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
@@ -14,7 +16,7 @@ import java.io.File
 import java.util.Locale
 
 /**
- * Scanner-only reconciliation of the indexed standalone chapter layout.
+ * Scanner-only reconciliation of standalone chapter directories.
  *
  * The caller must already have established the active root, scope and container identity.
  * Null means unsupported/ambiguous/incomplete, not an observed empty directory.
@@ -24,29 +26,58 @@ internal object NormalDownloadDirectoryReconciler {
 
 	/**
 	 * Keep exact surviving sidecar mappings and independently represent finished extras.
-	 * Unindexed canonical-name matching and verified migrated identities are separate
+	 * Verified migrated identities and durable prior locator provenance remain separate
 	 * reconciliation work; do not publish this intermediate projection as authoritative.
 	 */
-	suspend fun reconcileIndexed(remote: Manga, container: File): LocalManga? = withContext(Dispatchers.IO) {
+	suspend fun reconcileIndexed(
+		remote: Manga,
+		container: File,
+		verifiedPrevious: Collection<MangaChapter> = emptyList(),
+	): LocalManga? = reconcile(remote, container, indexedLayout = true, verifiedPrevious = verifiedPrevious)
+
+	/**
+	 * Previous local-only chapters must be independently verified against this manga, scope and physical
+	 * locator. Never pass raw migration redirects or a newly re-parsed ordinal as prior identity.
+	 */
+	suspend fun reconcileSidecarFree(
+		remote: Manga,
+		container: File,
+		verifiedPrevious: Collection<MangaChapter> = emptyList(),
+	): LocalManga? = reconcile(remote, container, indexedLayout = false, verifiedPrevious = verifiedPrevious)
+
+	private suspend fun reconcile(
+		remote: Manga,
+		container: File,
+		indexedLayout: Boolean,
+		verifiedPrevious: Collection<MangaChapter>,
+	): LocalManga? = withContext(Dispatchers.IO) {
 		runCatchingCancellable {
 			val root = container.canonicalFile
 			if (!root.isDirectory || !root.canRead()) return@runCatchingCancellable null
 			val entries = root.listFiles() ?: return@runCatchingCancellable null
 			if (entries.any { it.name == ".notamanga" }) return@runCatchingCancellable null
 			val sidecar = entries.singleOrNull { it.name == LocalMangaOutput.ENTRY_NAME_INDEX }
-				?: return@runCatchingCancellable null
-			if (!sidecar.isFile || sidecar.canonicalFile != File(root, sidecar.name)) return@runCatchingCancellable null
-			val index = MangaIndex.read(sidecar) ?: return@runCatchingCancellable null
-			val indexed = index.getMangaInfo() ?: return@runCatchingCancellable null
-			if (indexed.id != remote.id || indexed.source.name != remote.source.name || indexed.url != remote.url) {
-				return@runCatchingCancellable null
-			}
+			if (indexedLayout != (sidecar != null)) return@runCatchingCancellable null
+			val index = if (sidecar != null) {
+				if (!sidecar.isFile || sidecar.canonicalFile != File(root, sidecar.name)) return@runCatchingCancellable null
+				MangaIndex.read(sidecar) ?: return@runCatchingCancellable null
+			} else null
+			val indexed = if (index != null) {
+				val info = index.getMangaInfo() ?: return@runCatchingCancellable null
+				if (info.id != remote.id || info.source.name != remote.source.name || info.url != remote.url) {
+					return@runCatchingCancellable null
+				}
+				info
+			} else null
 
 			// One shallow listing; never interpret worker .cbz.tmp/.bak.tmp as final files.
 			val artifacts = LinkedHashMap<String, File>()
 			val foldedNames = HashSet<String>()
 			for (file in entries) {
+				currentCoroutineContext().ensureActive()
 				if (file.name.startsWith(".")) continue
+				// A chapter-directory layout is not an empty standalone archive layout.
+				if (file.isDirectory) return@runCatchingCancellable null
 				when (file.extension.lowercase(Locale.ROOT)) {
 					"epub", "pdf" -> return@runCatchingCancellable null // Other layouts have their own contracts.
 					"cbz", "zip" -> Unit
@@ -60,13 +91,14 @@ internal object NormalDownloadDirectoryReconciler {
 			val remoteChapters = remote.chapters.orEmpty()
 			val remoteById = remoteChapters.associateBy { it.id }
 			if (remoteById.size != remoteChapters.size) return@runCatchingCancellable null
-			val indexedChapters = indexed.chapters.orEmpty()
+			val indexedChapters = indexed?.chapters.orEmpty()
 			val reservedIds = remoteById.keys.toMutableSet()
 			reservedIds.addAll(indexedChapters.map { it.id })
 			val represented = HashSet<String>()
 			val linked = ArrayList<MangaChapter>(artifacts.size)
+			val linkedByName = HashMap<String, Int>()
 			for (chapter in indexedChapters) {
-				val name = index.getChapterFileName(chapter.id) ?: return@runCatchingCancellable null
+				val name = index?.getChapterFileName(chapter.id) ?: return@runCatchingCancellable null
 				if (name != File(name).name || name.startsWith(".") ||
 					File(name).extension.lowercase(Locale.ROOT) !in setOf("cbz", "zip") ||
 					!represented.add(name)
@@ -80,10 +112,70 @@ internal object NormalDownloadDirectoryReconciler {
 				val current = remoteById[chapter.id]
 				// A contradictory current source locator cannot be silently re-keyed by a stale ID.
 				if (current != null && current.url != chapter.url) return@runCatchingCancellable null
+				linkedByName[name] = linked.size
 				linked += (current ?: chapter).copy(
 					url = Uri.fromFile(file).toString(),
 					source = LocalMangaSource,
 				)
+			}
+
+			// Reserve existing exact mappings before filename matching. Compute ambiguity against
+			// the entire remote list, including already represented canonical chapters.
+			val extras = artifacts.keys.filterNot { it in represented }
+			val matches = LegacyChapterDownloadCompat.matchStandaloneNames(remoteChapters, extras)
+			val linkedIds = linked.mapTo(HashSet()) { it.id }
+			for ((name, chapter) in matches) {
+				if (chapter.id in linkedIds) continue
+				val file = artifacts.getValue(name)
+				linkedByName[name] = linked.size
+				linked += chapter.copy(url = Uri.fromFile(file).toString(), source = LocalMangaSource)
+				linkedIds += chapter.id
+				represented += name
+			}
+
+			// Preserve an independently verified legacy identity only for the identical physical
+			// locator. Keep its exact URI representation (including directory fragment), not a
+			// normalized replacement which would silently change a source+URL personal key.
+			val priorByName = LinkedHashMap<String, MangaChapter>()
+			val priorIds = HashSet<Long>()
+			for (chapter in verifiedPrevious) {
+				if (chapter.source != LocalMangaSource) return@runCatchingCancellable null
+				val uri = Uri.parse(chapter.url)
+				if (uri.scheme != "file" || uri.query != null || !uri.authority.isNullOrEmpty()) {
+					return@runCatchingCancellable null
+				}
+				val path = uri.path?.let(::File) ?: return@runCatchingCancellable null
+				val fragment = uri.fragment
+				val file = if (fragment != null) {
+					if (fragment != File(fragment).name || path.canonicalFile != root) return@runCatchingCancellable null
+					File(root, fragment)
+				} else path
+				if (file.canonicalFile.parentFile != root || file.name != file.canonicalFile.name) {
+					return@runCatchingCancellable null
+				}
+				if (priorByName.put(file.name, chapter) != null || !priorIds.add(chapter.id)) {
+					return@runCatchingCancellable null
+				}
+			}
+			// Reserve all prior IDs (including missing artifacts) before minting any provisional ID.
+			// A conflicting prior local-only ID is unresolved rather than reassigned.
+			for ((name, prior) in priorByName) {
+				val existingPosition = linkedByName[name]
+				if (existingPosition != null) {
+					// A retired indexed chapter can already have the same verified ID. Keep its
+					// previous personal locator representation, but never absorb it into a
+					// canonical remote chapter or override a different indexed identity.
+					if (prior.id in remoteById || linked[existingPosition].id != prior.id) {
+						return@runCatchingCancellable null
+					}
+					linked[existingPosition] = prior
+					continue
+				}
+				if (!reservedIds.add(prior.id)) return@runCatchingCancellable null
+				if (name !in artifacts) continue
+				if (name in represented) return@runCatchingCancellable null
+				linked += prior
+				represented += name
 			}
 
 			// A newly observed independent artifact has an ID tied to its scoped locator,
