@@ -45,6 +45,34 @@ internal data class NormalCandidateResolution(
 }
 
 /**
+ * One shallow parent inventory, indexed by exact title and positive suffix base.
+ * Reuse only within a work batch; caller must discard on root/producer invalidation.
+ * Names are indexed once, not scanned again for every favourite.
+ */
+internal class NormalScannerParentListing(children: List<File>) {
+	private val byTitle = HashMap<String, MutableList<File>>()
+
+	init {
+		for (file in children) {
+			val lower = file.name.lowercase(Locale.ROOT)
+			if (lower.startsWith(".")) continue
+			val staging = lower.endsWith(LocalMangaOutput.SUFFIX_TMP)
+			val finalName = if (staging) lower.removeSuffix(LocalMangaOutput.SUFFIX_TMP).removeSuffix(".bak") else lower
+			val archive = finalName.endsWith(".cbz") || finalName.endsWith(".zip")
+			val stem = if (archive) finalName.substringBeforeLast('.') else finalName
+			byTitle.getOrPut(stem) { ArrayList(1) }.add(file)
+			val suffix = stem.substringAfterLast('_', "").toIntOrNull()
+			if (suffix != null && suffix > 0) {
+				byTitle.getOrPut(stem.substringBeforeLast('_')) { ArrayList(1) }.add(file)
+			}
+		}
+	}
+
+	fun matching(titleKeys: Set<String>): Set<File> =
+		titleKeys.flatMapTo(LinkedHashSet()) { byTitle[it].orEmpty() }
+}
+
+/**
  * Read-only metadata snapshot, reusable across a scanner work batch. Canonicalizing persisted
  * owner paths once avoids missing noncanonical legacy rows and avoids a per-title global lookup.
  * No enumeration of files outside the active root. This is not a publication generation fence.
@@ -72,10 +100,11 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 	private val sourceAliases: SourceAliasRegistry,
 	private val db: MangaDatabase,
 	private val index: LocalMangaIndex,
+	private val priorIdentity: NormalDownloadPriorIdentityReader,
 ) {
 	suspend fun discover(
 		manga: Manga, space: FavouriteSpace?,
-		parentListings: MutableMap<File, List<File>?> = HashMap(),
+		parentListings: MutableMap<File, NormalScannerParentListing?> = HashMap(),
 	): NormalDirectoryCandidates? {
 		val roots = scope.resolveActiveLookup(manga, space) ?: return null
 		return withContext(Dispatchers.IO) {
@@ -101,30 +130,28 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 			for ((parent, bases) in paths.groupBy { it.parentFile }) {
 				currentCoroutineContext().ensureActive()
 				if (parent == null) continue
-				if (parent != root && !scope.isWithinActiveRoot(parent, root, roots.privateRoot)) continue
 				val canonical = runCatching { parent.canonicalFile }.getOrNull()
 				if (canonical != parent) {
 					complete = false
 					continue
 				}
+				if (parent != root && !scope.isWithinActiveRoot(parent, root, roots.privateRoot)) continue
 				if (!parent.exists()) continue
-				if (!parentListings.containsKey(parent)) parentListings[parent] = parent.listFiles()?.toList()
+				if (!parentListings.containsKey(parent)) {
+					parentListings[parent] = parent.listFiles()?.toList()?.let(::NormalScannerParentListing)
+				}
 				val children = parentListings[parent]
 				if (children == null) {
 					complete = false
 					continue
 				}
 				val titleKeys = bases.mapTo(HashSet()) { it.name.lowercase(Locale.ROOT) }
-				for (file in children) {
+				for (file in children.matching(titleKeys)) {
 					val lower = file.name.lowercase(Locale.ROOT)
 					if (lower.startsWith(".")) continue
 					val staging = lower.endsWith(LocalMangaOutput.SUFFIX_TMP)
 					val finalName = if (staging) lower.removeSuffix(LocalMangaOutput.SUFFIX_TMP).removeSuffix(".bak") else lower
 					val archive = finalName.endsWith(".cbz") || finalName.endsWith(".zip")
-					val stem = if (archive) finalName.substringBeforeLast('.') else finalName
-					val suffix = stem.substringAfterLast('_', "").toIntOrNull()
-					if (stem !in titleKeys &&
-						(suffix == null || suffix <= 0 || stem.substringBeforeLast('_') !in titleKeys)) continue
 					if (staging && archive) {
 						val withoutTmp = file.name.dropLast(LocalMangaOutput.SUFFIX_TMP.length)
 						val target = File(parent, if (withoutTmp.endsWith(".bak", true)) withoutTmp.dropLast(4) else withoutTmp)
@@ -224,7 +251,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 	suspend fun resolveCandidates(
 		manga: Manga, space: FavouriteSpace?,
 		evidence: NormalScannerVerificationEvidence? = null,
-		parentListings: MutableMap<File, List<File>?> = HashMap(),
+		parentListings: MutableMap<File, NormalScannerParentListing?> = HashMap(),
 	): NormalCandidateResolution? {
 		val candidates = discover(manga, space, parentListings) ?: return null
 		if (!candidates.available) return NormalCandidateResolution(emptyList(), emptySet(), false)
@@ -254,6 +281,8 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 		return withContext(Dispatchers.IO) {
 			runCatchingCancellable {
 				val physical = candidate.canonicalFile
+				// Explicit lexical symlink targets cannot borrow another candidate's proof.
+				if (physical != candidate.absoluteFile.normalize()) return@runCatchingCancellable null
 				if (physical in candidates.unresolvedPaths || (physical !in candidates.deterministicPaths && physical !in candidates.persistedHints)) {
 					return@runCatchingCancellable null
 				}
@@ -298,9 +327,27 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				val projection = NormalDownloadDirectoryReconciler.reconcileSidecarFree(manga, physical, requireFinalized = true)
 					?: return@runCatchingCancellable null
 				val remoteIds = manga.chapters.orEmpty().mapTo(HashSet()) { it.id }
-				// At least one canonical match is required for this first-observation subset.
-				// A renamed-only unowned container needs durable prior proof; never guess.
-				projection.takeIf { it.manga.chapters.orEmpty().any { chapter -> chapter.id in remoteIds } }
+				if (projection.manga.chapters.orEmpty().any { it.id in remoteIds }) {
+					return@runCatchingCancellable projection
+				}
+				// An exact Normal owner alone is not a chapter identity. For a renamed-only
+				// directory require independently corroborated durable prior ID + locator at
+				// that owner, including a surviving artifact. Never infer from renamed title,
+				// ordinal, old numeric redirect or a personal key without its matching ID.
+				if (!exactNormal) return@runCatchingCancellable null
+				val prior = priorIdentity.read(manga, physical) ?: return@runCatchingCancellable null
+				if (prior.verified.isEmpty() || prior.unresolvedIds.isNotEmpty() ||
+					prior.unresolvedLocalKeys.isNotEmpty()
+				) return@runCatchingCancellable null
+				val reconciled = NormalDownloadDirectoryReconciler.reconcileSidecarFree(
+					manga, physical, prior.verified, requireFinalized = true,
+				) ?: return@runCatchingCancellable null
+				val priorById = prior.verified.associateBy { it.id }
+				reconciled.takeIf { copy ->
+					copy.manga.chapters.orEmpty().any { chapter ->
+						priorById[chapter.id]?.url == chapter.url
+					}
+				}
 			}.getOrNull()
 		}
 	}
