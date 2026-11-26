@@ -330,11 +330,11 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				if (projection.manga.chapters.orEmpty().any { it.id in remoteIds }) {
 					return@runCatchingCancellable projection
 				}
-				// An exact Normal owner alone is not a chapter identity. For a renamed-only
-				// directory require independently corroborated durable prior ID + locator at
-				// that owner, including a surviving artifact. Never infer from renamed title,
-				// ordinal, old numeric redirect or a personal key without its matching ID.
-				if (!exactNormal) return@runCatchingCancellable null
+				// At this point either exact Normal ownership or independently verified
+				// source-qualified title/path proof has passed, including space conflicts.
+				// A renamed-only directory additionally needs corroborated durable ID/URI
+				// and a surviving artifact. No receipt requirement for a proven manual copy.
+				// Never infer from an ordinal, renamed title or personal key alone.
 				val prior = priorIdentity.read(manga, physical) ?: return@runCatchingCancellable null
 				if (prior.verified.isEmpty() || prior.unresolvedIds.isNotEmpty() ||
 					prior.unresolvedLocalKeys.isNotEmpty()

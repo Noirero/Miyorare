@@ -72,6 +72,7 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.DownloadVerification
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.MangaIndex
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryReconciler
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryDiscovery
@@ -1808,6 +1809,102 @@ class DownloadedLocalStateTest {
 		assertFalse(unavailable.exists())
 		assertArrayEquals(bytes, chapter.readBytes())
 		assertEquals(container.path, dao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id)?.path)
+	}
+
+
+	/** T05: exact producer names, punctuation-only rename, and literal-vs-hash collisions. */
+	@Test fun normalScannerFilenameProofPreservesPunctuationAndRejectsCompetingHashClaims() = runBlocking {
+		val seed = remote(810_100L)
+		val first = seed.chapters.orEmpty().single().copy(title = "Chapter 1!", scanlator = "Group!")
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", scanlator = null, url = "/chapter/2")
+		val manga = seed.copy(chapters = listOf(first, second))
+		favourite(manga)
+		val image = File(root, "filename-proof.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val writer = LocalMangaOutput.getOrCreate(root, manga, DownloadFormat.MULTIPLE_CBZ)
+		val container = writer.rootFile.canonicalFile
+		try {
+			writer.addPage(IndexedValue(0, first), image, 0, MimeType("image/png"))
+			assertTrue(writer.flushChapter(first))
+			writer.finish()
+		} finally { writer.close() }
+		val original = File(container, "Group!_Chapter 1!.cbz")
+		assertTrue(original.isFile)
+		val bytes = original.readBytes()
+		val owner = FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path)
+		db.getFavouriteDownloadIndexDao().upsert(owner)
+		suspend fun reconcile() = requireNotNull(
+			NormalDownloadDirectoryReconciler.reconcileSidecarFree(manga, container),
+		).manga.chapters.orEmpty()
+		assertEquals(first.id, reconcile().single().id)
+		val renamed = File(container, "Group!_Chapter 1.cbz")
+		assertTrue(original.renameTo(renamed))
+		val independent = reconcile().single()
+		assertNotEquals(first.id, independent.id)
+		assertEquals(renamed.name, android.net.Uri.parse(independent.url).fragment)
+		assertTrue(local.getPages(independent).isNotEmpty())
+		assertTrue(renamed.renameTo(original))
+		assertEquals(first.id, reconcile().single().id)
+		assertArrayEquals(bytes, original.readBytes())
+
+		val hash = java.security.MessageDigest.getInstance("MD5").digest(second.url.toByteArray(Charsets.UTF_8))
+			.take(3).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+		val hashed = "Chapter 2 ($hash).cbz"
+		assertEquals(second, LegacyChapterDownloadCompat.matchStandaloneNames(listOf(second), listOf(hashed))[hashed])
+		val literal = second.copy(id = second.id + 1, title = "Chapter 2 ($hash)", url = "/literal")
+		val claims = LegacyChapterDownloadCompat.matchStandaloneNames(
+			listOf(second, literal), listOf("Chapter 2.cbz", hashed),
+		)
+		assertTrue(claims.isEmpty())
+		assertTrue(LegacyChapterDownloadCompat.matchStandaloneNames(
+			listOf(first.copy(title = null)), listOf("Group!_Chapter 1.cbz"),
+		).isEmpty())
+		assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+	}
+
+	/** T01/T05/T10: source-qualified manual renamed-only evidence without minting ownership. */
+	@Test fun normalScannerUnownedManualRenamedOnlyRequiresIndependentSourceAndPriorProof() = runBlocking {
+		val seed = remote(810_101L)
+		val source = MissingMangaSource("MIHON_2677079941490683989")
+		val manga = seed.copy(source = source, chapters = seed.chapters.orEmpty().map { it.copy(source = source) })
+		favourite(manga)
+		val old = download(root, seed).file.canonicalFile
+		val artifact = File(old, "Chapter 1.cbz")
+		val bytes = artifact.readBytes()
+		val container = File(root, "downloads/Bacami (ID)/${manga.title}").canonicalFile
+		assertTrue(container != old)
+		assertTrue(container.mkdirs() || container.isDirectory)
+		val special = File(container, "Chapter 1 Special.cbz")
+		artifact.copyTo(special)
+		assertTrue(old.deleteRecursively())
+		val legacy = LocalMangaParser(container).getManga(withDetails = true).manga.chapters.orEmpty().single()
+		val key = ChapterPersonalKey.of(legacy)
+		val page = local.getPages(legacy).first()
+		val ownerDao = db.getFavouriteDownloadIndexDao()
+		suspend fun verify() = normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, FavouriteSpace.NORMAL, container)
+		assertNull(verify())
+		val personal = ChapterPersonalEntity(manga.id, key.source, key.url, 4, "Manual prior")
+		db.getChapterPersonalDao().upsert(personal)
+		assertNull(verify())
+		val bookmark = BookmarkEntity(manga.id, page.id, legacy.id, 0, 0, page.url, 100L, 0.5f)
+		db.getBookmarksDao().insert(bookmark)
+		val restored = requireNotNull(verify()).manga.chapters.orEmpty().single()
+		assertEquals(legacy.id, restored.id)
+		assertEquals(key, ChapterPersonalKey.of(restored))
+		assertEquals(page.url, local.getPages(restored).first().url)
+		assertNull(ownerDao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		// An unrelated provider with the same normalized title removes source-qualified
+		// manual certainty. Personal records alone do not identify that provider.
+		val foreign = remote(810_102L).copy(title = manga.title, source = MissingMangaSource("UNVERIFIED_SOURCE"), chapters = emptyList())
+		data.storeManga(foreign, replaceExisting = true)
+		assertNull(verify())
+		assertEquals(listOf(personal), db.getChapterPersonalDao().findAll(listOf(manga.id)))
+		assertEquals(listOf(bookmark), db.getBookmarksDao().findAll(manga.id))
+		assertNull(ownerDao.findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		assertFalse(File(container, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+		assertArrayEquals(bytes, special.readBytes())
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
