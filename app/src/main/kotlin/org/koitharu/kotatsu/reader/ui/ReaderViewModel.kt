@@ -971,7 +971,11 @@ class ReaderViewModel @Inject constructor(
                         if (mangaDetails.value == null) {
                             mangaDetails.value = details
                         }
-                        chaptersLoader.init(details)
+                        chaptersLoader.init(
+                            details,
+                            normalProvenance = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
+                            useScopedNormal = true,
+                        )
                         val manga = details.toManga()
                         // obtain state
                         if (readingState.value == null) {

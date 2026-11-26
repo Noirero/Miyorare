@@ -698,7 +698,16 @@ class DetailsExpressiveActivity :
 	}
 
 	private fun showChapterRenameDialog(item: ChapterListItem) {
-		val currentName = viewModel.mangaDetails.value?.renameableChapterFile(item)?.nameWithoutExtension ?: return
+		lifecycleScope.launch {
+			val request = runCatchingCancellable { viewModel.prepareChapterRename(item) }
+				.onFailure { Toast.makeText(this@DetailsExpressiveActivity, R.string.chapter_download_rename_failed, Toast.LENGTH_SHORT).show() }
+				.getOrNull() ?: return@launch
+			showChapterRenameConfirmation(request)
+		}
+	}
+
+	private fun showChapterRenameConfirmation(request: ChapterRenameRequest) {
+		val currentName = request.file.nameWithoutExtension
 		val input = EditText(this).apply {
 			setSingleLine(true)
 			inputType = InputType.TYPE_CLASS_TEXT
@@ -718,7 +727,7 @@ class DetailsExpressiveActivity :
 				input.error = getString(R.string.invalid_chapter_download_name)
 			} else {
 				dialog.dismiss()
-				viewModel.renameChapterDownload(item, name)
+				viewModel.renameChapterDownload(request, name)
 			}
 		}
 		input.requestFocus()

@@ -85,6 +85,8 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
+import org.koitharu.kotatsu.local.domain.NormalDownloadChapterAction
+import org.koitharu.kotatsu.local.domain.NormalStandaloneSelection
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -122,6 +124,14 @@ data class DetailsRelatedUiState(
 	val error: Throwable? = null,
 )
 
+internal data class ChapterRenameRequest(
+	val source: Manga,
+	val space: FavouriteSpace?,
+	val root: File,
+	val file: File,
+	val normalApproval: NormalStandaloneSelection?,
+)
+
 @HiltViewModel
 class DetailsViewModel @Inject constructor(
 	private val historyRepository: HistoryRepository,
@@ -140,6 +150,7 @@ class DetailsViewModel @Inject constructor(
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val localMangaRepository: LocalMangaRepository,
 	private val downloadedMangaResolver: DownloadedMangaResolver,
+	private val normalChapterAction: NormalDownloadChapterAction,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val syncProgressFromScrobblersUseCase: SyncProgressFromScrobblersUseCase,
@@ -754,16 +765,31 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
-	fun renameChapterDownload(item: ChapterListItem, name: String) {
-		val details = mangaDetails.value ?: return
-		val file = details.renameableChapterFile(item) ?: return
-		val root = details.local?.file ?: return
+	/** Capture the actual selected target before showing the existing confirmation dialog. */
+	internal suspend fun prepareChapterRename(item: ChapterListItem): ChapterRenameRequest? {
+		val details = mangaDetails.value ?: return null
+		val file = details.renameableChapterFile(item) ?: return null
+		val root = details.local?.file ?: return null
 		val source = details.sourceManga
 		val space = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }
+		val approved = if (normalChapterAction.appliesTo(source, space)) {
+			normalChapterAction.previewRename(source, space, root, file, item.chapter.id, item.chapter.url)
+		} else null
+		return ChapterRenameRequest(source, space, root, file, approved)
+	}
+
+	internal fun renameChapterDownload(request: ChapterRenameRequest, name: String) {
 		launchJob(Dispatchers.IO) {
 			runCatchingCancellable {
-				localMangaRepository.renameChapterDownload(source, root, file, name) {
-					downloadedMangaResolver.findSavedManga(source, space)
+				val (source, space, root, file, approved) = request
+				if (approved != null) {
+					normalChapterAction.rename(source, space, approved, name)
+				} else {
+					// A scope change while the dialog was open must not bypass the new proof.
+					check(!normalChapterAction.appliesTo(source, space)) { "Download context changed; refresh Details" }
+					localMangaRepository.renameChapterDownload(source, root, file, name) {
+						downloadedMangaResolver.findSavedManga(source, space)
+					}
 				}
 			}.onSuccess { renamed ->
 				if (renamed) onChapterDownloadRenameMessage.call(R.string.chapter_download_renamed_refresh)

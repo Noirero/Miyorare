@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.local.data.NormalCandidateResolution
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryDiscovery
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -175,6 +176,33 @@ internal class NormalDownloadObservationStore(
 		work.session == session && work.rootEpoch == epoch && work.root == active &&
 			work.root.generation == rootChanges.value && revision(work.manga.id) == work.revision &&
 			tickets[work.manga.id] == work.ticket && mutations[work.manga.id].isNullOrEmpty()
+
+	/**
+	 * Fresh, read-only resolution for an eligible Reader or an action verifier.
+	 * This neither consumes scanner tickets nor publishes a Room observation.
+	 * A changed root/context/revision rejects the result, including a stale negative.
+	 */
+	internal suspend fun resolveForRead(manga: Manga, space: FavouriteSpace?): NormalCandidateResolution? {
+		val captured = mutex.withLock {
+			val active = refreshRoot() ?: throw IOException("Download destination changed")
+			if (!mutations[manga.id].isNullOrEmpty()) throw IOException("Download is changing")
+			val ctx = db.withTransaction { context(manga, space) }
+				?: throw IOException("Download context changed")
+			NormalObservationWork(manga, space, session, epoch, active, revision(manga.id), -1L, ctx)
+		}
+		val result = if (captured.root.available) discovery.resolveCandidates(manga, space) else null
+		return mutex.withLock {
+			val active = refreshRoot()
+			val ctx = db.withTransaction { context(manga, space) }
+			destinations.withDestinationMutationLock {
+				if (captured.root != active || captured.rootEpoch != epoch ||
+					captured.root.generation != rootChanges.value || captured.revision != revision(manga.id) ||
+					!mutations[manga.id].isNullOrEmpty() || captured.context != ctx
+				) throw IOException("Download context changed; try again")
+				result
+			}
+		}
+	}
 
 	suspend fun scan(manga: Manga, space: FavouriteSpace?): Boolean {
 		val work = begin(manga, space) ?: return false

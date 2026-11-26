@@ -51,12 +51,14 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.ui.widgets.IconsView
 import org.koitharu.kotatsu.core.util.ext.MimeType
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
+import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.data.ChapterPersonalEntity
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
@@ -98,6 +100,11 @@ import org.koitharu.kotatsu.local.data.output.RealRootFileCommitOps
 import org.koitharu.kotatsu.local.data.output.commitRootReplacement
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
+import org.koitharu.kotatsu.local.domain.NormalDownloadReadResolver
+import org.koitharu.kotatsu.local.domain.NormalDownloadChapterAction
+import org.koitharu.kotatsu.local.domain.MangaLock
+import org.koitharu.kotatsu.local.library.LocalContentReader
+import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -116,6 +123,8 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var local: LocalMangaRepository
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var normalDownloadScope: NormalDownloadScope
+	@Inject lateinit var readerRepositoryFactory: MangaRepository.Factory
+	@Inject lateinit var readerContent: LocalContentReader
 	@Inject internal lateinit var normalDirectoryDiscovery: NormalDownloadDirectoryDiscovery
 	@Inject lateinit var deleteLocal: DeleteLocalMangaUseCase
 	@Inject lateinit var ownership: FavouriteDownloadOwnershipIndex
@@ -2687,6 +2696,191 @@ class DownloadedLocalStateTest {
 		fence.mutate(other, space) { assertTrue(store.isCurrent(manga, space, after)) }
 		assertEquals(changes, store.changes.value)
 		assertTrue(store.takeRequests().ids.isEmpty())
+	}
+
+	private fun normalReader(store: NormalDownloadObservationStore = observationStore()) =
+		NormalDownloadReadResolver(normalDownloadScope, store)
+
+	private fun chapterLoader(reader: NormalDownloadReadResolver) =
+		ChaptersLoader(readerRepositoryFactory, readerContent, reader)
+
+	/** T02/Q23: actual ChaptersLoader selects the corrupt local artifact, including retry. */
+	@Test fun normalReaderCorruptSelectionNeverFallsBackAcrossRetry() = runBlocking {
+		val seed = remote(810_127L)
+		val source = MissingMangaSource("MIHON_2677079941490683989")
+		val chapter = seed.chapters.orEmpty().single().copy(source = source, url = "/chapter/1")
+		val manga = seed.copy(source = source, chapters = listOf(chapter))
+		favourite(manga)
+		val container = File(root, "downloads/Bacami (ID)/${manga.title}").apply { check(mkdirs()) }.canonicalFile
+		val bytes = byteArrayOf(1, 2, 3, 4)
+		val file = File(container, "Chapter 1.cbz").apply { writeBytes(bytes) }
+		val reader = normalReader()
+		val copy = requireNotNull(reader.resolve(manga, FavouriteSpace.NORMAL))
+		val selector = requireNotNull(copy.normalReaderSelectors?.get(chapter.id))
+		assertEquals(file.path, android.net.Uri.parse(selector.url).path)
+		val expectedError = runCatching { local.getPages(selector) }.exceptionOrNull()
+		val loader = chapterLoader(reader)
+		try {
+			loader.init(MangaDetails(manga, copy, null, null, true), FavouriteSpace.NORMAL, true)
+			suspend fun assertLocalFailure() {
+				val error = requireNotNull(runCatching { loader.loadSingleChapter(chapter.id) }.exceptionOrNull())
+				if (expectedError != null) assertEquals(expectedError.javaClass, error.javaClass)
+				else assertEquals("Selected local chapter has no readable pages", error.message)
+				assertEquals(selector.url, loader.peekChapter(chapter.id)?.url)
+				assertEquals(LocalMangaSource, loader.peekChapter(chapter.id)?.source)
+				assertFalse(loader.refreshChapterPages(chapter.id))
+				assertFalse(loader.hasPages(chapter.id))
+			}
+			assertLocalFailure()
+			// A metadata-only emission cannot remove the failed local selection.
+			loader.init(MangaDetails(manga), FavouriteSpace.NORMAL, true)
+			assertLocalFailure()
+			assertArrayEquals(bytes, file.readBytes())
+			assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, manga.id))
+		} finally { loader.close() }
+	}
+
+	/** T06/T08: existing visible pages stay pinned, fresh Reader follows the active root. */
+	@Test fun normalReaderRootSwitchPreservesSessionAndNewReaderUsesCurrentCopy() = runBlocking {
+		val (manga, old) = observedDownload(810_128L)
+		val space = FavouriteSpace.NORMAL
+		val id = manga.chapters.orEmpty().single().id
+		val reader = normalReader()
+		val a = requireNotNull(reader.resolve(manga, space))
+		val loader = chapterLoader(reader)
+		val fresh = chapterLoader(reader)
+		try {
+			loader.init(MangaDetails(manga, a, null, null, true), space, true)
+			assertTrue(loader.loadSingleChapter(id))
+			val oldPage = loader.getPages(id).single().url
+			assertEquals(File(old, "Chapter 1.cbz").path, android.net.Uri.parse(oldPage).path)
+			val bRoot = File(root, "reader-b")
+			destinations.setRoot(space, bRoot)
+			assertNull(reader.resolve(manga, space))
+			val b = download(bRoot, manga).file.canonicalFile
+			db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, space.dbValue, b.path))
+			val current = requireNotNull(reader.resolve(manga, space))
+			loader.init(MangaDetails(manga, current, null, null, true), space, true)
+			assertEquals(oldPage, loader.getPages(id).single().url)
+			assertFalse(loader.refreshChapterPages(id))
+			assertTrue(runCatching { loader.loadSingleChapter(id) }.isFailure)
+			assertEquals(oldPage, loader.getPages(id).single().url)
+			fresh.init(MangaDetails(manga, current, null, null, true), space, true)
+			assertTrue(fresh.loadSingleChapter(id))
+			val newPage = fresh.getPages(id).single().url
+			assertEquals(File(b, "Chapter 1.cbz").path, android.net.Uri.parse(newPage).path)
+			assertNotEquals(oldPage, newPage)
+			assertTrue(File(old, "Chapter 1.cbz").isFile)
+		} finally { loader.close(); fresh.close() }
+	}
+
+	/** T05: migrated SINGLE_CBZ logical chapter ID is distinct from embedded Reader selector. */
+	@Test fun normalReaderMigratedArchiveLoadsExactEmbeddedPage() = runBlocking {
+		val seed = remote(810_129L)
+		val oldSource = MissingMangaSource("MIHON_2677079941490683989")
+		val first = seed.chapters.orEmpty().single().copy(source = oldSource, url = "/chapter/1")
+		val second = first.copy(id = first.id + 1, title = "Chapter 2", url = "/chapter/2", number = 2f)
+		val old = seed.copy(source = oldSource, chapters = listOf(first, second))
+		val newSource = MissingMangaSource("TSUKI:MIYORARE:miyorare-id:BACAMI")
+		val newFirst = first.copy(id = first.id + 10, source = newSource)
+		val newSecond = second.copy(id = second.id + 10, source = newSource)
+		val target = old.copy(id = 810_130L, source = newSource, chapters = listOf(newFirst, newSecond))
+		ids += target.id
+		data.storeManga(old, replaceExisting = true)
+		favourite(target)
+		val image = File(root, "reader-migrated.png")
+		val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+		try { image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+		finally { bitmap.recycle() }
+		val output = LocalMangaOutput.getOrCreate(root, old, DownloadFormat.SINGLE_CBZ)
+		val archive = output.rootFile.canonicalFile
+		try {
+			output.addPage(IndexedValue(0, first), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(first))
+			output.addPage(IndexedValue(1, second), image, 0, MimeType("image/png"))
+			assertFalse(output.flushChapter(second))
+			output.finish()
+		} finally { output.close() }
+		val bytes = archive.readBytes()
+		val originals = LocalMangaParser(archive).getManga(withDetails = true).manga.chapters.orEmpty()
+			.associate { it.id to local.getPages(it).single().url }
+		index.rememberVerifiedPath(old.id, archive)
+		requireNotNull(index.prepareDownloadIdentityMove(old.id, target.id, mapOf(first.id to newFirst.id, second.id to newSecond.id)))
+		val space = FavouriteSpace.NORMAL
+		val owner = FavouriteDownloadIndexEntity(target.id, space.dbValue, archive.path)
+		db.getFavouriteDownloadIndexDao().upsert(owner)
+		val reader = normalReader()
+		val copy = requireNotNull(reader.resolve(target, space))
+		val loader = chapterLoader(reader)
+		try {
+			loader.init(MangaDetails(target, copy, null, null, true), space, true)
+			for ((embedded, logical) in listOf(first to newFirst, second to newSecond)) {
+				assertEquals(embedded.id, copy.normalReaderSelectors?.get(logical.id)?.id)
+				assertEquals(logical.id, loader.peekChapter(logical.id)?.id)
+				assertTrue(loader.loadSingleChapter(logical.id))
+				assertEquals(originals[embedded.id], loader.getPages(logical.id).single().url)
+				assertEquals(logical.id, loader.snapshot().single().chapterId)
+				assertFalse(loader.refreshChapterPages(logical.id))
+			}
+			assertArrayEquals(bytes, archive.readBytes())
+			assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, target.id))
+		} finally { loader.close() }
+	}
+
+	/** T15: selected manual and owned rename parity; corrupt exact proof separate from rename guard. */
+	@Test fun normalChapterActionExactRenameRejectsStaleAndProtectedTargets() = runBlocking {
+		val (writer, ownedDir) = observedDownload(810_131L)
+		val writerFile = File(ownedDir, "Chapter 1.cbz")
+		val bytes = writerFile.readBytes()
+		val seed = remote(810_132L)
+		val source = MissingMangaSource("MIHON_2677079941490683989")
+		val manual = seed.copy(source = source, chapters = listOf(seed.chapters.orEmpty().single().copy(source = source, url = "/chapter/1")))
+		favourite(manual)
+		val container = File(root, "downloads/Bacami (ID)/${manual.title}").apply { check(mkdirs()) }.canonicalFile
+		val file = File(container, "Chapter 1.cbz").apply { writeBytes(bytes) }
+		val space = FavouriteSpace.NORMAL
+		val store = observationStore()
+		val fence = NormalDownloadMutationFence(normalDownloadScope, store)
+		val action = NormalDownloadChapterAction(normalDownloadScope, store, destinations, fence, MangaLock())
+		val reader = normalReader(store)
+		val selector = requireNotNull(reader.resolve(manual, space)?.normalReaderSelectors?.values?.single())
+		suspend fun preview() = action.previewRename(manual, space, container, file, selector.id, selector.url)
+		val approved = preview()
+		assertTrue(runCatching { action.captureStandalone(manual, FavouriteSpace.PRIVATE, container, file, selector.id, selector.url) }.isFailure)
+		assertTrue(runCatching { action.captureStandalone(manual, space, container, file, selector.id + 1L, selector.url) }.isFailure)
+		val competing = File(container.parentFile, container.name + "_8")
+		assertTrue(container.copyRecursively(competing))
+		assertTrue(runCatching { preview() }.isFailure)
+		assertTrue(competing.deleteRecursively())
+		val next = File(root, "rename-b")
+		destinations.setRoot(space, next)
+		destinations.setRoot(space, root)
+		assertTrue(runCatching { action.rename(manual, space, approved, "Chapter 1 Special") }.isFailure)
+		assertArrayEquals(bytes, file.readBytes())
+		val beforeReplace = preview()
+		val replacement = File(container, "replacement").apply { writeBytes(bytes) }
+		assertTrue(file.delete())
+		assertTrue(replacement.renameTo(file))
+		assertTrue(runCatching { action.rename(manual, space, beforeReplace, "Chapter 1 Special") }.isFailure)
+		assertArrayEquals(bytes, file.readBytes())
+		val corrupt = byteArrayOf(5, 6, 7)
+		file.writeBytes(corrupt)
+		assertNotNull(action.captureStandalone(manual, space, container, file, selector.id, selector.url))
+		assertTrue(runCatching { preview() }.isFailure)
+		assertArrayEquals(corrupt, file.readBytes())
+		file.writeBytes(bytes)
+		assertTrue(action.rename(manual, space, preview(), "Chapter 1 Special"))
+		assertFalse(file.exists())
+		assertArrayEquals(bytes, File(container, "Chapter 1 Special.cbz").readBytes())
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manual.id))
+		assertFalse(File(container, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+		assertTrue(store.takeRequests().ids.contains(manual.id))
+		val ownedSelector = requireNotNull(reader.resolve(writer, space)?.normalReaderSelectors?.values?.single())
+		val owner = db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, writer.id)
+		val writerApproval = action.previewRename(writer, space, ownedDir, writerFile, ownedSelector.id, ownedSelector.url)
+		assertTrue(action.rename(writer, space, writerApproval, "Chapter 1 Special"))
+		assertArrayEquals(bytes, File(ownedDir, "Chapter 1 Special.cbz").readBytes())
+		assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, writer.id))
 	}
 
 	private suspend fun favourite(manga: Manga, space: FavouriteSpace = FavouriteSpace.NORMAL) {
