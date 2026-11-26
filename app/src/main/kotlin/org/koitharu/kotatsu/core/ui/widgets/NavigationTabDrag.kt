@@ -12,6 +12,9 @@ import android.view.ViewConfiguration
 import android.view.animation.OvershootInterpolator
 import androidx.compose.ui.geometry.Rect
 import kotlin.math.abs
+import android.view.animation.DecelerateInterpolator
+import org.koitharu.kotatsu.core.prefs.NavigationMotion
+import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 
 /** One gesture owner for both bottom bars and the native rail. Preview is discrete; drawing isn't. */
 internal class NavigationTabDrag(
@@ -37,6 +40,26 @@ internal class NavigationTabDrag(
 	private var settle: ValueAnimator? = null
 	private var settleId: Int? = null
 	private var progress = 0f
+	private var motion = NavigationMotion.CLASSIC_GLIDE
+	private var motionEnabled = true
+	private var pressed = false
+
+	fun setMotion(value: NavigationMotion) {
+		if (motion == value) return
+		reset()
+		motion = value
+	}
+
+	fun animateSelection(fromId: Int, toId: Int) {
+		if (motion == NavigationMotion.CLASSIC_GLIDE || fromId == toId || !host.context.isAnimationsEnabled) return
+		val from = visibleSlots().firstOrNull { it.first == fromId }?.second ?: return
+		if (visibleSlots().none { it.first == toId }) return
+		clearIndicator()
+		motionEnabled = true
+		pressed = true
+		setIndicator(from)
+		settleToSelection(toId)
+	}
 
 	private class Stream(val x: Float, val y: Float, val slots: List<Pair<Int, Rect>>) {
 		var captured = false
@@ -49,6 +72,8 @@ internal class NavigationTabDrag(
 		if (drag.captured) {
 			showPreview(null)
 			settleToSelection()
+		} else if (pressed) {
+			clearIndicator()
 		}
 	}
 
@@ -63,6 +88,7 @@ internal class NavigationTabDrag(
 		val action = event.actionMasked
 		if (action == MotionEvent.ACTION_DOWN) {
 			reset()
+			motionEnabled = host.context.isAnimationsEnabled
 			if (preview != null) {
 				host.getLocationInWindow(origin)
 				val x = event.x + origin[0]
@@ -70,9 +96,16 @@ internal class NavigationTabDrag(
 				val slots = visibleSlots()
 				if (slots.any { (_, rect) -> contains(rect, x, y) && canStart(x, rect) }) {
 					stream = Stream(x, y, slots)
+					// Press feedback does not capture the stream or suppress the existing long click.
+					if (motionEnabled && motion != NavigationMotion.CLASSIC_GLIDE) {
+						slots.firstOrNull { (id, rect) -> id == selectedId() && contains(rect, x, y) }?.let {
+							pressed = true
+							setIndicator(it.second)
+						}
+					}
 				}
 			}
-			return dispatchDefault(event).also { if (!it) stream = null }
+			return dispatchDefault(event).also { if (!it) { stream = null; clearIndicator() } }
 		}
 		val drag = stream ?: return dispatchDefault(event)
 		if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_CANCEL) cancel()
@@ -89,8 +122,10 @@ internal class NavigationTabDrag(
 					(across > touchSlop && across >= along)
 				) {
 					drag.rejected = true
+					if (pressed) clearIndicator()
 				} else if (along > touchSlop && along > across) {
 					drag.captured = true
+				pressed = true
 					val cancel = MotionEvent.obtain(event)
 					try {
 						cancel.action = MotionEvent.ACTION_CANCEL
@@ -132,6 +167,8 @@ internal class NavigationTabDrag(
 					showPreview(null)
 					settleToSelection()
 				}
+			} else if (pressed) {
+				settleToSelection()
 			}
 		}
 		return drag.captured || dispatchDefault(event)
@@ -149,13 +186,22 @@ internal class NavigationTabDrag(
 		host.invalidate()
 	}
 
-	private fun settleToSelection() {
+	private fun settleToSelection(targetId: Int = selectedId()) {
 		if (indicatorBounds == null || settle != null) return
-		settleId = selectedId()
+		if (!motionEnabled) { clearIndicator(); return }
+		settleId = targetId
 		progress = 0f
 		settle = ValueAnimator.ofFloat(0f, 1f).apply {
-			duration = 210L
-			interpolator = OvershootInterpolator(0.8f)
+			duration = when (motion) {
+				NavigationMotion.CLASSIC_GLIDE -> 210L
+				NavigationMotion.ELASTIC_GLIDE -> 260L
+				NavigationMotion.FLUID_LENS -> 240L
+			}
+			interpolator = when (motion) {
+				NavigationMotion.CLASSIC_GLIDE -> OvershootInterpolator(0.8f)
+				NavigationMotion.ELASTIC_GLIDE -> OvershootInterpolator(1.15f)
+				NavigationMotion.FLUID_LENS -> DecelerateInterpolator()
+			}
 			addUpdateListener {
 				progress = it.animatedValue as Float
 				host.invalidate()
@@ -174,6 +220,8 @@ internal class NavigationTabDrag(
 		animation?.removeAllUpdateListeners()
 		animation?.cancel()
 		settleId = null
+		pressed = false
+		progress = 0f
 		if (indicatorBounds == null) return
 		indicatorBounds = null
 		onIndicatorChanged(false)
@@ -186,16 +234,37 @@ internal class NavigationTabDrag(
 		fun blend(a: Float, b: Float) = a + (b - a) * progress
 		host.getLocationInWindow(origin)
 		val x = blend(from.center.x, to.center.x) - origin[0]
-		val y = blend(from.center.y, to.center.y) - origin[1]
-		val halfWidth = (blend(from.width, to.width) * 0.5f - 3f * density).coerceIn(4f * density, 29f * density)
-		val halfHeight = (blend(from.height, to.height) * 0.5f - 4f * density).coerceIn(4f * density, 24f * density)
+		var y = blend(from.center.y, to.center.y) - origin[1]
+		var halfWidth = (blend(from.width, to.width) * 0.5f - 3f * density).coerceIn(4f * density, 29f * density)
+		var halfHeight = (blend(from.height, to.height) * 0.5f - 4f * density).coerceIn(4f * density, 24f * density)
+		val deformation = if (motionEnabled && pressed) (1f - progress).coerceIn(0f, 1f) else 0f
+		if (motion != NavigationMotion.CLASSIC_GLIDE && deformation > 0f) {
+			val elastic = motion == NavigationMotion.ELASTIC_GLIDE
+			halfWidth *= 1f + (if (elastic) 0.08f else 0.18f) * deformation
+			halfHeight *= 1f + (if (elastic) 0.28f else 0.18f) * deformation
+			if (!vertical && !elastic) y -= 4f * density * deformation
+			// Contain the drawing, not the hit area. No parent-wide clipping or remeasurement.
+			halfWidth = minOf(halfWidth, x.coerceAtLeast(1f), (host.width - x).coerceAtLeast(1f))
+			halfHeight = minOf(halfHeight, (host.height * 0.5f).coerceAtLeast(1f))
+			y = y.coerceIn(halfHeight, (host.height - halfHeight).coerceAtLeast(halfHeight))
+		}
 		shape.set(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight)
 		val radius = minOf(halfHeight, halfWidth, (if (vertical) 16f else 23f) * density)
 		paint.color = accent()
 		paint.style = Paint.Style.FILL
-		paint.alpha = 48
+		paint.alpha = when (motion) {
+			NavigationMotion.CLASSIC_GLIDE -> 48
+			NavigationMotion.ELASTIC_GLIDE -> (48 + 68 * deformation).toInt()
+			NavigationMotion.FLUID_LENS -> (48 + 8 * deformation).toInt()
+		}
 		canvas.drawRoundRect(shape, radius, radius, paint)
 		paint.style = Paint.Style.STROKE
+		if (motionEnabled && motion != NavigationMotion.CLASSIC_GLIDE) {
+			paint.strokeWidth = (if (motion == NavigationMotion.FLUID_LENS) 1.7f else 1.4f) * density
+			paint.alpha = if (motion == NavigationMotion.FLUID_LENS) 130 else 168
+			canvas.drawRoundRect(shape, radius, radius, paint)
+			return
+		}
 		for (layer in 0..2) {
 			paint.strokeWidth = (if (layer == 0) 9f else if (layer == 1) 4f else 1.4f) * density
 			paint.alpha = if (layer == 0) 24 else if (layer == 1) 52 else 168

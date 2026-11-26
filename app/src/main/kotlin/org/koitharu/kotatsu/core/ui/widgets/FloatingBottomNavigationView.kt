@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.prefs.NavigationMotion
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
@@ -130,7 +131,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							selectedId = selectedId,
 							showLabels = labeled,
 							colors = navColors,
-							onItemSelected = { id -> this@FloatingBottomNavigationView.selectedItemId = id },
+							onItemSelected = ::selectFromUser,
 							onItemReselected = { id ->
 								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
 							},
@@ -147,7 +148,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							selectedId = selectedId,
 							showLabels = labeled,
 							colors = navColors,
-							onItemSelected = { id -> this@FloatingBottomNavigationView.selectedItemId = id },
+							onItemSelected = ::selectFromUser,
 							onItemReselected = { id ->
 								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
 							},
@@ -190,6 +191,22 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 
 	override val maxItemCountOverride: Int
 		get() = MAX_RENDERED_ITEMS
+
+	internal var isUserSelection = false
+		private set
+
+	private fun selectFromUser(@IdRes itemId: Int) {
+		val before = selectedItemId
+		isUserSelection = true
+		try {
+			selectedItemId = itemId
+		} finally {
+			isUserSelection = false
+		}
+		if (before != selectedItemId) tabDrag.animateSelection(before, selectedItemId)
+	}
+
+	internal fun setNavigationMotion(motion: NavigationMotion) = tabDrag.setMotion(motion)
 
 	override fun setSelectedItemId(@IdRes itemId: Int) {
 		cancelTabDrag()
