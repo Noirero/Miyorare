@@ -110,6 +110,11 @@ internal class NormalScannerParentListing(children: List<File>) {
  * owner paths once avoids missing noncanonical legacy rows and avoids a per-title global lookup.
  * No enumeration of files outside the active root. This is not a publication generation fence.
  */
+internal data class NormalScannerVerificationInput(
+	val owners: Set<FavouriteDownloadIndexEntity>,
+	val claims: Set<NormalScannerTitleClaim>,
+)
+
 internal class NormalScannerVerificationEvidence(
 	private val owners: TreeMap<String, MutableList<FavouriteDownloadIndexEntity>>,
 	private val claimsByTitle: Map<String, List<NormalScannerTitleClaim>>,
@@ -231,12 +236,19 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 	 * contain absolute-but-not-canonical paths (legacy writers/restore). A lexical query over the
 	 * canonical candidate alone cannot exclude them. Fail unresolved on unnormalizable evidence.
 	 */
-	suspend fun captureVerificationEvidence(): NormalScannerVerificationEvidence? = withContext(Dispatchers.IO) {
+	/** Raw metadata is compared again at the batch publication boundary. */
+	suspend fun readVerificationInput(): NormalScannerVerificationInput = db.withTransaction {
+		NormalScannerVerificationInput(
+			FavouriteSpace.entries.flatMap { db.getFavouriteDownloadIndexDao().findEntries(it.dbValue) }.toSet(),
+			db.getMangaDao().findNormalScannerTitleClaims().toSet(),
+		)
+	}
+
+	suspend fun captureVerificationEvidence(
+		input: NormalScannerVerificationInput? = null,
+	): NormalScannerVerificationEvidence? = withContext(Dispatchers.IO) {
 		runCatchingCancellable {
-			val (rows, claims) = db.withTransaction {
-				(FavouriteSpace.entries.flatMap { db.getFavouriteDownloadIndexDao().findEntries(it.dbValue) }) to
-					db.getMangaDao().findNormalScannerTitleClaims()
-			}
+			val (rows, claims) = input ?: readVerificationInput()
 			val owners = TreeMap<String, MutableList<FavouriteDownloadIndexEntity>>()
 			for (row in rows) {
 				currentCoroutineContext().ensureActive()

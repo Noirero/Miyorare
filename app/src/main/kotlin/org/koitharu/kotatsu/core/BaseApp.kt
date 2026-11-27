@@ -40,6 +40,8 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.LegacyFavouriteDownloadReconciler
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceLifecycleObserver
+import org.koitharu.kotatsu.favourites.domain.NormalDownloadScanCoordinator
+import org.koitharu.kotatsu.favourites.domain.NormalDownloadScanLifecycleObserver
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -88,6 +90,9 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var exhentaiPresenceDiscoveryProvider: Provider<ExhentaiPresenceDiscovery>
+
+	@Inject
+	internal lateinit var normalDownloadScanCoordinatorProvider: Provider<NormalDownloadScanCoordinator>
 
 	@Inject
 	@LocalStorageChanges
@@ -154,6 +159,21 @@ open class BaseApp : Application(), Configuration.Provider {
 				scan = { full ->
 					// Resolve the lazy scanner and Room dependencies off the main thread as before.
 					withContext(Dispatchers.IO) { exhentaiPresenceDiscoveryProvider.get().run(full) }
+				},
+			),
+		)
+		ProcessLifecycleOwner.get().lifecycle.addObserver(
+			NormalDownloadScanLifecycleObserver(
+				prefs = PreferenceManager.getDefaultSharedPreferences(this),
+				startup = {
+					processLifecycleScope.launch(Dispatchers.IO) {
+						normalDownloadScanCoordinatorProvider.get().start(processLifecycleScope)
+					}
+				},
+				resume = {
+					processLifecycleScope.launch(Dispatchers.IO) {
+						normalDownloadScanCoordinatorProvider.get().requestFull()
+					}
 				},
 			),
 		)

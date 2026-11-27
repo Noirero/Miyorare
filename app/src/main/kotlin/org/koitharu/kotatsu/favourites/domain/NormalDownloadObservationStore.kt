@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.favourites.domain
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -18,6 +20,8 @@ import org.koitharu.kotatsu.favourites.data.NormalDownloadObservationDao
 import org.koitharu.kotatsu.favourites.data.NormalDownloadObservationEntity
 import org.koitharu.kotatsu.local.data.NormalCandidateResolution
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryDiscovery
+import org.koitharu.kotatsu.local.data.NormalScannerParentListing
+import org.koitharu.kotatsu.local.data.NormalScannerVerificationInput
 import org.koitharu.kotatsu.local.data.verifiedLocalProjection
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -79,6 +83,13 @@ internal data class NormalObservationSnapshot(
 
 internal data class NormalObservationRequests(val full: Boolean, val ids: Set<Long>)
 
+internal data class NormalObservationBatch(
+	val works: List<NormalObservationWork>,
+	val producerGeneration: Long,
+	val verificationInput: NormalScannerVerificationInput?,
+	val results: List<NormalCandidateResolution?>,
+)
+
 internal data class NormalLibraryVisibility(val eligible: Set<Long>, val present: Set<Long>, val resolved: Set<Long>)
 
 /**
@@ -110,6 +121,7 @@ internal class NormalDownloadObservationStore(
 	private var root: NormalObservationRoot? = null
 	private var epoch = 0L
 	private var sequence = 0L
+	private var producerGeneration = 0L
 	private val revisions = HashMap<Long, Long>()
 	private val tickets = HashMap<Long, Long>()
 	private val mutations = HashMap<Long, MutableSet<Long>>()
@@ -119,20 +131,27 @@ internal class NormalDownloadObservationStore(
 	private val _changes = MutableStateFlow(0L)
 	val changes = _changes.asStateFlow()
 	val rootChanges get() = destinations.normalScannerRootChanges
+	private val _requestChanges = MutableStateFlow(0L)
+	val requestChanges = _requestChanges.asStateFlow()
+
+	private fun wake() { _requestChanges.value += 1L }
+	private fun enqueue(id: Long) {
+		if (pending.add(id) && mutations[id].isNullOrEmpty()) wake()
+	}
 
 	private fun changed() { _changes.value += 1L }
 	private fun revision(id: Long) = revisions[id] ?: 0L
 
-	private fun invalidate(id: Long) {
+	private fun invalidate(id: Long, notifyRequest: Boolean = true, notifyChange: Boolean = true) {
 		revisions[id] = revision(id) + 1L
 		tickets.remove(id)
 		published.remove(id)
-		pending += id
-		changed()
+		if (notifyRequest) enqueue(id) else pending += id
+		if (notifyChange) changed()
 	}
 
 	// Only short root stat/canonical checks, not a directory inventory.
-	private suspend fun refreshRoot(): NormalObservationRoot? {
+	private suspend fun refreshRoot(notifyRequest: Boolean = true): NormalObservationRoot? {
 		val captured = withContext(Dispatchers.IO) {
 			val roots = destinations.captureNormalScannerRoots()
 			fun path(file: File?) = file?.let { rootFile ->
@@ -152,6 +171,7 @@ internal class NormalDownloadObservationStore(
 				published.clear()
 				tickets.clear()
 				fullPending = true
+				if (notifyRequest) wake()
 				changed()
 			}
 			captured
@@ -403,7 +423,7 @@ internal class NormalDownloadObservationStore(
 				val valid = scoped && sourceCurrent && active.available && mutations[id].isNullOrEmpty() &&
 					value != null && value.context == ctx && value.snapshot.row.revision == revision(id) &&
 					dao.findCurrent(session, epoch, listOf(id)).singleOrNull() == value.snapshot.row
-				if (scoped && sourceCurrent && active.available && !valid) pending += id
+				if (scoped && sourceCurrent && active.available && !valid) enqueue(id)
 				if (refreshRoot() != active) return@withTransaction false
 				destinations.withDestinationMutationLock {
 					if (active.generation != rootChanges.value) false else {
@@ -428,6 +448,7 @@ internal class NormalDownloadObservationStore(
 	/** Overlapping producers each hold a short intent token, not a full-operation lock. */
 	suspend fun beginMutation(mangaId: Long): Long = mutex.withLock {
 		val token = ++sequence
+		producerGeneration += 1L
 		mutations.getOrPut(mangaId) { HashSet() }.add(token)
 		invalidate(mangaId)
 		token
@@ -436,17 +457,159 @@ internal class NormalDownloadObservationStore(
 	suspend fun finishMutation(mangaId: Long, token: Long) = mutex.withLock {
 		val active = mutations[mangaId] ?: return@withLock
 		if (!active.remove(token)) return@withLock
+		producerGeneration += 1L
 		if (active.isEmpty()) mutations.remove(mangaId)
 		invalidate(mangaId)
+		// The ID may already be pending from beginMutation. Completion must still wake the drain.
+		wake()
 	}
 
-	suspend fun requestFull() = mutex.withLock { fullPending = true }
+	suspend fun requestFull() = mutex.withLock {
+		fullPending = true
+		wake()
+	}
+
+	/** Only actual scope/identity changes invalidate observations, not Room emissions themselves. */
+	internal suspend fun requestRevalidation(
+		ids: Set<Long>, ownershipChanged: Boolean = false, ownerPaths: Set<String>? = emptySet(),
+	) = mutex.withLock {
+		if (ids.isEmpty() && !ownershipChanged) return@withLock
+		producerGeneration += 1L
+		val affected = ids.toMutableSet()
+		if (ownershipChanged) {
+			// A changed owner may affect another positive observation. Immediately hide
+			// overlapping positives; revisit ambiguous/absent candidates in a full pass.
+			// Unchanged independent observations retain their accepted revision and row.
+			fun overlaps(a: String, b: String): Boolean =
+				a == b || a.startsWith(b.trimEnd(File.separatorChar) + File.separator) ||
+					b.startsWith(a.trimEnd(File.separatorChar) + File.separator)
+			for ((id, value) in published) {
+				val path = value.snapshot.fact.path ?: continue
+				if (ownerPaths == null || ownerPaths.any { overlaps(it, path) }) affected += id
+			}
+			fullPending = true
+		}
+		for (id in affected) invalidate(id, notifyRequest = false, notifyChange = false)
+		if (affected.isNotEmpty()) changed()
+		wake()
+	}
+
+	/** Keep deferred work for a later external trigger, never spin on unresolved/mutating work. */
+	internal suspend fun defer(ids: Collection<Long>) = mutex.withLock { pending.addAll(ids); Unit }
+
+	internal suspend fun activeRootAvailable(): Boolean = mutex.withLock { refreshRoot()?.available == true }
 
 	/** A new full request during an in-flight batch is not consumed by the old batch. */
-	suspend fun takeRequests(): NormalObservationRequests = mutex.withLock {
-		NormalObservationRequests(fullPending, pending.toSet()).also {
+	suspend fun takeRequests(refresh: Boolean = false): NormalObservationRequests = mutex.withLock {
+		if (refresh) refreshRoot(notifyRequest = false)
+		val ready = pending.filterTo(LinkedHashSet()) { mutations[it].isNullOrEmpty() }
+		NormalObservationRequests(fullPending, ready).also {
 			fullPending = false
-			pending.clear()
+			pending.removeAll(ready)
+		}
+	}
+
+	/** All tickets precede IO; a shared inventory/proof is never reused across work batches.
+	 * Do not inventory while another durable Normal writer owns an intent. Completion wakes
+	 * deferred work; no blocking of the original writer or busy retry.
+	 */
+	internal suspend fun prepareBatch(mangas: List<Manga>): NormalObservationBatch? {
+		val (works, generation) = mutex.withLock {
+			val active = refreshRoot() ?: return null
+			if (mutations.isNotEmpty()) {
+				pending.addAll(mangas.map { it.id })
+				return null
+			}
+			val works = db.withTransaction {
+				mangas.mapNotNull { manga ->
+					val ctx = context(manga, FavouriteSpace.NORMAL) ?: return@mapNotNull null
+					val locators = dao.findChapterLocators(listOf(manga.id)).map { Triple(it.chapterId, it.source, it.url) }
+					if (locators != ctx.chapterLocators.orEmpty()) return@mapNotNull null
+					val ticket = ++sequence
+					tickets[manga.id] = ticket
+					NormalObservationWork(manga, FavouriteSpace.NORMAL, session, epoch, active,
+						revision(manga.id), ticket, ctx)
+				}
+			}
+			works to producerGeneration
+		}
+		if (works.isEmpty()) return NormalObservationBatch(works, generation, null, emptyList())
+		val input = if (works.first().root.available) discovery.readVerificationInput() else null
+		val evidence = input?.let { discovery.captureVerificationEvidence(it) }
+		val listings = HashMap<File, NormalScannerParentListing?>()
+		val results = works.map { work ->
+			currentCoroutineContext().ensureActive()
+			if (evidence == null) null else discovery.resolveCandidates(work.manga, work.space, evidence, listings)
+		}
+		return NormalObservationBatch(works, generation, input, results)
+	}
+
+	/** Validate shared raw proof in the same Room transaction as the rows; accept in memory
+	 * only after commit and a second root/context/proof check. No FS inventory under mutex.
+	 * Rejected rows are invisible to all existing scoped consumers.
+	 */
+	internal suspend fun publishBatch(batch: NormalObservationBatch): Map<Long, NormalObservationStatus> = mutex.withLock {
+		val works = batch.works
+		if (works.isEmpty()) return@withLock emptyMap()
+		fun reject(work: NormalObservationWork) {
+			if (tickets[work.manga.id] == work.ticket) invalidate(work.manga.id, notifyRequest = false)
+			else pending += work.manga.id
+		}
+		fun rejectAll(): Map<Long, NormalObservationStatus> {
+			works.forEach(::reject)
+			return emptyMap()
+		}
+		val active = refreshRoot()
+		if (batch.producerGeneration != producerGeneration || mutations.isNotEmpty() ||
+			works.any { !valid(it, active) }) return@withLock rejectAll()
+		data class Prepared(
+			val work: NormalObservationWork, val value: Published, val same: Boolean,
+		)
+		val prepared = works.zip(batch.results).map { (work, result) ->
+			val fact = fact(work, result)
+			val projection = if (fact.status == NormalObservationStatus.PRESENT) result?.verifiedLocalProjection() else null
+			val old = published[work.manga.id]
+			val same = old != null && old.context == work.context && old.snapshot.fact == fact &&
+				old.snapshot.localProjection == projection
+			val nextRevision = if (same) work.revision else work.revision + 1L
+			val row = NormalDownloadObservationEntity(work.manga.id, session, epoch, nextRevision,
+				work.root.normal, fact.status.name, fact.path)
+			Prepared(work, Published(NormalObservationSnapshot(row, fact, projection), work.context), same)
+		}
+		suspend fun matches(work: NormalObservationWork): Boolean =
+			context(work.manga, work.space) == work.context &&
+				dao.findChapterLocators(listOf(work.manga.id)).map { Triple(it.chapterId, it.source, it.url) } ==
+					work.context.chapterLocators.orEmpty()
+		val saved = db.withTransaction {
+			if (batch.verificationInput != null && discovery.readVerificationInput() != batch.verificationInput)
+				return@withTransaction emptyList()
+			prepared.filter { matches(it.work) }.onEach {
+				val row = it.value.snapshot.row
+				if (dao.findCurrent(session, epoch, listOf(row.mangaId)).singleOrNull() != row) dao.upsert(row)
+			}
+		}
+		if (active != refreshRoot() || works.any { !valid(it, active) }) return@withLock rejectAll()
+		val current = db.withTransaction {
+			if (batch.verificationInput != null && discovery.readVerificationInput() != batch.verificationInput)
+				return@withTransaction emptyList()
+			saved.filter { matches(it.work) }
+		}
+		destinations.withDestinationMutationLock {
+			if (works.any { !valid(it, root) }) return@withDestinationMutationLock rejectAll()
+			val accepted = current.associateBy { it.work.manga.id }
+			var hasChanges = false
+			for (work in works) {
+				val item = accepted[work.manga.id]
+				if (item == null) { reject(work); continue }
+				val id = work.manga.id
+				revisions[id] = item.value.snapshot.row.revision
+				tickets.remove(id)
+				published[id] = item.value
+				pending.remove(id)
+				hasChanges = hasChanges || !item.same
+			}
+			if (hasChanges) changed()
+			accepted.mapValues { it.value.value.snapshot.fact.status }
 		}
 	}
 }

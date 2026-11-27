@@ -1636,4 +1636,14 @@
     <string name="exhentai_presence_full_scan_summary">Check active download folders without changing download ownership.</string>
     <string name="exhentai_presence_progress">Checking %1$d of %2$d entries</string>
     <string name="exhentai_presence_unavailable">Some download storage is unavailable; last known status was preserved.</string>
+    <string name="normal_download_resume_scan">Scan Normal Favorites downloads on return</string>
+    <string name="normal_download_resume_scan_summary">Check the active Normal download location when returning to the app. Startup and manual scans remain enabled.</string>
+    <string name="normal_download_full_scan">Full scan of Normal Favorites downloads</string>
+    <string name="normal_download_full_scan_summary">Check downloads in the active Normal location without changing files or ownership.</string>
+    <string name="normal_download_scan_progress">Checked %1$d of %2$d titles</string>
+    <string name="normal_download_scan_complete">Scan complete: %1$d of %2$d titles checked</string>
+    <string name="normal_download_scan_unavailable">The active Normal download location is unavailable.</string>
+    <string name="normal_download_scan_partial">Scan incomplete: %1$d of %2$d titles checked; some results are unresolved or deferred.</string>
+    <string name="normal_download_scan_failed">Scan failed. Try again.</string>
+    <string name="normal_download_scan_cancelled">Scan cancelled.</string>
 </resources>

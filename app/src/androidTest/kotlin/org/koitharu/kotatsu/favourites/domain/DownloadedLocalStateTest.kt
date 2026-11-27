@@ -46,6 +46,11 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
@@ -2411,6 +2416,289 @@ class DownloadedLocalStateTest {
 		val file = download(root, manga).file.canonicalFile
 		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, file.path))
 		return manga to file
+	}
+
+	/** T12: real store, process-style owner, OFF startup/root/manual, ON resume, no-change. */
+	@Test fun normalCoordinatorLifecycleAndNoChange() = runBlocking {
+		val (manga, file) = observedDownload(810_201L)
+		val store = observationStore()
+		val coordinator = NormalDownloadScanCoordinator(db, normalDownloadScope, store, normalDirectoryDiscovery)
+		val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val key = NormalDownloadScanCoordinator.KEY_SCAN_ON_RESUME
+		val exKey = ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME
+		val exBefore = prefs.getBoolean(exKey, true)
+		prefs.edit(commit = true) { remove(key) }
+		assertTrue(prefs.getBoolean(key, true))
+		prefs.edit(commit = true) { putBoolean(key, false) }
+		val observer = NormalDownloadScanLifecycleObserver(prefs, { coordinator.start(scope) }, coordinator::requestFull)
+		lateinit var registry: LifecycleRegistry
+		lateinit var owner: LifecycleOwner
+		instrumentation.runOnMainSync {
+			owner = object : LifecycleOwner { override val lifecycle: Lifecycle get() = registry }
+			// Hold the owner strongly throughout the real lifecycle event sequence.
+			registry = LifecycleRegistry(owner)
+			registry.addObserver(observer)
+			registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+			registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+		}
+		suspend fun awaitRun(after: Long) = withTimeout(20_000) {
+			coordinator.state.first { !it.running && it.completedRuns > after }
+		}
+		try {
+			val startup = awaitRun(0)
+			assertEquals(NormalScanOutcome.COMPLETE, startup.outcome)
+			assertEquals(file.path, store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.path)
+			val unchanged = store.changes.value
+			instrumentation.runOnMainSync {
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+			}
+			assertNull(withTimeoutOrNull(400) { coordinator.state.first { it.completedRuns > startup.completedRuns } })
+			coordinator.requestFull()
+			val manual = awaitRun(startup.completedRuns)
+			assertEquals(NormalScanOutcome.COMPLETE, manual.outcome)
+			assertEquals(unchanged, store.changes.value)
+			val unavailable = File(root, "unavailable-normal")
+			destinations.setRoot(FavouriteSpace.NORMAL, unavailable)
+			val switched = awaitRun(manual.completedRuns)
+			assertEquals(NormalScanOutcome.UNAVAILABLE, switched.outcome)
+			assertFalse(unavailable.exists())
+			destinations.setRoot(FavouriteSpace.NORMAL, root)
+			val recovered = awaitRun(switched.completedRuns)
+			assertEquals(NormalScanOutcome.COMPLETE, recovered.outcome)
+			prefs.edit(commit = true) { putBoolean(key, true) }
+			instrumentation.runOnMainSync {
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+			}
+			assertEquals(NormalScanOutcome.COMPLETE, awaitRun(recovered.completedRuns).outcome)
+			prefs.edit(commit = true) { remove(key) }
+			val beforeDefaultResume = coordinator.state.value.completedRuns
+			instrumentation.runOnMainSync {
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+			}
+			assertEquals(NormalScanOutcome.COMPLETE, awaitRun(beforeDefaultResume).outcome)
+			assertFalse(prefs.contains(key))
+			assertEquals(exBefore, prefs.getBoolean(exKey, true))
+		} finally {
+			instrumentation.runOnMainSync { registry.removeObserver(observer) }
+			scope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
+	}
+
+	/** T12: manual full arriving during an auto batch is not consumed by that batch. */
+	@Test fun normalCoordinatorPreservesManualDuringAuto() = runBlocking {
+		val (manga, _) = observedDownload(810_202L)
+		val reached = CompletableDeferred<Unit>()
+		val release = CompletableDeferred<Unit>()
+		val realDao = db.getNormalDownloadObservationDao()
+		val store = observationStore(object : NormalDownloadObservationDao by realDao {
+			override suspend fun upsert(row: NormalDownloadObservationEntity) {
+				reached.complete(Unit)
+				release.await()
+				realDao.upsert(row)
+			}
+		})
+		val coordinator = NormalDownloadScanCoordinator(db, normalDownloadScope, store, normalDirectoryDiscovery)
+		val process = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+		try {
+			coordinator.start(process)
+			withTimeout(20_000) { reached.await() }
+			assertTrue(coordinator.state.value.running)
+			coordinator.requestFull()
+			coordinator.requestFull()
+			release.complete(Unit)
+			val finished = withTimeout(20_000) {
+				coordinator.state.first { !it.running && it.completedRuns >= 2L }
+			}
+			assertEquals(NormalScanOutcome.COMPLETE, finished.outcome)
+			assertEquals(1, finished.processed)
+			assertEquals(NormalObservationStatus.PRESENT,
+				store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
+			assertNull(withTimeoutOrNull(400) { coordinator.state.first { it.completedRuns > finished.completedRuns } })
+		} finally {
+			release.complete(Unit)
+			process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
+	}
+
+	/** T08/T09: shared batch proof may not survive another producer or contradictory owner. */
+	@Test fun normalCoordinatorBatchRejectsChangedProofAndProducer() = runBlocking {
+		val (first, file) = observedDownload(810_203L)
+		val (second, _) = observedDownload(810_204L)
+		val store = observationStore()
+		val titles = listOf(first, second)
+		val stale = requireNotNull(store.prepareBatch(titles))
+		val token = store.beginMutation(second.id)
+		store.finishMutation(second.id, token)
+		assertTrue(store.publishBatch(stale).isEmpty())
+		assertTrue(store.readVisible(titles, FavouriteSpace.NORMAL).isEmpty())
+		val rootAba = requireNotNull(store.prepareBatch(titles))
+		destinations.setRoot(FavouriteSpace.NORMAL, File(root, "batch-new-normal"))
+		destinations.setRoot(FavouriteSpace.NORMAL, root)
+		assertTrue(store.publishBatch(rootAba).isEmpty())
+		assertTrue(store.readVisible(titles, FavouriteSpace.NORMAL).isEmpty())
+		val proof = requireNotNull(store.prepareBatch(titles))
+		val foreign = FavouriteDownloadIndexEntity(second.id, FavouriteSpace.PRIVATE.dbValue, file.path)
+		db.getFavouriteDownloadIndexDao().upsert(foreign)
+		assertTrue(store.publishBatch(proof).isEmpty())
+		assertTrue(store.readVisible(titles, FavouriteSpace.NORMAL).isEmpty())
+		val current = store.publishBatch(requireNotNull(store.prepareBatch(titles)))
+		assertEquals(NormalObservationStatus.UNKNOWN, current[first.id])
+		assertEquals(NormalObservationStatus.PRESENT, current[second.id])
+		assertTrue(file.exists())
+		assertEquals(foreign, db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.PRIVATE.dbValue, second.id))
+	}
+
+	/** T12: failed and cancelled work have truthful terminal state and manual retry. */
+	@Test fun normalCoordinatorReportsFailureAndCancellation() = runBlocking {
+		observedDownload(810_205L)
+		val realDao = db.getNormalDownloadObservationDao()
+		var fail = true
+		val failedStore = observationStore(object : NormalDownloadObservationDao by realDao {
+			override suspend fun upsert(row: NormalDownloadObservationEntity) {
+				if (fail) {
+					fail = false
+					throw java.io.IOException("Controlled scanner write failure")
+				}
+				realDao.upsert(row)
+			}
+		})
+		val failed = NormalDownloadScanCoordinator(db, normalDownloadScope, failedStore, normalDirectoryDiscovery)
+		val failureScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+		try {
+			failed.start(failureScope)
+			val first = withTimeout(20_000) { failed.state.first { !it.running && it.completedRuns > 0 } }
+			assertEquals(NormalScanOutcome.FAILED, first.outcome)
+			failed.requestFull()
+			val recovered = withTimeout(20_000) { failed.state.first { !it.running && it.completedRuns > first.completedRuns } }
+			assertEquals(NormalScanOutcome.COMPLETE, recovered.outcome)
+		} finally {
+			failureScope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
+		val reached = CompletableDeferred<Unit>()
+		val cancelledStore = observationStore(object : NormalDownloadObservationDao by realDao {
+			override suspend fun upsert(row: NormalDownloadObservationEntity) {
+				reached.complete(Unit)
+				CompletableDeferred<Unit>().await()
+			}
+		})
+		val cancelled = NormalDownloadScanCoordinator(db, normalDownloadScope, cancelledStore, normalDirectoryDiscovery)
+		val cancellationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+		try {
+			cancelled.start(cancellationScope)
+			withTimeout(20_000) { reached.await() }
+			assertTrue(cancelled.state.value.running)
+			cancellationScope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+			assertEquals(NormalScanOutcome.CANCELLED, cancelled.state.value.outcome)
+			assertFalse(cancelled.state.value.running)
+		} finally {
+			cancellationScope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
+	}
+
+	/** Early T14 probe: comparable sequential vs batched observation work, 1,024 real Room titles.
+	 * No arbitrary speed threshold; physical first-render/scroll still needs owner evidence.
+	 */
+	@Test fun normalCoordinatorLargeLibraryWorkProbe() = runBlocking {
+		val titles = (0 until 1024).map { remote(820_000L + it) }
+		val category = repository.createCategory("Normal scanner performance fixture", ListSortOrder.NEWEST, false, false, true, FavouriteSpace.NORMAL)
+		for (chunk in titles.chunked(128)) {
+			for (manga in chunk) data.storeManga(manga, replaceExisting = true)
+			repository.updateCategoryMemberships(chunk, mapOf(category.id to true), FavouriteSpace.NORMAL)
+		}
+		// Real populated download parent, one positive and remaining absent titles.
+		val file = download(root, titles.first()).file.canonicalFile
+		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(titles.first().id, FavouriteSpace.NORMAL.dbValue, file.path))
+		val realDao = db.getNormalDownloadObservationDao()
+		val writes = java.util.concurrent.atomic.AtomicInteger()
+		fun countedStore() = observationStore(object : NormalDownloadObservationDao by realDao {
+			override suspend fun upsert(row: NormalDownloadObservationEntity) {
+				writes.incrementAndGet()
+				realDao.upsert(row)
+			}
+		})
+		val baseline = countedStore()
+		val space = FavouriteSpace.NORMAL
+		suspend fun sequential(): Long {
+			val start = android.os.SystemClock.elapsedRealtime()
+			for (manga in titles) assertTrue(baseline.scan(manga, space))
+			return android.os.SystemClock.elapsedRealtime() - start
+		}
+		val baselineInitial = sequential()
+		assertEquals(titles.size, writes.getAndSet(0))
+		val baselineChanges = baseline.changes.value
+		val baselineUnchanged = sequential()
+		assertEquals(0, writes.getAndSet(0))
+		assertEquals(baselineChanges, baseline.changes.value)
+		val batched = countedStore()
+		val coordinator = NormalDownloadScanCoordinator(db, normalDownloadScope, batched, normalDirectoryDiscovery)
+		val process = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+		suspend fun awaitRun(after: Long) = withTimeout(180_000) {
+			coordinator.state.first { !it.running && it.completedRuns > after }
+		}
+		try {
+			val start = android.os.SystemClock.elapsedRealtime()
+			coordinator.start(process)
+			val initial = awaitRun(0)
+			val batchInitial = android.os.SystemClock.elapsedRealtime() - start
+			assertEquals(NormalScanOutcome.COMPLETE, initial.outcome)
+			assertEquals(titles.size, initial.processed)
+			assertEquals(titles.size, writes.getAndSet(0))
+			val revision = batched.changes.value
+			val unchangedStart = android.os.SystemClock.elapsedRealtime()
+			coordinator.requestFull()
+			val unchanged = awaitRun(initial.completedRuns)
+			val batchUnchanged = android.os.SystemClock.elapsedRealtime() - unchangedStart
+			assertEquals(NormalScanOutcome.COMPLETE, unchanged.outcome)
+			assertEquals(titles.size, unchanged.processed)
+			assertEquals(0, writes.getAndSet(0))
+			assertEquals(revision, batched.changes.value)
+			val visible = batched.readVisible(titles, space)
+			assertEquals(titles.size, visible.size)
+			assertEquals(file.path, visible[titles.first().id]?.fact?.path)
+			assertEquals(titles.size - 1, visible.values.count { it.fact.status == NormalObservationStatus.ABSENT })
+			android.util.Log.i("NormalScannerPerf", "titles=${titles.size} sequential_initial_ms=$baselineInitial sequential_unchanged_ms=$baselineUnchanged batched_initial_ms=$batchInitial batched_unchanged_ms=$batchUnchanged initial_writes=${titles.size} unchanged_writes=0")
+		} finally {
+			process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
+	}
+
+	/** T12: metadata scope changes trigger work even without a foreground/manual request. */
+	@Test fun normalCoordinatorObservesMembershipAndProducerChanges() = runBlocking {
+		val (first, _) = observedDownload(810_206L)
+		val store = observationStore()
+		val coordinator = NormalDownloadScanCoordinator(db, normalDownloadScope, store, normalDirectoryDiscovery)
+		val process = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+		val space = FavouriteSpace.NORMAL
+		try {
+			coordinator.start(process)
+			val startup = withTimeout(20_000) { coordinator.state.first { !it.running && it.completedRuns > 0 } }
+			assertEquals(NormalScanOutcome.COMPLETE, startup.outcome)
+			val (second, file) = observedDownload(810_207L)
+			withTimeout(30_000) {
+				while (store.readVisible(listOf(second), space)[second.id]?.fact?.path != file.path) {
+					kotlinx.coroutines.delay(50)
+				}
+			}
+			val token = store.beginMutation(second.id)
+			try {
+				assertTrue(file.deleteRecursively())
+				assertNull(store.readVisible(listOf(second), space)[second.id])
+			} finally {
+				store.finishMutation(second.id, token)
+			}
+			withTimeout(30_000) {
+				while (store.readVisible(listOf(second), space)[second.id]?.fact?.status != NormalObservationStatus.ABSENT) {
+					kotlinx.coroutines.delay(50)
+				}
+			}
+			assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(first), space)[first.id]?.fact?.status)
+		} finally {
+			process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
 	}
 
 	/** T08: actual destination A -> B -> A invalidates work and cached read snapshots. */

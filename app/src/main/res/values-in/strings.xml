@@ -831,4 +831,14 @@
     <string name="exhentai_presence_full_scan_summary">Periksa folder download aktif tanpa mengubah ownership download.</string>
     <string name="exhentai_presence_progress">Memeriksa %1$d dari %2$d entri</string>
     <string name="exhentai_presence_unavailable">Sebagian penyimpanan download tidak tersedia; status terakhir dipertahankan.</string>
+    <string name="normal_download_resume_scan">Pindai unduhan Favorit Normal saat kembali ke aplikasi</string>
+    <string name="normal_download_resume_scan_summary">Periksa lokasi unduhan Normal aktif saat kembali ke aplikasi. Pemindaian startup dan manual tetap aktif.</string>
+    <string name="normal_download_full_scan">Pindai lengkap unduhan Favorit Normal</string>
+    <string name="normal_download_full_scan_summary">Periksa unduhan di lokasi Normal aktif tanpa mengubah file atau kepemilikan.</string>
+    <string name="normal_download_scan_progress">Memeriksa %1$d dari %2$d judul</string>
+    <string name="normal_download_scan_complete">Pemindaian selesai: %1$d dari %2$d judul diperiksa</string>
+    <string name="normal_download_scan_unavailable">Lokasi unduhan Normal aktif tidak tersedia.</string>
+    <string name="normal_download_scan_partial">Pemindaian belum tuntas: %1$d dari %2$d judul diperiksa; sebagian hasil belum pasti atau tertunda.</string>
+    <string name="normal_download_scan_failed">Pemindaian gagal. Coba lagi.</string>
+    <string name="normal_download_scan_cancelled">Pemindaian dibatalkan.</string>
 </resources>

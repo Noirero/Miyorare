@@ -56,6 +56,9 @@ import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceScanState
+import org.koitharu.kotatsu.favourites.domain.NormalDownloadScanCoordinator
+import org.koitharu.kotatsu.favourites.domain.NormalDownloadScanState
+import org.koitharu.kotatsu.favourites.domain.NormalScanOutcome
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
@@ -127,6 +130,8 @@ class DownloadsSettingsFragment :
 					onRebuildDownloadsIndex = maintenanceViewModel::start,
 					presenceState = maintenanceViewModel.presenceState,
 					onFullExhentaiScan = maintenanceViewModel::scanExhentaiPresenceFull,
+					normalScanState = maintenanceViewModel.normalScanState,
+					onFullNormalScan = maintenanceViewModel::scanNormalDownloadsFull,
 				)
 			}
 		}
@@ -260,6 +265,8 @@ private fun DownloadsScreen(
 	onRebuildDownloadsIndex: () -> Unit,
 	presenceState: StateFlow<ExhentaiPresenceScanState>,
 	onFullExhentaiScan: () -> Unit,
+	normalScanState: StateFlow<NormalDownloadScanState>,
+	onFullNormalScan: () -> Unit,
 ) {
 	val ctx = LocalContext.current
 	val storage by storageSummary.collectAsState()
@@ -287,6 +294,8 @@ private fun DownloadsScreen(
 	var privateNotificationDetails by rememberBooleanPref(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)
 	var scanExhentaiOnResume by rememberBooleanPref(ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME, true)
 	val presence by presenceState.collectAsState()
+	var scanNormalOnResume by rememberBooleanPref(NormalDownloadScanCoordinator.KEY_SCAN_ON_RESUME, true)
+	val normalScan by normalScanState.collectAsState()
 
 	LaunchedEffect(metered) { onMeteredChanged() }
 
@@ -392,6 +401,34 @@ private fun DownloadsScreen(
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.settings_download_maintenance)) {
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.normal_download_resume_scan),
+						subtitle = stringResource(R.string.normal_download_resume_scan_summary),
+						checked = scanNormalOnResume,
+						onCheckedChange = { scanNormalOnResume = it },
+						icon = R.drawable.ic_sync,
+						shape = pos.shape,
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.normal_download_full_scan),
+						subtitle = if (normalScan.running) {
+							stringResource(R.string.normal_download_scan_progress, normalScan.processed, normalScan.total)
+						} else when (normalScan.outcome) {
+							NormalScanOutcome.IDLE -> stringResource(R.string.normal_download_full_scan_summary)
+							NormalScanOutcome.COMPLETE -> stringResource(R.string.normal_download_scan_complete, normalScan.processed, normalScan.total)
+							NormalScanOutcome.UNAVAILABLE -> stringResource(R.string.normal_download_scan_unavailable)
+							NormalScanOutcome.PARTIAL -> stringResource(R.string.normal_download_scan_partial, normalScan.processed, normalScan.total)
+							NormalScanOutcome.FAILED -> stringResource(R.string.normal_download_scan_failed)
+							NormalScanOutcome.CANCELLED -> stringResource(R.string.normal_download_scan_cancelled)
+						},
+						icon = R.drawable.ic_sync,
+						shape = pos.shape,
+						onClick = onFullNormalScan,
+					)
+				}
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.exhentai_presence_resume_scan),
