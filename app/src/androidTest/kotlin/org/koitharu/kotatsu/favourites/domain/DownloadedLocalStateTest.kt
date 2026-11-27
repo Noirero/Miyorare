@@ -12,6 +12,7 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.RecyclerView
@@ -2984,8 +2985,7 @@ class DownloadedLocalStateTest {
 			try {
 				ActivityScenario.launch<SettingsActivity>(intent).use {
 					val action = hasText(context.getString(R.string.normal_download_full_scan))
-					ui.onNode(hasScrollToIndexAction()).performScrollToNode(action)
-					ui.onNode(action).assertIsDisplayed()
+					ui.onNode(action and hasClickAction()).performScrollTo().assertIsDisplayed()
 					coordinator.start(process)
 					val prefix = context.getString(R.string.normal_download_scan_progress, 0, 1024).substringBefore("0")
 					assertTrue(prefix.isNotBlank())
