@@ -1286,8 +1286,14 @@ class FavouritesListViewModel @Inject constructor(
 		} else {
 			"favourites.manga_id"
 		}
-		val scopedDownloadedCondition = downloadedContentClassifier.getDownloadedCondition(favouriteSpace, mangaIdColumn)
 		val anyDownloadedCondition = downloadedContentClassifier.getAnyDownloadedCondition(mangaIdColumn)
+		// Historical ownership is not a safe negative prefilter for eligible Normal favourites.
+		// Keep both Normal status queries broad; the bounded classifier applies current observations.
+		val notDownloadedCondition = if (favouriteSpace == FavouriteSpace.NORMAL) {
+			anyDownloadedCondition
+		} else {
+			"NOT(${downloadedContentClassifier.getLegacyDownloadedCondition(favouriteSpace, mangaIdColumn)})"
+		}
 		return filters.mapTo(LinkedHashSet(filters.size)) { option ->
 			when {
 				option == ListFilterOption.Downloaded -> ListFilterOption.SqlCondition(
@@ -1297,8 +1303,8 @@ class FavouritesListViewModel @Inject constructor(
 				)
 				option is ListFilterOption.Inverted && option.option == ListFilterOption.Downloaded ->
 					ListFilterOption.SqlCondition(
-						// Fast coarse rejection. Dual-copy false positives are removed by the bounded persisted-index verification.
-						condition = "NOT($scopedDownloadedCondition)",
+						// Private retains its existing coarse rejection; Normal must not exclude stale owners.
+						condition = notDownloadedCondition,
 						delegate = option,
 					)
 				else -> option

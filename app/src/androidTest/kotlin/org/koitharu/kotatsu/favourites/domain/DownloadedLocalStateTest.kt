@@ -653,6 +653,11 @@ class DownloadedLocalStateTest {
 		assertEquals("Only the eligible Normal favourite loses historical status; non-favourite is unchanged",
 			setOf(nonFavourite.id), shelfIds())
 		assertEquals(setOf(nonFavourite.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(manga.id, nonFavourite.id)))
+		// The historical owner must not be excluded by SQL before the active-root classifier runs.
+		val vm = favouritesViewModel()
+		vm.setFilterOption(ListFilterOption.NOT_DOWNLOADED, true)
+		vm.awaitContent("historical owner remains in Not Downloaded") { it.grid(manga.id)?.isSaved == false }
+		assertEquals(setOf(manga.id), vm.getAllSelectableIds())
 		destinations.setRoot(FavouriteSpace.NORMAL, root)
 		assertEquals(setOf(nonFavourite.id), shelfIds())
 		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
