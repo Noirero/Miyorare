@@ -54,6 +54,7 @@ internal class NavigationTabDrag(
 	private var motionEnabled = true
 	private var pressed = false
 	private var stretch = 0f
+	private var edgePull = 0f
 	private var motionViewport: Rect? = null // window coordinates of the actual tab strip, not Continue Reading
 	private val lensMatrix = Matrix()
 	private var lensShader: LinearGradient? = null
@@ -167,21 +168,22 @@ internal class NavigationTabDrag(
 				}
 			}
 			if (drag.captured) {
-				val slot = hit(drag.slots, x, y)
+				val axis = if (vertical) y else x
+				val slot = ownedSlot(drag.slots, x, y)
 				showPreview(slot?.first)
 				if (slot != null && previewId == slot.first && !drag.rejected) {
 					pressed = true
 					val rect = slot.second
-					val axis = if (vertical) y else x
 					emitSlideFrame(drag, axis, slot.first)
 					val first = drag.slots.minOf { center(it.second) }
 					val last = drag.slots.maxOf { center(it.second) }
+					edgePull = if (vertical) 0f else EnhancedNavigationMotionGeometry.edgePull(axis / density, first / density, last / density)
 					val offset = axis.coerceIn(first, last) - center(rect)
 					// The visual position updates even when the hovered item has not changed.
 					setIndicator(if (vertical) Rect(rect.left, rect.top + offset, rect.right, rect.bottom + offset)
 					else Rect(rect.left + offset, rect.top, rect.right + offset, rect.bottom))
 				} else if (!drag.rejected) {
-					// Leaving the tab strip restores its committed highlight, too.
+					// A rejected target must not advertise selection; leaving the strip alone is not rejection.
 					clearIndicator()
 				}
 			}
@@ -195,10 +197,12 @@ internal class NavigationTabDrag(
 						host.getLocationInWindow(origin)
 						val x = event.x + origin[0]
 						val y = event.y + origin[1]
-						hit(drag.slots, x, y)?.let { slot ->
+						ownedSlot(drag.slots, x, y)?.let { slot ->
 							showPreview(slot.first)
-							if (previewId == slot.first) emitSlideFrame(drag, if (vertical) y else x, slot.first)
-							commit?.invoke(slot.first)
+							if (previewId == slot.first) {
+								emitSlideFrame(drag, if (vertical) y else x, slot.first)
+								commit?.invoke(slot.first)
+							}
 						}
 					}
 				} finally {
@@ -272,6 +276,7 @@ internal class NavigationTabDrag(
 		settleId = null
 		pressed = false
 		stretch = 0f
+		edgePull = 0f
 		progress = 0f
 		if (indicatorBounds == null) return
 		indicatorBounds = null
@@ -279,29 +284,13 @@ internal class NavigationTabDrag(
 		invalidateIndicator()
 	}
 
-	/**
-	 * Classic keeps the original overlay exactly. Enhanced bottom-bar material is drawn behind
-	 * Compose icons; only the part above/below the strip is drawn by the host. The rail has no
-	 * Compose underlay, so its enhanced material stays translucent and inside native bounds.
-	 */
+	/** Classic retains its overlay; enhanced bottom bars use one Compose underlay. */
 	fun draw(canvas: Canvas) {
 		val from = indicatorBounds ?: return
 		if (motionEnabled && motion != NavigationMotion.CLASSIC_GLIDE) {
-			val viewport = motionViewport
-			if (viewport != null && !vertical) {
-				host.getLocationInWindow(origin)
-				val top = viewport.top - origin[1]
-				val bottom = viewport.bottom - origin[1]
-				for (range in 0..1) {
-					val saved = canvas.save()
-					if (range == 0) canvas.clipRect(0f, 0f, host.width.toFloat(), top.coerceAtLeast(0f))
-					else canvas.clipRect(0f, bottom.coerceAtMost(host.height.toFloat()), host.width.toFloat(), host.height.toFloat())
-					drawEnhanced(canvas, underlay = true)
-					canvas.restoreToCount(saved)
-				}
-			} else {
-				drawEnhanced(canvas, underlay = false)
-			}
+			// Bottom bars draw the entire material once, behind icons in the unclipped strip layer.
+			// The native rail retains its bounded translucent overlay.
+			if (motionViewport == null || vertical) drawEnhanced(canvas, underlay = false)
 			return
 		}
 		val to = settleId?.let { id -> visibleSlots().firstOrNull { it.first == id }?.second } ?: from
@@ -358,6 +347,7 @@ internal class NavigationTabDrag(
 			active = active,
 			stretch = stretch,
 			vertical = vertical,
+			edgePull = edgePull,
 		) ?: return
 		shape.set(geometry.left * density, geometry.top * density, geometry.right * density, geometry.bottom * density)
 		val radius = geometry.radius * density
@@ -429,6 +419,16 @@ internal class NavigationTabDrag(
 		}
 		return nearest.takeIf { coordinate >= first && coordinate < last }
 	}
+
+	// After capture, project onto the navigation axis. Initial hit-testing is unchanged.
+	// Prefer an actual hit; outside the strip, choose the nearest frozen slot interval.
+	private fun ownedSlot(slots: List<Pair<Int, Rect>>, x: Float, y: Float): Pair<Int, Rect>? =
+		hit(slots, x, y) ?: slots.minByOrNull { (_, rect) ->
+			val axis = if (vertical) y else x
+			val start = if (vertical) rect.top else rect.left
+			val end = if (vertical) rect.bottom else rect.right
+			maxOf(start - axis, axis - end, 0f)
+		}
 
 	private fun contains(rect: Rect, x: Float, y: Float) =
 		x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom

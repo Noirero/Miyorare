@@ -22,11 +22,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -202,7 +202,7 @@ fun LegacyGlowNavBar(
 			)
 			.padding(2.dp),
 	) {
-		Surface(
+		NavigationMotionSurface(
 			modifier = Modifier.fillMaxWidth(),
 			shape = barShape,
 			color = if (favouritesGlass != null) Color.Transparent else barContainer,
@@ -217,15 +217,13 @@ fun LegacyGlowNavBar(
 					},
 				),
 			),
-			shadowElevation = 0.dp,
+			glass = favouritesGlass,
 		) {
 			Row(
 				modifier = Modifier
 					.fillMaxWidth()
-					.then(
-						if (favouritesGlass != null) Modifier.background(favouritesGlass, barShape) else Modifier,
-					)
 					.then(motionDecoration)
+					.clip(barShape)
 					.then(
 						if (emphasizeFavourites) {
 							Modifier

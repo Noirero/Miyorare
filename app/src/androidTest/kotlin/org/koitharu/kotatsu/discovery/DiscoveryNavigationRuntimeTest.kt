@@ -941,6 +941,18 @@ class DiscoveryNavigationRuntimeTest {
 							val sign = if (to.x > from.x) 1f else -1f
 							assertEquals(if (scale == 1) sign * pages.width * 0.5f else 0f, incoming.translationX, 2f)
 						}
+						// Continue the same captured stream above the entire preview navbar.
+						scenario.onActivity {
+							val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+							val point = from + (to - from) * (if (scale == 1) 0.5f else 1f)
+							val ev = MotionEvent.obtain(down, down + 48, MotionEvent.ACTION_MOVE, point.x - origin[0], -bar.height.toFloat(), 0)
+							try { assertTrue(bar.dispatchTouchEvent(ev)) } finally { ev.recycle() }
+							assertEquals(R.id.nav_favorites, bar.selectedItemId)
+							val incoming = pages.getChildAt(1)
+							assertEquals(View.VISIBLE, incoming.visibility)
+							val sign = if (to.x > from.x) 1f else -1f
+							assertEquals(if (scale == 1) sign * pages.width * 0.5f else 0f, incoming.translationX, 2f)
+						}
 					} finally { send(MotionEvent.ACTION_CANCEL, 1f, 64) }
 					settled(R.id.nav_favorites, 0)
 				}
@@ -1330,6 +1342,63 @@ class DiscoveryNavigationRuntimeTest {
 				assertNull("Rejected preview must not advertise a different tab", drag.indicatorBounds)
 			} finally {
 				drag.reset()
+			}
+		}
+	}
+
+	@Test fun ownedDragProjectsOutsideStripUntilReleaseOrCancellation() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			val host = View(app)
+			val slop = android.view.ViewConfiguration.get(app).scaledTouchSlop.toFloat().coerceAtLeast(1f)
+			for (vertical in listOf(false, true)) {
+				fun slot(start: Float, end: Float) = if (vertical) SlotRect(0f, start * slop, 4 * slop, end * slop)
+					else SlotRect(start * slop, 0f, end * slop, 4 * slop)
+				val slots = listOf(1 to slot(0f, 10f), 2 to slot(10f, 20f), 3 to slot(20f, 30f))
+				for (motion in NavigationMotion.entries) {
+					val previews = mutableListOf<Int?>()
+					val commits = mutableListOf<Int>()
+					val drag = NavigationTabDrag(host, vertical, { slots }, { 1 }, { android.graphics.Color.RED }, {})
+					drag.setMotion(motion)
+					drag.preview = { previews.add(it); true }
+					drag.commit = { commits.add(it) }
+					var down = SystemClock.uptimeMillis()
+					fun send(action: Int, axis: Float, cross: Float, elapsed: Long) {
+						val x = (if (vertical) cross else axis) * slop
+						val y = (if (vertical) axis else cross) * slop
+						val event = MotionEvent.obtain(down, down + elapsed, action, x, y, 0)
+						try { assertTrue(drag.dispatch(event) { true }) } finally { event.recycle() }
+					}
+					try {
+						// An outside DOWN still cannot start tab navigation.
+						send(MotionEvent.ACTION_DOWN, 5f, -3f, 0)
+						send(MotionEvent.ACTION_MOVE, 15f, 2f, 16)
+						send(MotionEvent.ACTION_UP, 15f, 2f, 32)
+						assertTrue(previews.isEmpty() && commits.isEmpty())
+						down = SystemClock.uptimeMillis()
+						send(MotionEvent.ACTION_DOWN, 5f, 2f, 0)
+						send(MotionEvent.ACTION_MOVE, 15f, 2f, 16)
+						send(MotionEvent.ACTION_MOVE, 15f, -5f, 32)
+						assertEquals(2, previews.last())
+						assertNotNull(drag.indicatorBounds)
+						send(MotionEvent.ACTION_MOVE, 38f, -5f, 48)
+						assertEquals(3, previews.last())
+						assertNotNull(drag.indicatorBounds)
+						send(MotionEvent.ACTION_MOVE, -8f, 8f, 64)
+						assertEquals(1, previews.last())
+						send(MotionEvent.ACTION_MOVE, 15f, 2f, 80)
+						assertEquals(2, previews.last())
+						send(MotionEvent.ACTION_UP, 38f, -5f, 96)
+						assertEquals(listOf(3), commits)
+						drag.reset()
+						down = SystemClock.uptimeMillis()
+						send(MotionEvent.ACTION_DOWN, 5f, 2f, 0)
+						send(MotionEvent.ACTION_MOVE, 15f, 2f, 16)
+						send(MotionEvent.ACTION_MOVE, 38f, -5f, 32)
+						send(MotionEvent.ACTION_CANCEL, 38f, -5f, 48)
+						assertEquals(listOf(3), commits)
+						assertNull(previews.last())
+					} finally { drag.reset() }
+				}
 			}
 		}
 	}
