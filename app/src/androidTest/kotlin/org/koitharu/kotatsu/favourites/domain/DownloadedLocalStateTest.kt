@@ -1,6 +1,34 @@
 package org.koitharu.kotatsu.favourites.domain
 
 import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.SystemClock
+import android.view.FrameMetrics
+import android.view.Window
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.performScrollToNode
+import androidx.lifecycle.ViewModelProvider
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.test.core.app.ActivityScenario
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.details.ui.DetailsExpressiveActivity
+import org.koitharu.kotatsu.details.ui.DetailsViewModel
+import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet
+import org.koitharu.kotatsu.details.ui.pager.ChapterGroupingMode
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
+import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
+import org.koitharu.kotatsu.list.ui.model.MangaListModel
+import org.koitharu.kotatsu.list.ui.model.MangaDetailedListModel
+import org.koitharu.kotatsu.settings.SettingsActivity
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.drawable.ColorDrawable
@@ -184,6 +212,7 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var classifier: DownloadedContentClassifier
 	@Inject internal lateinit var liveObservations: NormalDownloadObservationStore
+	@Inject internal lateinit var scannerUiCoordinatorProvider: javax.inject.Provider<NormalDownloadScanCoordinator>
 	@Inject lateinit var reconciler: LegacyFavouriteDownloadReconciler
 	@Inject lateinit var repository: FavouritesRepository
 	@Inject lateinit var mapper: MangaListMapper
@@ -2709,6 +2738,371 @@ class DownloadedLocalStateTest {
 			assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(first), space)[first.id]?.fact?.status)
 		} finally {
 			process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
+	}
+
+	/** Real Activity/RecyclerView, actual production observation singleton; no artificial scan delay. */
+	@Test fun normalCoordinatorActualFavoritesTimingAndIcons() = runBlocking<Unit> {
+		val space = FavouriteSpace.NORMAL
+		val (categoryId, titles) = scannerUiLibrary(1024, 830_000L)
+		val manga = titles.last()
+		val file = scannerUiDownload(manga)
+		// Real parent inventory with positive and negative candidates.
+		for (item in titles.take(31)) scannerUiDownload(item)
+		val iconCategory = repository.createCategory("Scanner UI icons", ListSortOrder.NEWEST, false, false, true, space)
+		val negative = titles[titles.lastIndex - 1]
+		repository.updateCategoryMemberships(listOf(manga, negative), mapOf(iconCategory.id to true), space)
+		settings.isOnboardingCompleted = true
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		display.setListMode(FavouriteContentType.MANGA, ListMode.GRID)
+		val coordinator = scannerUiCoordinatorProvider.get()
+		val process = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+		val intent = Intent(context, FavouritesActivity::class.java)
+			.putExtra(AppRouter.KEY_ID, categoryId).putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue)
+		val iconIntent = Intent(context, FavouritesActivity::class.java)
+			.putExtra(AppRouter.KEY_ID, iconCategory.id).putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue)
+		val overlaps = ArrayList<Boolean>()
+		try {
+			coordinator.start(process)
+			awaitScannerUiRun(coordinator, 0)
+			// Same candidate/workload: idle, then actual unchanged scan. Not a prefeature APK baseline.
+			for (active in listOf(false, true)) {
+				val run = if (active) startScannerUiRun(coordinator) else coordinator.state.value.completedRuns
+				val before = SystemClock.elapsedRealtime()
+				ActivityScenario.launch<FavouritesActivity>(intent).use { scenario ->
+					awaitScannerUi("attached Favorites manga row") {
+						var ready = false
+						scenario.onActivity { activity ->
+							val rv = activity.findViewById<RecyclerView>(R.id.recyclerView)
+							val adapter = rv?.adapter as? MangaListAdapter
+							ready = rv != null && rv.isShown && rv.childCount > 0 &&
+								(0 until rv.childCount).any { index ->
+									val child = rv.getChildAt(index)
+									adapter?.items?.getOrNull(rv.getChildAdapterPosition(child)) is MangaListModel &&
+										child.isShown && child.width > 0 && child.height > 0
+								}
+						}
+						ready
+					}
+					val visibleMs = SystemClock.elapsedRealtime() - before
+					val overlap = scannerUiOverlap(coordinator, run)
+					if (active) overlaps += overlap else assertScannerUiIdle(coordinator, run)
+					android.util.Log.i("NormalScannerUiPerf", "stage=favorites_visible active=$active overlap=$overlap run=$run titles=1024 elapsed_ms=$visibleMs")
+					if (active) awaitScannerUiRun(coordinator, run)
+					// Reset the same actual recycler position before each independent scroll sample.
+					scenario.onActivity { it.findViewById<RecyclerView>(R.id.recyclerView).scrollToPosition(0) }
+					instrumentation.waitForIdleSync()
+					val scrollRun = if (active) startScannerUiRun(coordinator) else coordinator.state.value.completedRuns
+					val frames = java.util.Collections.synchronizedList(mutableListOf<Long>())
+					val dropped = java.util.concurrent.atomic.AtomicInteger()
+					val worker = HandlerThread("normal-scanner-ui-frames").apply { start() }
+					val handler = Handler(worker.looper)
+					val listener = Window.OnFrameMetricsAvailableListener { _, metrics, lost ->
+						val duration = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
+						if (duration > 0) frames.add(duration)
+						dropped.addAndGet(lost)
+					}
+					var window: Window? = null
+					var firstPosition = -1
+					val scrollStart = SystemClock.elapsedRealtime()
+					try {
+						scenario.onActivity { activity ->
+							val rv = activity.findViewById<RecyclerView>(R.id.recyclerView)
+							firstPosition = (rv.layoutManager as LinearLayoutManager).findFirstVisibleItemPosition()
+							window = activity.window
+							activity.window.addOnFrameMetricsAvailableListener(listener, handler)
+							rv.smoothScrollBy(0, rv.height * 3)
+						}
+						awaitScannerUi("actual scroll completed") {
+							var done = false
+							scenario.onActivity { activity ->
+								val rv = activity.findViewById<RecyclerView>(R.id.recyclerView)
+								done = rv.scrollState == RecyclerView.SCROLL_STATE_IDLE &&
+									(rv.layoutManager as LinearLayoutManager).findFirstVisibleItemPosition() > firstPosition
+							}
+							done
+						}
+						val scrollOverlap = scannerUiOverlap(coordinator, scrollRun)
+						if (active) overlaps += scrollOverlap else assertScannerUiIdle(coordinator, scrollRun)
+						val scrollElapsed = SystemClock.elapsedRealtime() - scrollStart
+						scenario.onActivity { window?.removeOnFrameMetricsAvailableListener(listener); window = null }
+						val flushed = java.util.concurrent.CountDownLatch(1)
+						handler.post { flushed.countDown() }
+						assertTrue(flushed.await(5, java.util.concurrent.TimeUnit.SECONDS))
+						val values = synchronized(frames) { frames.sorted() }
+						assertTrue("No actual frame samples", values.isNotEmpty())
+						val p95 = values[((values.size - 1) * .95).toInt()]
+						android.util.Log.i("NormalScannerUiPerf", "stage=favorites_scroll active=$active overlap=$scrollOverlap run=$scrollRun frames=${values.size} dropped=${dropped.get()} p95_ns=$p95 max_ns=${values.last()} elapsed_ms=$scrollElapsed")
+					} finally {
+						scenario.onActivity { window?.removeOnFrameMetricsAvailableListener(listener) }
+						worker.quitSafely()
+						worker.join(5000)
+					}
+					if (active) awaitScannerUiRun(coordinator, scrollRun)
+				}
+			}
+			// Actual bound icons, not only adapter booleans: both styles and detailed list/grid.
+			for (style in listOf(MiyorareDesignStyle.MODERN, MiyorareDesignStyle.CLASSIC)) {
+				settings.setMiyorareDesignStyle(style)
+				for (mode in listOf(ListMode.GRID, ListMode.DETAILED_LIST)) {
+					display.setListMode(FavouriteContentType.MANGA, mode)
+					ActivityScenario.launch<FavouritesActivity>(iconIntent).use { scenario ->
+						assertScannerUiCover(scenario, manga.id, true)
+						assertScannerUiCover(scenario, negative.id, false)
+						if (style == MiyorareDesignStyle.MODERN && mode == ListMode.GRID) {
+							val chapterFile = requireNotNull(file.listFiles()).single { it.extension == "cbz" }
+							val bytes = chapterFile.readBytes()
+							assertTrue(chapterFile.delete())
+							val after = coordinator.state.value.completedRuns
+							val changedAt = SystemClock.elapsedRealtime()
+							coordinator.requestFull()
+							awaitScannerUiRun(coordinator, after)
+							assertScannerUiCover(scenario, manga.id, false)
+							android.util.Log.i("NormalScannerUiPerf", "stage=favorites_changed_icon elapsed_ms=${SystemClock.elapsedRealtime() - changedAt}")
+							assertTrue(file.isDirectory)
+							chapterFile.writeBytes(bytes)
+							val restored = coordinator.state.value.completedRuns
+							coordinator.requestFull()
+							awaitScannerUiRun(coordinator, restored)
+							assertScannerUiCover(scenario, manga.id, true)
+						}
+					}
+				}
+			}
+			// A missed natural overlap is incomplete evidence, never a passing active measurement.
+			assertEquals("Natural scan overlap missing: $overlaps", listOf(true, true), overlaps)
+		} finally {
+			process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+		}
+	}
+
+	/** Real Details Activity, inline Compose card and actual chapter sheet adapters. */
+	@OptIn(ExperimentalTestApi::class)
+	@Test fun normalCoordinatorActualDetailsChapterModes() = runComposeUiTest {
+		val ui = this
+		runBlocking<Unit> {
+			val space = FavouriteSpace.NORMAL
+			val seed = remote(831_100L)
+			val first = seed.chapters.orEmpty().single().copy(title = "Chapter 0", number = 0f, branch = null)
+			val second = first.copy(id = first.id + 1, title = "Chapter 2", number = 2f, url = "/chapter/2")
+			val manga = seed.copy(chapters = listOf(first, second))
+			favourite(manga)
+			data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			val container = download(root, manga.copy(chapters = listOf(first))).file.canonicalFile
+			val original = requireNotNull(container.listFiles()).single { it.extension == "cbz" }
+			val bytes = original.readBytes()
+			val sibling = File(container, "Chapter 2.cbz").apply { writeBytes(bytes) }
+			val specialFile = File(container, "Chapter 0 Special.cbz")
+			assertTrue(original.renameTo(specialFile))
+			assertFalse(File(container, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+			db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, space.dbValue, container.path))
+			scannerUiLibrary(1024, 832_000L)
+			PreferenceManager.getDefaultSharedPreferences(context).edit(commit = true) {
+				remove("details_chapter_options_v1_manga_normal")
+				putString("details_chapter_options_v1_manga_normal_grouping", ChapterGroupingMode.OFF.name)
+			}
+			settings.isOnboardingCompleted = true
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			val coordinator = scannerUiCoordinatorProvider.get()
+			val process = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+			try {
+				coordinator.start(process)
+				awaitScannerUiRun(coordinator, 0)
+				val overlaps = ArrayList<Boolean>()
+				for (active in listOf(false, true)) {
+					val run = if (active) startScannerUiRun(coordinator) else coordinator.state.value.completedRuns
+					val started = SystemClock.elapsedRealtime()
+					ActivityScenario.launch<DetailsExpressiveActivity>(AppRouter.detailsIntent(context, manga.id, space)).use { scenario ->
+						lateinit var vm: DetailsViewModel
+						scenario.onActivity { vm = ViewModelProvider(it)[DetailsViewModel::class.java] }
+						val rows = withTimeout(30_000) { vm.chapters.first { rows ->
+							rows.size == 3 && rows.any { it.chapter.id == first.id && !it.isDownloaded } &&
+								rows.any { it.chapter.id == second.id && it.isDownloaded } &&
+								rows.any { it.chapter.id !in setOf(first.id, second.id) && it.isDownloaded }
+						} }
+						val special = rows.single { it.chapter.id !in setOf(first.id, second.id) }
+						assertNotEquals(ChapterPersonalKey.of(first), special.personalKey)
+						// Scope the icon to the clickable row containing the exact chapter title.
+						fun inline(row: ChapterListItem, saved: Boolean) {
+							val title = hasText(row.getTitle(context.resources))
+							ui.onNode(hasScrollToIndexAction()).performScrollToNode(title)
+							val card = hasClickAction() and hasAnyDescendant(title)
+							val expected = hasContentDescription(context.getString(if (saved) R.string.downloaded else R.string.download))
+							val opposite = hasContentDescription(context.getString(if (saved) R.string.download else R.string.downloaded))
+							ui.onNode(expected and hasAnyAncestor(card), useUnmergedTree = true).assertIsDisplayed()
+							ui.onNode(opposite and hasAnyAncestor(card), useUnmergedTree = true).assertDoesNotExist()
+						}
+						inline(rows.single { it.chapter.id == first.id }, false)
+						val overlap = scannerUiOverlap(coordinator, run)
+						if (active) overlaps += overlap else assertScannerUiIdle(coordinator, run)
+						android.util.Log.i("NormalScannerUiPerf", "stage=details_chapter_visible active=$active overlap=$overlap run=$run titles=1025 elapsed_ms=${SystemClock.elapsedRealtime() - started}")
+						if (active) awaitScannerUiRun(coordinator, run)
+						inline(rows.single { it.chapter.id == second.id }, true)
+						inline(special, true)
+						lateinit var sheet: ChaptersPagesSheet
+						scenario.onActivity {
+							vm.setChapterGroupingMode(ChapterGroupingMode.OFF)
+							sheet = ChaptersPagesSheet().apply { arguments = Bundle().apply { putInt(AppRouter.KEY_TAB, 0) } }
+							sheet.showNow(it.supportFragmentManager, "normal-scanner-real-chapters")
+						}
+						for (grid in listOf(false, true)) {
+							scenario.onActivity { vm.setChaptersGridView(grid) }
+							for (row in rows) assertScannerUiChapter(scenario, sheet, row.chapter.id, row.isDownloaded, grid)
+						}
+						if (active) {
+							assertTrue(specialFile.delete())
+							val changed = coordinator.state.value.completedRuns
+							coordinator.requestFull()
+							awaitScannerUiRun(coordinator, changed)
+							withTimeout(30_000) { vm.chapters.first { current ->
+								current.none { it.chapter.id == special.chapter.id && it.isDownloaded } &&
+									current.any { it.chapter.id == second.id && it.isDownloaded }
+							} }
+							assertScannerUiChapter(scenario, sheet, first.id, false, true)
+							assertScannerUiChapter(scenario, sheet, second.id, true, true)
+							assertTrue(sibling.exists())
+						}
+					}
+				}
+				assertEquals("Natural Details overlap missing", listOf(true), overlaps)
+			} finally {
+				process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+			}
+		}
+	}
+
+	/** Actual Downloads Settings renders in-flight progress and terminal state on a real workload. */
+	@OptIn(ExperimentalTestApi::class)
+	@Test fun normalCoordinatorActualSettingsProgress() = runComposeUiTest {
+		val ui = this
+		runBlocking<Unit> {
+			scannerUiLibrary(1024, 834_000L)
+			settings.isOnboardingCompleted = true
+			val coordinator = scannerUiCoordinatorProvider.get()
+			val process = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+			val intent = Intent(context, SettingsActivity::class.java).setAction(AppRouter.ACTION_MANAGE_DOWNLOADS)
+			try {
+				ActivityScenario.launch<SettingsActivity>(intent).use {
+					val action = hasText(context.getString(R.string.normal_download_full_scan))
+					ui.onNode(hasScrollToIndexAction()).performScrollToNode(action)
+					ui.onNode(action).assertIsDisplayed()
+					coordinator.start(process)
+					val prefix = context.getString(R.string.normal_download_scan_progress, 0, 1024).substringBefore("0")
+					assertTrue(prefix.isNotBlank())
+					var observedProgress: NormalDownloadScanState? = null
+					ui.waitUntil(30_000) {
+						val before = coordinator.state.value
+						val visible = before.running && before.total == 1024 &&
+							ui.onAllNodes(hasText(prefix, substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+						val after = coordinator.state.value
+						if (visible && after.running && before.completedRuns == after.completedRuns) {
+							observedProgress = after
+							true
+						} else false
+					}
+					val progress = requireNotNull(observedProgress)
+					android.util.Log.i("NormalScannerUiPerf", "stage=settings_progress processed=${progress.processed} total=${progress.total}")
+					val result = awaitScannerUiRun(coordinator, progress.completedRuns)
+					ui.onNode(hasText(context.getString(R.string.normal_download_scan_complete, result.processed, result.total)),
+						useUnmergedTree = true).assertIsDisplayed()
+				}
+			} finally {
+				process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+			}
+		}
+	}
+
+	private suspend fun scannerUiLibrary(count: Int, startId: Long): Pair<Long, List<Manga>> {
+		val space = FavouriteSpace.NORMAL
+		val category = repository.createCategory("Scanner UI $startId", ListSortOrder.NEWEST, false, false, true, space)
+		val titles = (0 until count).map { remote(startId + it) }
+		for (chunk in titles.chunked(128)) {
+			for (manga in chunk) data.storeManga(manga, replaceExisting = true, detailsFetched = true)
+			repository.updateCategoryMemberships(chunk, mapOf(category.id to true), space)
+		}
+		return category.id to titles
+	}
+
+	private suspend fun scannerUiDownload(manga: Manga): File {
+		val file = download(root, manga).file.canonicalFile
+		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, file.path))
+		return file
+	}
+
+	private suspend fun awaitScannerUiRun(coordinator: NormalDownloadScanCoordinator, after: Long): NormalDownloadScanState {
+		val state = withTimeout(120_000) { coordinator.state.first { !it.running && it.completedRuns > after } }
+		assertEquals(NormalScanOutcome.COMPLETE, state.outcome)
+		assertEquals(state.total, state.processed)
+		return state
+	}
+
+	private suspend fun startScannerUiRun(coordinator: NormalDownloadScanCoordinator): Long {
+		val run = coordinator.state.value.completedRuns
+		coordinator.requestFull()
+		withTimeout(30_000) { coordinator.state.first { it.running && it.completedRuns == run && it.total >= 1024 } }
+		return run
+	}
+
+	private fun scannerUiOverlap(coordinator: NormalDownloadScanCoordinator, run: Long): Boolean =
+		coordinator.state.value.let { it.running && it.completedRuns == run }
+
+	private fun assertScannerUiIdle(coordinator: NormalDownloadScanCoordinator, run: Long) {
+		val state = coordinator.state.value
+		assertTrue("Idle sample overlapped a scanner run: $state", !state.running && state.completedRuns == run)
+	}
+
+	private suspend fun awaitScannerUi(label: String, predicate: () -> Boolean) {
+		assertTrue(label, withTimeoutOrNull(30_000) {
+			while (!predicate()) delay(50)
+			true
+		} == true)
+	}
+
+	private suspend fun assertScannerUiCover(scenario: ActivityScenario<FavouritesActivity>, id: Long, saved: Boolean) {
+		awaitScannerUi("actual Favorites icon id=$id saved=$saved") {
+			var matched = false
+			scenario.onActivity { activity ->
+				val rv = activity.findViewById<RecyclerView>(R.id.recyclerView) ?: return@onActivity
+				val adapter = rv.adapter as? MangaListAdapter ?: return@onActivity
+				val position = adapter.items.indexOfFirst { item ->
+					when (item) {
+						is MangaGridModel -> item.id == id && item.isSaved == saved
+						is MangaDetailedListModel -> item.id == id && item.isSaved == saved
+						else -> false
+					}
+				}
+				if (position < 0) return@onActivity
+				val holder = rv.findViewHolderForAdapterPosition(position)
+				if (holder == null) { rv.scrollToPosition(position); return@onActivity }
+				val view = holder.itemView
+				val modern = view.findViewById<ImageView>(R.id.cover_downloaded)
+				val legacy = view.findViewById<ImageView>(R.id.status_downloaded)
+				val icons = listOfNotNull(modern, legacy)
+				matched = view.isShown && icons.isNotEmpty() && icons.any { it.isShown && it.drawable != null && it.width > 0 && it.height > 0 } == saved
+			}
+			matched
+		}
+	}
+
+	private suspend fun assertScannerUiChapter(
+		scenario: ActivityScenario<DetailsExpressiveActivity>, sheet: ChaptersPagesSheet,
+		id: Long, saved: Boolean, grid: Boolean,
+	) {
+		awaitScannerUi("actual chapter icon id=$id saved=$saved grid=$grid") {
+			var matched = false
+			scenario.onActivity {
+				val rv = sheet.view?.findViewById<RecyclerView>(R.id.recyclerView_chapters) ?: return@onActivity
+				if ((rv.layoutManager is GridLayoutManager) != grid) return@onActivity
+				val adapter = rv.adapter as? ChaptersAdapter ?: return@onActivity
+				val position = adapter.items.indexOfFirst { it is ChapterListItem && it.chapter.id == id && it.isGrid == grid && it.isDownloaded == saved }
+				if (position < 0) return@onActivity
+				val holder = rv.findViewHolderForAdapterPosition(position)
+				if (holder == null) { rv.scrollToPosition(position); return@onActivity }
+				val icon = holder.itemView.findViewById<ImageView>(R.id.imageView_downloaded) ?: return@onActivity
+				matched = holder.itemView.isShown && icon.isShown == saved &&
+					(!saved || (icon.drawable != null && icon.width > 0 && icon.height > 0))
+			}
+			matched
 		}
 	}
 
