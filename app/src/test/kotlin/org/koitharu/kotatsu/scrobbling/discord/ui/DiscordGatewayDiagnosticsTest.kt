@@ -9,7 +9,8 @@ class DiscordGatewayDiagnosticsTest {
 	@Test
 	fun exportsOnlyApprovedGatewayOutcomesAndNumericCloseCode() {
 		val events = mutableListOf<Pair<DiscordEvent, Int?>>()
-		val logger = DiscordGatewayDiagnostics { event, code -> events.add(event to code) }
+		val logger = DiscordGatewayDiagnostics({ "recording" }) { _, event, code -> events.add(event to code) }
+		logger.setEligible(true)
 
 		logger.i("Gateway", "session_id updated to private-fixture")
 		logger.d("Gateway", "Received op:0, seq:3, event :MESSAGE_CREATE")
@@ -30,5 +31,32 @@ class DiscordGatewayDiagnosticsTest {
 			),
 			events,
 		)
+	}
+
+	@Test
+	fun reusedClientFollowsActiveRecordingAndRetiredClientCannotExport() {
+		var activeRecording: String? = null
+		val events = mutableListOf<Pair<String, DiscordEvent>>()
+		val logger = DiscordGatewayDiagnostics({ activeRecording }) { recording, event, _ ->
+			events.add(recording to event)
+		}
+		logger.setEligible(true)
+		logger.i("Gateway", "Sending PRESENCE_UPDATE")
+		activeRecording = "first"
+		logger.i("Gateway", "Sending PRESENCE_UPDATE")
+		activeRecording = null
+		logger.i("Gateway", "Sending PRESENCE_UPDATE")
+		activeRecording = "second"
+		logger.d("Gateway", "Received op:0, seq:4, event :READY")
+		logger.setEligible(false)
+		logger.e("Gateway", "private-fixture")
+		logger.setEligible(true)
+		logger.retire()
+		logger.setEligible(true)
+		logger.i("Gateway", "Sending PRESENCE_UPDATE")
+		assertEquals(listOf(
+			"first" to DiscordEvent.PRESENCE_ATTEMPT,
+			"second" to DiscordEvent.GATEWAY_READY,
+		), events)
 	}
 }

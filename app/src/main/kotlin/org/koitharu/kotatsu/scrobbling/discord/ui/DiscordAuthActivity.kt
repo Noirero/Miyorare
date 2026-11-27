@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.scrobbling.discord.ui
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
@@ -29,7 +30,7 @@ class DiscordAuthActivity : BaseBrowserActivity() {
 	lateinit var discordRepository: DiscordRepository
 
 	private var tokenCheckJob: Job? = null
-	private var lastTokenCandidate: String? = null
+	private val signInAttempts = DiscordSignInAttempts(SystemClock::elapsedRealtime)
 
 	override fun onCreate2(
 		savedInstanceState: Bundle?,
@@ -56,20 +57,18 @@ class DiscordAuthActivity : BaseBrowserActivity() {
 	}
 
 	fun onTokenObtained(token: String) {
-		val candidate = token.trim()
-		if (candidate.isEmpty() || candidate == lastTokenCandidate || isFinishing || isDestroyed) return
-
-		lastTokenCandidate = candidate
+		if (isFinishing || isDestroyed) return
+		val attempt = signInAttempts.begin(token.trim()) ?: return
 		tokenCheckJob?.cancel()
 		tokenCheckJob = lifecycleScope.launch {
-			val state = completeDiscordSignIn(candidate, discordRepository::checkToken) { verifiedToken ->
-				if (!isFinishing && !isDestroyed) {
+			val state = completeDiscordSignIn(attempt.token, discordRepository::checkToken) { verifiedToken ->
+				if (signInAttempts.isCurrent(attempt) && !isFinishing && !isDestroyed) {
 					settings.discordToken = verifiedToken
 					setResult(RESULT_OK)
 					finish()
 				}
 			}
-			if (isFinishing || isDestroyed) return@launch
+			if (!signInAttempts.complete(attempt, state) || isFinishing || isDestroyed) return@launch
 
 			val message = when (state) {
 				TokenState.INVALID -> R.string.discord_token_rejected
@@ -104,4 +103,37 @@ internal suspend fun completeDiscordSignIn(
 	currentCoroutineContext().ensureActive()
 	if (state == TokenState.VALID) onVerified(token)
 	return state
+}
+
+/** Main-thread-owned attempt identity; retry only on a later callback, never a timer. */
+internal class DiscordSignInAttempts(private val now: () -> Long) {
+	class Attempt(val token: String)
+
+	private var current: Attempt? = null
+	private var retryAfter = Long.MAX_VALUE
+	private var rateLimitedUntil = 0L
+
+	fun begin(token: String): Attempt? {
+		val time = now()
+		if (token.isEmpty() || time < rateLimitedUntil ||
+			(current?.token == token && time < retryAfter)
+		) return null
+		return Attempt(token).also {
+			current = it
+			retryAfter = Long.MAX_VALUE
+		}
+	}
+
+	fun isCurrent(attempt: Attempt): Boolean = current === attempt
+
+	fun complete(attempt: Attempt, state: TokenState): Boolean {
+		if (!isCurrent(attempt)) return false
+		// No automatic retries; a conservative local minimum is not a server Retry-After.
+		retryAfter = when (state) {
+			TokenState.UNAVAILABLE -> now() + 5_000L
+			TokenState.RATE_LIMITED -> (now() + 60_000L).also { rateLimitedUntil = it }
+			else -> Long.MAX_VALUE
+		}
+		return true
+	}
 }

@@ -63,6 +63,7 @@ class DiscordRpc @Inject constructor(
 	private var lastUpdate = 0L
 
 	private var rpc: KizzyRPC? = null
+	private var gatewayDiagnostics: DiscordGatewayDiagnostics? = null
 	private var rpcRequestJob: Job? = null
 	private var rpcUpdateJob: Job? = null
 
@@ -94,6 +95,8 @@ class DiscordRpc @Inject constructor(
 	fun clearRpc() = synchronized(this) {
 		rpcUpdateJob?.cancel()
 		rpcUpdateJob = null
+		gatewayDiagnostics?.retire()
+		gatewayDiagnostics = null
 		rpc?.closeRPC()
 		rpc = null
 		lastActivity = null
@@ -126,10 +129,9 @@ class DiscordRpc @Inject constructor(
 				clearRpc()
 				return@launchRpcRequest
 			}
-			val recording = if (BuildConfig.DEBUG && !state.incognito && !state.isPeek) {
-				PerformanceDiagnostics.recordingId()
-			} else null
-			getRpc(recording)?.updateRpcAsync(
+			val diagnosticEligible = BuildConfig.DEBUG && !state.incognito && !state.isPeek
+			val recording = if (diagnosticEligible) PerformanceDiagnostics.recordingId() else null
+			getRpc(diagnosticEligible)?.updateRpcAsync(
 				activity = Activity(
 					applicationId = appId,
 					name = appName,
@@ -219,23 +221,25 @@ class DiscordRpc @Inject constructor(
 		}.getOrNull()
 	}
 
-	private fun getRpc(recording: String? = null): KizzyRPC? {
+	private fun getRpc(diagnosticEligible: Boolean? = null): KizzyRPC? = synchronized(this) {
 		if (!settings.isDiscordRpcEnabled) {
 			clearRpc()
-			return null
+			return@synchronized null
 		}
-		rpc?.let { return it }
-		return synchronized(this) {
-			rpc?.let { return@synchronized it }
-			settings.discordToken?.let { token ->
-				if (recording == null) {
-					KizzyRPC(token)
-				} else {
-					KizzyRPC(token, DiscordGatewayDiagnostics { event, code ->
-						PerformanceDiagnostics.discord(recording, event, code)
-					})
-				}
-			}.also { rpc = it }
+		rpc?.let {
+			if (diagnosticEligible != null) gatewayDiagnostics?.setEligible(diagnosticEligible)
+			return@synchronized it
 		}
+		settings.discordToken?.let { token ->
+			if (!BuildConfig.DEBUG) {
+				KizzyRPC(token)
+			} else {
+				val diagnostics = DiscordGatewayDiagnostics(
+					PerformanceDiagnostics::recordingId,
+					PerformanceDiagnostics::discord,
+				).apply { setEligible(diagnosticEligible == true) }
+				KizzyRPC(token, diagnostics).also { gatewayDiagnostics = diagnostics }
+			}
+		}.also { rpc = it }
 	}
 }
