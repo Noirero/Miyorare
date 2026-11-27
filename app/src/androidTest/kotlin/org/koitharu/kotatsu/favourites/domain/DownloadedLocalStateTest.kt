@@ -2460,10 +2460,21 @@ class DownloadedLocalStateTest {
 			assertEquals(NormalScanOutcome.COMPLETE, manual.outcome)
 			assertEquals(unchanged, store.changes.value)
 			val unavailable = File(root, "unavailable-normal")
-			destinations.setRoot(FavouriteSpace.NORMAL, unavailable)
+			// setRoot provisions a valid destination. Simulate storage disappearing after
+			// selection, before the scanner can capture the newly selected root.
+			destinations.withDestinationMutationLock {
+				destinations.setRoot(FavouriteSpace.NORMAL, unavailable)
+				assertTrue(unavailable.isDirectory)
+				assertTrue(unavailable.deleteRecursively())
+			}
+			assertEquals(unavailable, destinations.configuredRoot(FavouriteSpace.NORMAL))
+			assertFalse(unavailable.exists())
 			val switched = awaitRun(manual.completedRuns)
 			assertEquals(NormalScanOutcome.UNAVAILABLE, switched.outcome)
 			assertFalse(unavailable.exists())
+			assertEquals(NormalObservationStatus.UNAVAILABLE,
+				store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
+			assertTrue(file.exists())
 			destinations.setRoot(FavouriteSpace.NORMAL, root)
 			val recovered = awaitRun(switched.completedRuns)
 			assertEquals(NormalScanOutcome.COMPLETE, recovered.outcome)
