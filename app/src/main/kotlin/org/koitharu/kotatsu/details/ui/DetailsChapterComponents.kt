@@ -1519,7 +1519,7 @@ internal fun InlineChapterCard(
 					item.isDownloaded -> IconButton(onClick = onManageClick) {
 						Icon(
 							painter = painterResource(R.drawable.ic_eye_check),
-							contentDescription = null,
+							contentDescription = stringResource(R.string.downloaded),
 							tint = if (palette.isModern) palette.primary else accent,
 							modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 						)

@@ -6,6 +6,32 @@ import android.graphics.Bitmap
 import android.graphics.drawable.ColorDrawable
 import android.view.View
 import android.widget.ImageView
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.runComposeUiTest
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareThemeColors
+import org.koitharu.kotatsu.details.ui.InlineChapterCard
+import org.koitharu.kotatsu.list.ui.FavouriteCoverOverlayView
+import org.koitharu.kotatsu.list.ui.model.ModernCoverContext
+import org.koitharu.kotatsu.list.ui.model.ModernCoverState
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import androidx.core.content.edit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
@@ -3390,6 +3416,242 @@ class DownloadedLocalStateTest {
 		db.getHistoryDao().update(missingHistory)
 		assertEquals(missingHistory.chapterId, detailsHistory.getOneExact(manga.id)?.chapterId)
 		assertEquals(missingHistory, db.getHistoryDao().findIncludingDeleted(manga.id))
+	}
+
+
+	/** T02/T04/T05: real sidecar-free proof, Details and cover icons, exact Reader locator. */
+	@OptIn(ExperimentalTestApi::class)
+	@Test fun normalSidecarFreeSpecialRendersScannerIcons() = runComposeUiTest {
+		val ui = this
+		runBlocking {
+			val space = FavouriteSpace.NORMAL
+			val seed = remote(810_281L)
+			val first = seed.chapters.orEmpty().single().copy(title = "Chapter 0", number = 0f, branch = null)
+			val second = first.copy(id = first.id + 1, title = "Chapter 2", number = 2f, url = "/chapter/2")
+			val manga = seed.copy(chapters = listOf(first, second))
+			favourite(manga)
+			val container = download(root, manga.copy(chapters = listOf(first))).file.canonicalFile
+			val original = requireNotNull(container.listFiles()).single { it.extension == "cbz" }
+			val bytes = original.readBytes()
+			val sibling = File(container, "Chapter 2.cbz").apply { writeBytes(bytes) }
+			val specialFile = File(container, "Chapter 0 Special.cbz")
+			val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+			assertFalse(sidecar.exists())
+			val owner = FavouriteDownloadIndexEntity(manga.id, space.dbValue, container.path)
+			db.getFavouriteDownloadIndexDao().upsert(owner)
+			val originalKey = ChapterPersonalKey.of(first)
+			val originalPersonal = ChapterPersonalEntity(manga.id, originalKey.source, originalKey.url, 5, "Canonical note")
+			db.getChapterPersonalDao().upsert(originalPersonal)
+			lateinit var vm: ScopedDetailsViewModel
+			instrumentation.runOnMainSync {
+				vm = ScopedDetailsViewModel()
+				viewModels.put("normal-sidecar-free-details", vm)
+			}
+			val library = favouritesViewModel()
+			lateinit var cover: FavouriteCoverOverlayView
+			instrumentation.runOnMainSync {
+				cover = FavouriteCoverOverlayView(ContextThemeWrapper(context, R.style.Theme_Kotatsu))
+			}
+			suspend fun scan(status: NormalObservationStatus) {
+				assertTrue(liveObservations.scan(manga, space))
+				assertEquals(status, liveObservations.readVisible(listOf(manga), space)[manga.id]?.fact?.status)
+			}
+			suspend fun rows(stage: String, predicate: (List<ChapterListItem>) -> Boolean): List<ChapterListItem> =
+				withTimeoutOrNull(10_000) { vm.chapters.first(predicate) }
+					?: throw AssertionError("$stage: rows=" + vm.chapters.value + "; details=" + vm.mangaDetails.value)
+			suspend fun assertCover(saved: Boolean) {
+				val model = withTimeoutOrNull(10_000) {
+					library.content.first { it.grid(manga.id)?.isSaved == saved }.grid(manga.id)
+				} ?: throw AssertionError("cover expected $saved: " + library.content.value)
+				instrumentation.runOnMainSync {
+					cover.bind(ModernCoverState.from(model, ModernCoverContext.COLLECTION)) {}
+					val density = cover.resources.displayMetrics.density
+					cover.measure(View.MeasureSpec.makeMeasureSpec((194 * density).toInt(), View.MeasureSpec.EXACTLY),
+						View.MeasureSpec.makeMeasureSpec((344 * density).toInt(), View.MeasureSpec.EXACTLY))
+					cover.layout(0, 0, cover.measuredWidth, cover.measuredHeight)
+					val icon = cover.findViewById<ImageView>(R.id.cover_downloaded)
+					assertEquals(if (saved) View.VISIBLE else View.GONE, icon.visibility)
+					if (saved) {
+						assertNotNull(icon.drawable)
+						assertTrue(icon.width > 0 && icon.height > 0 && icon.alpha > 0f)
+						assertEquals(View.VISIBLE, cover.findViewById<View>(R.id.cover_permanent_status).visibility)
+					}
+				}
+			}
+			fun assertChapterIcon(id: Long, saved: Boolean) {
+				val row = hasAnyAncestor(hasTestTag("normal-chapter-$id"))
+				val downloaded = ui.onNode(row and hasContentDescription(context.getString(R.string.downloaded)), useUnmergedTree = true)
+				val download = ui.onNode(row and hasContentDescription(context.getString(R.string.download)), useUnmergedTree = true)
+				if (saved) {
+					downloaded.assertIsDisplayed()
+					download.assertDoesNotExist()
+				} else {
+					download.assertIsDisplayed()
+					downloaded.assertDoesNotExist()
+				}
+			}
+			suspend fun assertLegacyGrid(row: ChapterListItem, saved: Boolean) = withContext(Dispatchers.Main) {
+				val adapter = ChaptersAdapter(OnListItemClickListener { _, _ -> }, {}, {}, {}, {})
+				val parent = FrameLayout(ContextThemeWrapper(context, R.style.Theme_Kotatsu))
+				adapter.emit(listOf(row.copy(flags = (row.flags.toInt() or ChapterListItem.FLAG_GRID.toInt()).toByte())))
+				val holder = adapter.createViewHolder(parent, adapter.getItemViewType(0))
+				adapter.bindViewHolder(holder, 0)
+				assertEquals(if (saved) View.VISIBLE else View.GONE,
+					holder.itemView.findViewById<View>(R.id.imageView_downloaded).visibility)
+			}
+			vm.accept(MangaDetails(manga))
+			scan(NormalObservationStatus.PRESENT)
+			rows("initial canonical files") { it.size == 2 && it.all { row -> row.isDownloaded } }
+			val palette = miyorareThemeColors(MiyorareThemePreset.MIYORARE, "#00BCD4",
+				darkTheme = true, amoled = false, effectLevel = VisualEffectLevel.BALANCED)
+			assertTrue(palette.visualPalette.isModern)
+			ui.setContent {
+				val current = vm.chapters.collectAsState().value
+				MaterialTheme(colorScheme = palette.colorScheme) {
+					CompositionLocalProvider(LocalMiyorareVisualPalette provides palette.visualPalette) {
+						Column {
+							current.forEach { row ->
+								key(row.chapter.id) {
+									Box(Modifier.testTag("normal-chapter-" + row.chapter.id)) {
+										InlineChapterCard(row, VisualEffectLevel.BALANCED, palette.visualPalette.primary,
+											onClick = {}, onDownloadClick = {}, onManageClick = {},
+											onPersonalClick = {}, onNoteClick = {})
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			assertChapterIcon(first.id, true)
+			assertChapterIcon(second.id, true)
+			assertCover(true)
+			display.setShowDownloaded(FavouriteContentType.MANGA, false)
+			assertCover(false)
+			assertChapterIcon(first.id, true)
+			display.setShowDownloaded(FavouriteContentType.MANGA, true)
+			assertCover(true)
+
+			// The surviving canonical sibling proves the sidecar-free container, not
+			// lineage from Chapter 0 to Special. Replace Special's content explicitly.
+			assertTrue(original.renameTo(specialFile))
+			val replacement = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+			try {
+				replacement.eraseColor(android.graphics.Color.RED)
+				ZipOutputStream(specialFile.outputStream()).use { zip ->
+					zip.putNextEntry(ZipEntry("1.png"))
+					assertTrue(replacement.compress(Bitmap.CompressFormat.PNG, 100, zip))
+					zip.closeEntry()
+				}
+			} finally { replacement.recycle() }
+			val replacementBytes = specialFile.readBytes()
+			scan(NormalObservationStatus.PRESENT)
+			val renamed = rows("sidecar-free separate chapter") {
+				it.size == 3 && it.any { row -> row.chapter.id == first.id && !row.isDownloaded } &&
+					it.any { row -> row.chapter.id == second.id && row.isDownloaded }
+			}
+			val special = renamed.single { it.chapter.id !in setOf(first.id, second.id) }
+			assertTrue(special.isDownloaded)
+			assertTrue(special.isUnread)
+			assertFalse(special.isBookmarked)
+			assertEquals(ChapterPersonalKey.of(special.chapter), special.personalKey)
+			assertNotEquals(originalKey, special.personalKey)
+			assertEquals(originalKey, renamed.single { it.chapter.id == first.id }.personalKey)
+			assertChapterIcon(first.id, false)
+			assertChapterIcon(second.id, true)
+			assertChapterIcon(special.chapter.id, true)
+			assertLegacyGrid(renamed.single { it.chapter.id == first.id }, false)
+			assertLegacyGrid(special, true)
+			assertCover(true)
+			val reader = normalReader()
+			val copy = requireNotNull(reader.resolve(manga, space))
+			val loader = chapterLoader(reader)
+			val page = try {
+				loader.init(MangaDetails(manga, copy, null, null, true), space, true)
+				assertTrue(loader.loadSingleChapter(special.chapter.id))
+				loader.getPages(special.chapter.id).single()
+			} finally { loader.close() }
+			val locator = android.net.Uri.parse(page.url)
+			assertEquals(specialFile.path, locator.path)
+			ZipFile(specialFile).use { zip ->
+				val entry = requireNotNull(zip.getEntry(requireNotNull(locator.fragment)))
+				val decoded = requireNotNull(zip.getInputStream(entry).use { BitmapFactory.decodeStream(it) })
+				try { assertEquals(android.graphics.Color.RED, decoded.getPixel(0, 0)) }
+				finally { decoded.recycle() }
+			}
+			val unrelated = File(container, "Unrelated.cbz").apply { writeBytes(bytes) }
+			scan(NormalObservationStatus.PRESENT)
+			assertEquals(special.personalKey, rows("unrelated added") { it.size == 4 }
+				.single { it.chapter.id == special.chapter.id }.personalKey)
+			assertTrue(unrelated.delete())
+			scan(NormalObservationStatus.PRESENT)
+			rows("unrelated removed") { it.size == 3 }
+
+			// Corroborated local key plus actual Reader bookmark permit renamed-only.
+			val specialPersonal = ChapterPersonalEntity(manga.id, special.personalKey.source, special.personalKey.url, 4, "Independent note")
+			val bookmark = BookmarkEntity(manga.id, page.id, special.chapter.id, 0, 0, page.url, 100L, 0.5f)
+			db.getChapterPersonalDao().upsert(specialPersonal)
+			db.getBookmarksDao().insert(bookmark)
+			assertTrue(sibling.delete())
+			scan(NormalObservationStatus.PRESENT)
+			val renamedOnly = rows("corroborated renamed-only") {
+				it.size == 3 && it.count { row -> row.isDownloaded } == 1 && it.any { row -> row.chapter.id == special.chapter.id && row.isDownloaded }
+			}
+			assertEquals(special.personalKey, renamedOnly.single { it.chapter.id == special.chapter.id }.personalKey)
+			assertChapterIcon(second.id, false)
+			assertChapterIcon(special.chapter.id, true)
+			assertCover(true)
+			assertArrayEquals(replacementBytes, specialFile.readBytes())
+
+			// Corrupt but identifiable local artifact retains the existing Downloaded icon.
+			val corrupt = byteArrayOf(1, 2, 3, 4)
+			specialFile.writeBytes(corrupt)
+			scan(NormalObservationStatus.PRESENT)
+			assertChapterIcon(special.chapter.id, true)
+			assertCover(true)
+			val corruptCopy = requireNotNull(reader.resolve(manga, space))
+			val corruptLoader = chapterLoader(reader)
+			try {
+				corruptLoader.init(MangaDetails(manga, corruptCopy, null, null, true), space, true)
+				assertTrue(runCatching { corruptLoader.loadSingleChapter(special.chapter.id) }.isFailure)
+				assertFalse(corruptLoader.hasPages(special.chapter.id))
+				assertFalse(corruptLoader.refreshChapterPages(special.chapter.id))
+			} finally { corruptLoader.close() }
+			assertArrayEquals(corrupt, specialFile.readBytes())
+			assertTrue(specialFile.delete())
+			scan(NormalObservationStatus.ABSENT)
+			rows("empty sidecar-free parent") { it.size == 2 && it.none { row -> row.isDownloaded } }
+			assertChapterIcon(first.id, false)
+			assertChapterIcon(second.id, false)
+			assertCover(false)
+			assertNull(reader.resolve(manga, space))
+			val empty = requireNotNull(normalDirectoryDiscovery.resolveCandidates(manga, space))
+			assertTrue(empty.inventoryComplete && empty.unresolvedPaths.isEmpty() && empty.verified.isEmpty())
+			assertNull(normalDirectoryDiscovery.verifySidecarFreeCandidate(manga, space, container))
+			assertTrue(container.isDirectory)
+			original.writeBytes(bytes)
+			scan(NormalObservationStatus.PRESENT)
+			rows("canonical restored") { it.size == 2 && it.any { row -> row.chapter.id == first.id && row.isDownloaded } }
+			assertChapterIcon(first.id, true)
+			assertCover(true)
+			val otherRoot = File(root, "render-root-b").apply { check(mkdirs()) }
+			destinations.setRoot(space, otherRoot)
+			scan(NormalObservationStatus.ABSENT)
+			rows("root B") { it.size == 2 && it.none { row -> row.isDownloaded } }
+			assertChapterIcon(first.id, false)
+			assertCover(false)
+			assertNull(reader.resolve(manga, space))
+			destinations.setRoot(space, root)
+			scan(NormalObservationStatus.PRESENT)
+			rows("root A revalidated") { it.size == 2 && it.any { row -> row.chapter.id == first.id && row.isDownloaded } }
+			assertChapterIcon(first.id, true)
+			assertCover(true)
+			assertFalse(sidecar.exists())
+			assertArrayEquals(bytes, original.readBytes())
+			assertEquals(owner, db.getFavouriteDownloadIndexDao().findEntry(space.dbValue, manga.id))
+			assertEquals(setOf(originalPersonal, specialPersonal), db.getChapterPersonalDao().findAll(listOf(manga.id)).toSet())
+			assertEquals(listOf(bookmark), db.getBookmarksDao().findAll(manga.id))
+		}
 	}
 
 	private fun favouritesViewModel(categoryId: Long = 0L): FavouritesListViewModel {

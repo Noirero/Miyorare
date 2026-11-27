@@ -297,8 +297,11 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 			for (file in candidates.deterministicPaths + candidates.persistedHints) {
 				currentCoroutineContext().ensureActive()
 				val layout = if (file.isFile) null else File(file, LocalMangaOutput.ENTRY_NAME_INDEX).exists()
-				val copy = verifyCandidate(manga, space, file, layout, proof, candidates)
-				if (copy == null) unresolved += file else verified += copy
+				val copy = verifyCandidate(manga, space, file, layout, proof, candidates, allowEmptySidecarFree = true)
+				// A completely inventoried, independently scoped empty standalone directory
+				// is absence, not a physical copy or an action target.
+				if (copy == null) unresolved += file
+				else if (layout != false || !copy.physical.manga.chapters.isNullOrEmpty()) verified += copy
 			}
 			val resolution = NormalCandidateResolution(verified.map { it.physical }, unresolved, candidates.inventoryComplete)
 			if (resolution.uniqueCandidate != null) {
@@ -324,6 +327,7 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 		manga: Manga, space: FavouriteSpace?, candidate: File, indexed: Boolean?,
 		evidence: NormalScannerVerificationEvidence?,
 		captured: NormalDirectoryCandidates? = null,
+		allowEmptySidecarFree: Boolean = false,
 	): NormalVerifiedCandidate? {
 		val candidates = captured ?: discover(manga, space) ?: return null
 		if (!candidates.available) return null
@@ -387,6 +391,11 @@ internal class NormalDownloadDirectoryDiscovery @Inject constructor(
 				}
 				val projection = NormalDownloadDirectoryReconciler.reconcileSidecarFree(manga, physical, requireFinalized = true)
 					?: return@runCatchingCancellable null
+				// No positive association is inferred from ownership alone. Only the
+				// complete no-final-artifact inventory may contribute a negative result.
+				if (allowEmptySidecarFree && !requiresPrior && projection.manga.chapters.isNullOrEmpty()) {
+					return@runCatchingCancellable NormalVerifiedCandidate(projection)
+				}
 				val remoteIds = manga.chapters.orEmpty().mapTo(HashSet()) { it.id }
 				if (!requiresPrior && projection.manga.chapters.orEmpty().any { it.id in remoteIds }) {
 					return@runCatchingCancellable NormalVerifiedCandidate(projection)
