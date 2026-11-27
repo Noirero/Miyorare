@@ -429,6 +429,87 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	@Test fun expandedFavouritesPreviewKeepsHeaderWithPageAndRestoresOnReverse() =
+		assertFavouritesPreviewHeaderRestored(collapsed = false, pinned = false)
+
+	@Test fun collapsedFavouritesPreviewRestoresAppBarScrollOnCancel() =
+		assertFavouritesPreviewHeaderRestored(collapsed = true, pinned = false)
+
+	@Test fun pinnedFavouritesPreviewRestoresHeaderAndScrollRange() =
+		assertFavouritesPreviewHeaderRestored(collapsed = false, pinned = true)
+
+	private fun assertFavouritesPreviewHeaderRestored(collapsed: Boolean, pinned: Boolean) {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
+			.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+			.putString("favourites_header_scroll_mode", if (pinned) "PINNED" else "SCROLL_AWAY").commit())
+		launch().use { scenario ->
+			compose.waitForIdle()
+			scenario.onActivity { it.appBar.setExpanded(!collapsed, false) }
+			compose.waitForIdle()
+			var initialTop = 0
+			var initialRange = 0
+			var initialPagerY = 0
+			lateinit var header: View
+			fun y(view: View) = IntArray(2).also { view.getLocationInWindow(it) }[1]
+			scenario.onActivity { activity ->
+				val favourites = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				header = checkNotNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+				initialTop = activity.appBar.top
+				initialRange = activity.appBar.totalScrollRange
+				initialPagerY = y(favourites.requireView().findViewById<View>(R.id.pager))
+				if (collapsed) assertTrue("Fixture must be collapsed", initialTop < 0)
+				if (pinned) assertEquals(0, initialRange)
+			}
+			val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val midpoint = Offset((from.x + to.x) / 2f, from.y)
+			var down = SystemClock.uptimeMillis()
+			fun send(action: Int, point: Offset, elapsed: Long) = scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(down, down + elapsed, action, point.x - origin[0], point.y - origin[1], 0)
+				try { bar.dispatchTouchEvent(event) } finally { event.recycle() }
+			}
+			fun assertRestored() = scenario.onActivity { activity ->
+				assertSame(header, activity.appBar.findViewById<View>(R.id.layout_category_header))
+				assertSame(activity.appBar, header.parent)
+				assertEquals(View.VISIBLE, header.visibility)
+				assertEquals(initialTop, activity.appBar.top)
+				assertEquals(initialRange, activity.appBar.totalScrollRange)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			try {
+				send(MotionEvent.ACTION_DOWN, from, 0)
+				send(MotionEvent.ACTION_MOVE, midpoint, 32)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val favourites = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+					val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+					assertSame(favourites.requireView(), header.parent)
+					assertEquals(View.VISIBLE, header.visibility)
+					assertNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+					assertEquals(Lifecycle.State.RESUMED, favourites.lifecycle.currentState)
+					assertEquals(Lifecycle.State.STARTED, local.lifecycle.currentState)
+					assertTrue("Favorites pager anchor shifted during preview",
+						kotlin.math.abs(initialPagerY - y(favourites.requireView().findViewById<View>(R.id.pager))) <= 2)
+				}
+				send(MotionEvent.ACTION_MOVE, from, 64)
+				compose.waitForIdle()
+				assertRestored()
+				send(MotionEvent.ACTION_MOVE, to, 96)
+				compose.waitForIdle()
+			} finally {
+				send(MotionEvent.ACTION_CANCEL, to, 128)
+			}
+			compose.waitForIdle()
+			assertRestored()
+		}
+	}
+
 	@Test fun floatingDragPreviewsCustomTabAndHomeBeforeRelease() {
 		assertTabDragPreviewsCustomTabAndHome(legacy = false)
 	}
