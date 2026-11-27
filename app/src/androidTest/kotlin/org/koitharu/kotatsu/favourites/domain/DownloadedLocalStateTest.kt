@@ -3260,6 +3260,8 @@ class DownloadedLocalStateTest {
 		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path))
 		val originalFile = requireNotNull(container.listFiles()).single { it.extension == "cbz" }
 		val specialFile = File(container, "Chapter 0 Special.cbz")
+		val sidecar = File(container, LocalMangaOutput.ENTRY_NAME_INDEX)
+		assertFalse("MULTIPLE_CBZ writer must remain sidecar-free", sidecar.exists())
 		val bytes = originalFile.readBytes()
 		val key = ChapterPersonalKey.of(original)
 		val personal = ChapterPersonalEntity(manga.id, key.source, key.url, 5, "Original note")
@@ -3319,6 +3321,35 @@ class DownloadedLocalStateTest {
 		db.getBookmarksDao().insert(bookmark)
 		assertTrue(originalFile.renameTo(specialFile))
 		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		// An owned, renamed-only sidecar-free container without corroborated local
+		// identity is deliberately UNKNOWN. Preserve the existing security boundary.
+		val unresolved = requireNotNull(liveObservations.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id])
+		assertEquals(NormalObservationStatus.UNKNOWN, unresolved.fact.status)
+		assertNull(unresolved.localProjection)
+		assertIcon(awaitRows("sidecar-free renamed-only remains unresolved") {
+			it.size == 1 && it.single().chapter.id == original.id && !it.single().isDownloaded
+		}.single(), false)
+		vm.accept(positive)
+		assertNull(vm.mangaDetails.value?.local)
+		assertFalse(sidecar.exists())
+		assertArrayEquals(bytes, specialFile.readBytes())
+
+		// Explicit test setup for the independent legacy indexed rename case.
+		// Restore the original before writing its index; the scanner never creates it.
+		assertTrue(specialFile.renameTo(originalFile))
+		sidecar.writeText(MangaIndex(null).apply {
+			setMangaInfo(manga)
+			addChapter(IndexedValue(0, original), originalFile.name)
+		}.toString())
+		val indexBytes = sidecar.readBytes()
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		assertIcon(awaitRows("indexed original download") {
+			it.size == 1 && it.single().chapter.id == original.id && it.single().isDownloaded
+		}.single(), true)
+		assertTrue(originalFile.renameTo(specialFile))
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		assertEquals(NormalObservationStatus.PRESENT,
+			liveObservations.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
 		val renamed = awaitRows("rename separates Special from original") { rows -> rows.size == 2 && rows.any { it.chapter.id == original.id && !it.isDownloaded } }
 		val originalRow = renamed.single { it.chapter.id == original.id }
 		val special = renamed.single { it.chapter.id != original.id }
@@ -3337,6 +3368,8 @@ class DownloadedLocalStateTest {
 		val staleSpecial = requireNotNull(vm.mangaDetails.value)
 		assertTrue(specialFile.delete())
 		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		assertEquals(NormalObservationStatus.ABSENT,
+			liveObservations.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
 		assertIcon(awaitRows("delete removes Special") { it.size == 1 && !it.single().isDownloaded }.single(), false)
 		vm.accept(staleSpecial)
 		assertNull(vm.mangaDetails.value?.local)
@@ -3346,6 +3379,8 @@ class DownloadedLocalStateTest {
 		assertIcon(awaitRows("restore original download") { it.size == 1 && it.single().isDownloaded }.single(), true)
 		vm.accept(negative)
 		assertNotNull(vm.mangaDetails.value?.local)
+		assertArrayEquals(indexBytes, sidecar.readBytes())
+		assertArrayEquals(bytes, originalFile.readBytes())
 		assertEquals(listOf(personal), db.getChapterPersonalDao().findAll(listOf(manga.id)))
 		assertEquals(listOf(progress), db.getChapterProgressDao().findAll(listOf(manga.id), FavouriteSpace.NORMAL.dbValue))
 		assertEquals(listOf(bookmark), db.getBookmarksDao().findAll(manga.id))
