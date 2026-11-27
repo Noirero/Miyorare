@@ -58,6 +58,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.favourites.domain.NormalDownloadScanCoordinator
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.LocalDownloadScanner
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
@@ -93,6 +94,7 @@ class DownloadMaintenanceRegressionTest {
 	@Inject lateinit var sizeResolver: DownloadSizeResolver
 	@Inject lateinit var maintenance: DownloadMaintenanceUseCase
 	@Inject lateinit var exhentaiPresenceDiscovery: ExhentaiPresenceDiscovery
+	@Inject internal lateinit var normalCoordinator: NormalDownloadScanCoordinator
 	@Inject lateinit var destinationStore: DownloadDestinationStore
 	@Inject lateinit var db: MangaDatabase
 	@Inject lateinit var data: MangaDataRepository
@@ -724,7 +726,7 @@ class DownloadMaintenanceRegressionTest {
 		val store = androidx.lifecycle.ViewModelStore()
 		val factory = object : androidx.lifecycle.ViewModelProvider.Factory {
 			@Suppress("UNCHECKED_CAST")
-			override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T = org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel(maintenance, exhentaiPresenceDiscovery) as T
+			override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T = org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel(maintenance, exhentaiPresenceDiscovery, normalCoordinator) as T
 		}
 		val first = androidx.lifecycle.ViewModelProvider(store, factory)[org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel::class.java]
 		val recreated = androidx.lifecycle.ViewModelProvider(store, factory)[org.koitharu.kotatsu.settings.DownloadMaintenanceViewModel::class.java]
