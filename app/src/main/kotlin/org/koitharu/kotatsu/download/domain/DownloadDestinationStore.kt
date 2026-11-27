@@ -270,8 +270,8 @@ class DownloadDestinationStore @Inject constructor(
 
 	companion object {
 		const val KEY_PRIVATE_DOWNLOAD_ROOT = "private_download_root"
-		private const val KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS = "normal_download_legacy_roots"
-		private const val KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS = "private_download_legacy_roots"
+		internal const val KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS = "normal_download_legacy_roots"
+		internal const val KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS = "private_download_legacy_roots"
 		private const val DEFAULT_STORAGE_DIR_NAME = "manga"
 	}
 }

@@ -112,6 +112,10 @@ import org.koitharu.kotatsu.backup.local.data.LocalBackupRepository
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
 import org.koitharu.kotatsu.backup.model.MihonBackupManga
 import org.koitharu.kotatsu.backup.model.MihonBackupChapter
+import org.koitharu.kotatsu.backup.model.MihonBackupPreference
+import org.koitharu.kotatsu.backup.model.MihonBooleanPreferenceValue
+import org.koitharu.kotatsu.backup.model.MihonStringPreferenceValue
+import org.koitharu.kotatsu.backup.model.MihonStringSetPreferenceValue
 import org.koitharu.kotatsu.kotatsumigration.domain.KotatsuMangaMigrator
 import org.koitharu.kotatsu.mihon.model.mihonMangaId
 import org.koitharu.kotatsu.mihon.model.mihonChapterId
@@ -256,6 +260,8 @@ class DownloadedLocalStateTest {
 	private lateinit var savedPrefs: Map<String, *>
 	private lateinit var savedRepairPrefs: Map<String, *>
 	private val ids = HashSet<Long>()
+	// LifecycleRegistry holds its owner weakly. Keep a strong field through the final dispatch.
+	private var scannerLifecycleOwner: LifecycleOwner? = null
 
 	@Before fun setUp() = runBlocking {
 		runCatching { WorkManager.getInstance(context) }.getOrElse {
@@ -2498,6 +2504,24 @@ class DownloadedLocalStateTest {
 		repository.updateCategoryMemberships(titles, mapOf(category.id to true), FavouriteSpace.NORMAL)
 		val container = download(root, titles.first()).file.canonicalFile
 		assertTrue(container.isDirectory)
+		// The missing-extension fixture writer uses a flat directory. A receipt-free,
+		// sidecar-free manual copy requires the registry-verified Bacami source directory.
+		// Keep the writer's actual CBZ and move only this test's own container.
+		val manual = File(root, "downloads/Bacami (ID)/${titles.first().title}").canonicalFile
+		if (manual != container) {
+			val parent = requireNotNull(manual.parentFile)
+			assertTrue(parent.isDirectory || parent.mkdirs())
+			assertFalse(manual.exists())
+			assertTrue(container.renameTo(manual))
+		}
+		assertFalse(File(manual, LocalMangaOutput.ENTRY_NAME_INDEX).exists())
+		val proof = normalDirectoryDiscovery.resolveCandidates(titles.first(), FavouriteSpace.NORMAL)
+		android.util.Log.i("NormalRestoreProbe", "native_fixture inventory_complete=${proof?.inventoryComplete} verified=${proof?.verified?.size} unresolved=${proof?.unresolvedPaths}")
+		assertEquals("Receipt-free restore fixture must have independent source/title/chapter proof",
+			manual, proof?.uniqueCandidate?.file?.canonicalFile)
+		assertEquals(titles.first().chapters.orEmpty().map { it.id },
+			proof?.uniqueCandidate?.manga?.chapters.orEmpty().map { it.id })
+		assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, titles.first().id))
 		// No ownership receipt: the old physical download survives a database restore.
 		val backup = File(root, "native-restore-probe.zip")
 		ZipOutputStream(backup.outputStream()).use { restoreRepository.createBackup(it, null) }
@@ -2538,35 +2562,60 @@ class DownloadedLocalStateTest {
 				val writesAtReturn = writes.get()
 				val runsAtReturn = coordinator.state.value.completedRuns - before
 				val runningAtReturn = coordinator.state.value.running
+				val committed = restoreMembers()
+				android.util.Log.i("NormalRestoreProbe", "native_return active=$activeDuringRestore titles=${titles.size} restore_ms=$restoreMs committed=${committed.size} writes_at_return=$writesAtReturn runs_at_return=$runsAtReturn running_at_return=$runningAtReturn")
 				assertTrue("Restore failures: ${restored.failures}", restored.isAllSuccess)
-				assertEquals(expectedIds, restoreMembers())
+				assertEquals(expectedIds, committed)
 				val reloaded = titles.map { requireNotNull(data.findMangaById(it.id, withChapters = true)) }
 				assertTrue(reloaded.all { it.chapters.orEmpty().size == 1 })
 				val reconciliationStart = SystemClock.elapsedRealtime()
 				val previous = coordinator.state.value.completedRuns
 				if (!activeDuringRestore) coordinator.start(process)
 				coordinator.requestFull()
-				val terminal = restoreAwaitRun(coordinator, previous)
-				// A prior in-flight drain may finish first; require actual final state, not just a terminal flag.
-				val visible = withTimeout(90_000) {
-					var result = store.readVisible(reloaded, FavouriteSpace.NORMAL)
-					while (result.size != reloaded.size || result.values.any { it.fact.status == NormalObservationStatus.UNKNOWN }) {
-						delay(100)
-						result = store.readVisible(reloaded, FavouriteSpace.NORMAL)
-					}
-					result
+				val terminal = withTimeoutOrNull(90_000) {
+					coordinator.state.first { !it.running && it.completedRuns > previous }
 				}
+				android.util.Log.i("NormalRestoreProbe", "native_terminal active=$activeDuringRestore observed=${terminal != null} state=${coordinator.state.value} writes=${writes.get()}")
+				assertNotNull("No terminal drain after Full Scan", terminal)
+				// A prior in-flight drain may finish first; require actual final state, not just a terminal flag.
+				var lastVisible = emptyMap<Long, NormalObservationSnapshot>()
+				val converged = withTimeoutOrNull(90_000) {
+					lastVisible = store.readVisible(reloaded, FavouriteSpace.NORMAL)
+					while (lastVisible.size != reloaded.size || lastVisible.values.any { it.fact.status == NormalObservationStatus.UNKNOWN }) {
+						delay(100)
+						lastVisible = store.readVisible(reloaded, FavouriteSpace.NORMAL)
+					}
+					lastVisible
+				}
+				val reconciliationMs = SystemClock.elapsedRealtime() - reconciliationStart
+				val counts = lastVisible.values.groupingBy { it.fact.status }.eachCount()
+				android.util.Log.i("NormalRestoreProbe", "native_convergence active=$activeDuringRestore converged=${converged != null} reconciliation_ms=$reconciliationMs status_counts=$counts missing=${reloaded.size - lastVisible.size} first_status=${lastVisible[titles.first().id]?.fact?.status} state=${coordinator.state.value} writes=${writes.get()}")
+				if (converged == null || lastVisible[titles.first().id]?.fact?.status != NormalObservationStatus.PRESENT) {
+					val proof = normalDirectoryDiscovery.resolveCandidates(reloaded.first(), FavouriteSpace.NORMAL)
+					android.util.Log.i("NormalRestoreProbe", "native_candidate active=$activeDuringRestore inventory_complete=${proof?.inventoryComplete} verified=${proof?.verified?.size} unresolved=${proof?.unresolvedPaths} file_exists=${file.isFile}")
+				}
+				assertNotNull("All restored titles must converge; inspect native_convergence and native_candidate", converged)
+				val visible = requireNotNull(converged)
 				assertEquals(NormalObservationStatus.PRESENT, visible[titles.first().id]?.fact?.status)
 				assertEquals(titles.size - 1, visible.values.count { it.fact.status == NormalObservationStatus.ABSENT })
 				assertArrayEquals(bytes, file.readBytes())
 				assertNull(db.getFavouriteDownloadIndexDao().findEntry(FavouriteSpace.NORMAL.dbValue, titles.first().id))
-				android.util.Log.i("NormalRestoreProbe", "native active=$activeDuringRestore titles=${titles.size} restore_ms=$restoreMs writes_at_return=$writesAtReturn runs_at_return=$runsAtReturn running_at_return=$runningAtReturn reconciliation_ms=${SystemClock.elapsedRealtime() - reconciliationStart} total_writes=${writes.get()} terminal=${terminal.outcome}")
+				android.util.Log.i("NormalRestoreProbe", "native active=$activeDuringRestore titles=${titles.size} restore_ms=$restoreMs writes_at_return=$writesAtReturn runs_at_return=$runsAtReturn running_at_return=$runningAtReturn reconciliation_ms=$reconciliationMs total_writes=${writes.get()} terminal=${requireNotNull(terminal).outcome}")
 			} finally {
 				process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
 			}
 		}
-		arm(true)
-		arm(false)
+		// An assertion failure in one arm must not suppress the other arm's evidence.
+		var failure: AssertionError? = null
+		for (active in listOf(true, false)) {
+			try {
+				arm(active)
+			} catch (error: AssertionError) {
+				val first = failure
+				if (first == null) failure = error else first.addSuppressed(error)
+			}
+		}
+		failure?.let { throw it }
 	}
 
 	/** R01/R04: controlled overlap at a real committed native-restore batch, then cancel.
@@ -2621,7 +2670,7 @@ class DownloadedLocalStateTest {
 	}
 
 	/** R03/R06: actual Settings-only native restore, including A -> B -> A with work in flight.
-	 * Report whether the generation and publication fence detect the round trip.
+	 * Regression: the generation must advance and the old batch must be rejected.
 	 */
 	@Test fun restoreScannerSettingsRootGenerationProbe() = runBlocking<Unit> {
 		val (manga, container) = observedDownload(850_500L)
@@ -2654,10 +2703,16 @@ class DownloadedLocalStateTest {
 			assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
 			val generation = store.rootChanges.value
 			restoreRoot(other)
-			val automatic = withTimeoutOrNull(2_000) {
+			val automatic = withTimeoutOrNull(20_000) {
 				coordinator.state.first { !it.running && it.completedRuns > initial.completedRuns }
 			}
 			android.util.Log.i("NormalRestoreProbe", "settings_only generation_before=$generation generation_after=${store.rootChanges.value} automatic_run_observed=${automatic != null} resume_enabled=false")
+			assertEquals(generation + 1L, store.rootChanges.value)
+			assertNotNull("Settings restore must wake the coordinator with resume scan OFF", automatic)
+			assertEquals(NormalObservationStatus.ABSENT, store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
+			val afterChange = store.rootChanges.value
+			restoreRoot(other)
+			assertEquals("Identical restored root is not a new mutation", afterChange, store.rootChanges.value)
 			val previous = coordinator.state.value.completedRuns
 			coordinator.requestFull()
 			restoreAwaitRun(coordinator, previous)
@@ -2679,6 +2734,10 @@ class DownloadedLocalStateTest {
 			val accepted = isolated.publishBatch(batch)
 			val exposed = isolated.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status
 			android.util.Log.i("NormalRestoreProbe", "settings_aba generation_before=$generation generation_after=${isolated.rootChanges.value} old_batch_accepted=${accepted[manga.id]} visible=$exposed artifact_exists=${artifact.exists()}")
+			assertEquals(generation + 2L, isolated.rootChanges.value)
+			assertFalse(artifact.exists())
+			assertTrue("Root ABA must reject the entire old batch", accepted.isEmpty())
+			assertNull("Old positive observation must not be visible", exposed)
 		} finally {
 			assertTrue(moved.renameTo(artifact))
 			restoreRoot(root)
@@ -2686,6 +2745,78 @@ class DownloadedLocalStateTest {
 		assertArrayEquals(bytes, artifact.readBytes())
 		assertTrue(isolated.scan(manga, FavouriteSpace.NORMAL))
 		assertEquals(NormalObservationStatus.PRESENT, isolated.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
+	}
+
+
+	/** Mihon settings-only import must use the same fence, without changing import semantics. */
+	@Test fun restoreScannerMihonSettingsRootGenerationProbe() = runBlocking<Unit> {
+		val (manga, container) = observedDownload(850_550L)
+		val artifact = requireNotNull(container.listFiles()).single { it.extension == "cbz" }
+		val bytes = artifact.readBytes()
+		val other = File(root, "mihon-restore-other").apply { check(mkdirs()) }
+		val store = observationStore()
+		val backup = File(root, "mihon-settings-probe.proto")
+		val options = MihonBackupManager.Options(libraryEntries = false, appSettings = true,
+			sourceSettings = false, extensionRepoSettings = false, tracking = false)
+		suspend fun restore(vararg preferences: MihonBackupPreference) {
+			backup.outputStream().use { output ->
+				for (preference in preferences) {
+					MihonBackupWire.writeMessage(output, MihonBackupWire.FIELD_PREFERENCE,
+						serializer<MihonBackupPreference>(), preference)
+				}
+			}
+			val report = mihonRestoreManager.get().restoreBackup(android.net.Uri.fromFile(backup), options, MihonRestoreTarget.NORMAL)
+			assertEquals(0, report.restoredMangaCount)
+		}
+		suspend fun restoreRoot(target: File) {
+			restore(MihonBackupPreference(AppSettings.KEY_LOCAL_STORAGE, MihonStringPreferenceValue(target.path)))
+			assertEquals(target.canonicalFile, destinations.effectiveRoot(FavouriteSpace.NORMAL)?.canonicalFile)
+		}
+		assertTrue(store.scan(manga, FavouriteSpace.NORMAL))
+		val batch = requireNotNull(store.prepareBatch(listOf(manga)))
+		assertEquals(1, batch.works.size)
+		val generation = store.rootChanges.value
+		restore(MihonBackupPreference(NormalDownloadScanCoordinator.KEY_SCAN_ON_RESUME, MihonBooleanPreferenceValue(false)))
+		assertEquals("Unrelated preference must not advance root generation", generation, store.rootChanges.value)
+		restoreRoot(other)
+		assertEquals(generation + 1L, store.rootChanges.value)
+		assertFalse("Restore must not provision the destination", File(other, "downloads").exists())
+		restoreRoot(other)
+		assertEquals(generation + 1L, store.rootChanges.value)
+		val moved = File(container, "Chapter 1.cbz.tmp")
+		assertTrue(artifact.renameTo(moved))
+		try {
+			restoreRoot(root)
+			val accepted = store.publishBatch(batch)
+			val exposed = store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status
+			android.util.Log.i("NormalRestoreProbe", "mihon_settings_aba generation_before=$generation generation_after=${store.rootChanges.value} old_batch_accepted=${accepted[manga.id]} visible=$exposed artifact_exists=${artifact.exists()}")
+			assertEquals(generation + 2L, store.rootChanges.value)
+			assertFalse(artifact.exists())
+			assertTrue(accepted.isEmpty())
+			assertNull(exposed)
+		} finally {
+			assertTrue(moved.renameTo(artifact))
+			restoreRoot(root)
+		}
+		// These inputs also influence the Normal scope, even without a Normal root change.
+		val rootRelated = listOf(
+			MihonBackupPreference(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT,
+				MihonStringPreferenceValue(File(root, "mihon-restored-private").path)),
+			MihonBackupPreference(DownloadDestinationStore.KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS,
+				MihonStringSetPreferenceValue(setOf(File(root, "mihon-normal-history").path))),
+			MihonBackupPreference(DownloadDestinationStore.KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS,
+				MihonStringSetPreferenceValue(setOf(File(root, "mihon-private-history").path))),
+		)
+		for (preference in rootRelated) {
+			val before = store.rootChanges.value
+			restore(preference)
+			assertEquals("Changed root key ${preference.key}", before + 1L, store.rootChanges.value)
+			restore(preference)
+			assertEquals("Unchanged root key ${preference.key}", before + 1L, store.rootChanges.value)
+		}
+		assertArrayEquals(bytes, artifact.readBytes())
+		assertTrue(store.scan(manga, FavouriteSpace.NORMAL))
+		assertEquals(NormalObservationStatus.PRESENT, store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.status)
 	}
 
 	/** R05: real source re-key between discovery and publication, not a service handoff simulation. */
@@ -2787,11 +2918,10 @@ class DownloadedLocalStateTest {
 		prefs.edit(commit = true) { putBoolean(key, false) }
 		val observer = NormalDownloadScanLifecycleObserver(prefs, { coordinator.start(scope) }, coordinator::requestFull)
 		lateinit var registry: LifecycleRegistry
-		lateinit var owner: LifecycleOwner
 		instrumentation.runOnMainSync {
-			owner = object : LifecycleOwner { override val lifecycle: Lifecycle get() = registry }
-			// Hold the owner strongly throughout the real lifecycle event sequence.
-			registry = LifecycleRegistry(owner)
+			scannerLifecycleOwner = object : LifecycleOwner { override val lifecycle: Lifecycle get() = registry }
+			// The test instance owns the strong reference, not just an unused coroutine local.
+			registry = LifecycleRegistry(requireNotNull(scannerLifecycleOwner))
 			registry.addObserver(observer)
 			registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 			registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
@@ -2848,7 +2978,10 @@ class DownloadedLocalStateTest {
 			assertFalse(prefs.contains(key))
 			assertEquals(exBefore, prefs.getBoolean(exKey, true))
 		} finally {
-			instrumentation.runOnMainSync { registry.removeObserver(observer) }
+			instrumentation.runOnMainSync {
+				registry.removeObserver(observer)
+				scannerLifecycleOwner = null
+			}
 			scope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
 		}
 	}

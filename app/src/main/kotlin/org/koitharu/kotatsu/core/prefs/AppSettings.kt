@@ -40,6 +40,7 @@ import org.koitharu.kotatsu.core.util.ext.putAll
 import org.koitharu.kotatsu.core.util.ext.putEnumValue
 import org.koitharu.kotatsu.core.util.ext.takeIfReadable
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
 import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.list.domain.ListSortOrder
@@ -1415,9 +1416,29 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	// NOTE: intentionally does NOT clear() existing prefs. A restore should merge the backed-up
 	// values over the current ones, not wipe everything first — clearing dropped local-only prefs
 	// (e.g. the per-install onboarding state) and sent the app back to the welcome screen.
-	fun upsertAll(m: Map<String, *>) = prefs.edit {
+	fun upsertAll(m: Map<String, *>) = editRestoredPreferences {
 		putAll(m)
 	}
+
+	/** Bulk imports must participate in the same root-generation fence as destination edits.
+	 * Compare raw preferences (including unavailable roots) without provisioning or moving files.
+	 * Keep the preference write and generation advance under one publication lock.
+	 */
+	internal fun editRestoredPreferences(edit: SharedPreferences.Editor.() -> Unit) =
+		synchronized(downloadDestinationMutationLock) {
+			val rootKeys = setOf(
+				KEY_LOCAL_STORAGE,
+				DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT,
+				DownloadDestinationStore.KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS,
+				DownloadDestinationStore.KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS,
+			)
+			val previous = prefs.all.filterKeys { it in rootKeys }
+			try {
+				prefs.edit { edit() }
+			} finally {
+				if (previous != prefs.all.filterKeys { it in rootKeys }) advanceNormalScannerRootGeneration()
+			}
+		}
 
 	private fun isBackgroundNetworkRestricted(): Boolean {
 		return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
