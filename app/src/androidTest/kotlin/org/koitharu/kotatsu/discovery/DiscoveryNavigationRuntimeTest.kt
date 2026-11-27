@@ -1,5 +1,15 @@
 package org.koitharu.kotatsu.discovery
 
+import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Log
+import android.view.FrameMetrics
+import android.view.Window
+import androidx.lifecycle.ViewModelProvider
+import org.koitharu.kotatsu.local.ui.LocalListViewModel
+import org.koitharu.kotatsu.list.ui.model.SmartLocalPanelModel
+import org.koitharu.kotatsu.list.ui.model.SmartLocalCollectionHeaderModel
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration as AndroidConfiguration
@@ -106,6 +116,240 @@ class DiscoveryNavigationRuntimeTest {
 		scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }
 		compose.waitUntil(10000) { compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty() }
 	}
+	// Matched pre-feature experiment: keep this method body identical on both source revisions.
+	// Observed settle after a fixed dwell is not input-to-photon latency or exact animation duration.
+	@Test fun matchedPreFeatureHubTapFrames() = matchedPreFeatureTapFrames(NavItem.DISCOVERY_HUB, "hub")
+	@Test fun matchedPreFeatureLocalTapFrames() = matchedPreFeatureTapFrames(NavItem.LOCAL, "local")
+
+	private fun matchedPreFeatureTapFrames(destination: NavItem, route: String) {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val scaleKeys = listOf("animator_duration_scale", "transition_animation_scale", "window_animation_scale")
+		val previousScales = scaleKeys.associateWith { shell("settings get global $it") }
+		val previousNight = androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode()
+		try {
+			for (key in scaleKeys) {
+				shell("settings put global $key 1")
+				assertEquals(1f, android.provider.Settings.Global.getFloat(app.contentResolver, key, -1f), 0.01f)
+			}
+			instrumentation.runOnMainSync {
+				androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
+			}
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+			// Identical fixture keys; the pre-feature build does not consume the two new preferences.
+			assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
+				.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+				.putBoolean(AppSettings.KEY_NAV_LABELS, true)
+				.putString("navigation_motion", "classic_glide")
+				.putString("screen_transition", "directional_slide").commit())
+			launch().use { scenario ->
+				compose.waitForIdle()
+				lateinit var window: Window
+				var refreshHz = 0f
+				var actualNight = 0
+				var screenOffset = Offset.Zero
+				scenario.onActivity { activity ->
+					window = activity.window
+					val decor = window.decorView
+					refreshHz = decor.display?.refreshRate ?: 0f
+					actualNight = activity.resources.configuration.uiMode and AndroidConfiguration.UI_MODE_NIGHT_MASK
+					val screen = IntArray(2).also { decor.getLocationOnScreen(it) }
+					val inWindow = IntArray(2).also { decor.getLocationInWindow(it) }
+					screenOffset = Offset((screen[0] - inWindow[0]).toFloat(), (screen[1] - inWindow[1]).toFloat())
+				}
+				assertTrue("A measured display refresh rate is required", refreshHz > 0f)
+				assertEquals(AndroidConfiguration.UI_MODE_NIGHT_YES, actualNight)
+				fun center(item: NavItem) = compose.onNodeWithContentDescription(app.getString(item.navTitle))
+					.fetchSemanticsNode().boundsInWindow.center + screenOffset
+				val favoritesPoint = center(NavItem.FAVORITES)
+				val destinationPoint = center(destination)
+				assertTrue("Distinct visible tab centers are required", favoritesPoint != destinationPoint)
+				val prefix = "motion=classic_glide actual_night=$actualNight refresh_hz=$refreshHz scale=1 scenario=matched_pre_feature_${route}_tap"
+				Log.i("MiyorareNavMatched", "$prefix animator=1 transition=1 window=1 favorites=$favoritesPoint target=$destinationPoint dwell_ms=750")
+				fun inject(action: Int, down: Long, eventTime: Long, point: Offset) {
+					val event = MotionEvent.obtain(down, eventTime, action, point.x, point.y, 0)
+					event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+					try {
+						assertTrue("Touch injection failed: action=$action route=$route",
+							instrumentation.uiAutomation.injectInputEvent(event, true))
+					} finally { event.recycle() }
+				}
+				fun tap(point: Offset): Triple<Long, Long, Long> {
+					val down = SystemClock.uptimeMillis()
+					var released = false
+					try {
+						inject(MotionEvent.ACTION_DOWN, down, down, point)
+						SystemClock.sleep(32)
+						val up = SystemClock.uptimeMillis()
+						inject(MotionEvent.ACTION_UP, down, up, point)
+						released = true
+						return Triple(down, up, SystemClock.uptimeMillis())
+					} finally {
+						if (!released) runCatching { inject(MotionEvent.ACTION_CANCEL, down, SystemClock.uptimeMillis(), point) }
+					}
+				}
+				fun observedSettled(item: NavItem): Long {
+					var observed = 0L
+					scenario.onActivity { activity ->
+						val fm = activity.supportFragmentManager
+						assertEquals(item.id, activity.bottomNav!!.selectedItemId)
+						assertEquals(0, fm.backStackEntryCount)
+						val active = fm.fragments.filter { it.id == R.id.container && it.isAdded && !it.isHidden }
+						assertEquals(1, active.size)
+						val selected = active.single()
+						assertEquals(Lifecycle.State.RESUMED, selected.lifecycle.currentState)
+						assertEquals(View.VISIBLE, selected.requireView().visibility)
+						assertEquals(0f, selected.requireView().translationX, 0.1f)
+						assertTrue(when (item) {
+							NavItem.FAVORITES -> selected is FavouritesContainerFragment
+							NavItem.LOCAL -> selected is LocalListFragment
+							NavItem.DISCOVERY_HUB -> selected is DiscoveryHubFragment
+							else -> false
+						})
+						observed = SystemClock.uptimeMillis()
+					}
+					return observed
+				}
+				fun warm(item: NavItem, point: Offset) {
+					tap(point)
+					SystemClock.sleep(750)
+					compose.waitForIdle()
+					observedSettled(item)
+				}
+				// Keep Hub and Local as separate test cases: baseline B01 must remain a real failure,
+				// not prevent the independent Hub experiment from running.
+				warm(NavItem.FAVORITES, favoritesPoint)
+				warm(destination, destinationPoint)
+				when (destination) {
+					NavItem.LOCAL -> assertLocalContentReady(scenario)
+					NavItem.DISCOVERY_HUB -> compose.waitUntil(10000) {
+						compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty()
+					}
+					else -> error("Unexpected route")
+				}
+				warm(NavItem.FAVORITES, favoritesPoint)
+				val budgetNs = (1_000_000_000.0 / refreshHz).toLong()
+				repeat(5) { repeatIndex ->
+					val label = "$prefix repeat=${repeatIndex + 1}"
+					val timestamps = mutableListOf<String>()
+					fun sampleTap(item: NavItem, point: Offset, index: Int) {
+						val (down, up, injectionDone) = tap(point)
+						SystemClock.sleep(750)
+						val settled = observedSettled(item)
+						timestamps += "$label tap=$index destination=${item.name} down_ms=$down up_ms=$up injection_done_ms=$injectionDone observed_settled_ms=$settled"
+					}
+					try {
+						measureNavigationFrames(scenario, window, budgetNs, label) {
+							repeat(3) { roundtrip ->
+								sampleTap(destination, destinationPoint, roundtrip * 2 + 1)
+								sampleTap(NavItem.FAVORITES, favoritesPoint, roundtrip * 2 + 2)
+							}
+						}
+					} finally {
+						timestamps.forEach { Log.i("MiyorareNavMatched", it) }
+					}
+					compose.waitForIdle()
+				}
+			}
+		} finally {
+			try {
+				instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(previousNight) }
+			} finally {
+				for ((key, value) in previousScales) {
+					if (value == "null" || value.isBlank()) shell("settings delete global $key")
+					else shell("settings put global $key $value")
+				}
+			}
+		}
+	}
+
+	private fun LocalListFragment.localContentModel(): LocalListViewModel =
+		ViewModelProvider(this)[LocalListViewModel::class.java]
+
+	// A retained STARTED/RESUMED fragment alone does not prove its content collector survived.
+	private fun assertLocalContentReady(scenario: ActivityScenario<MainActivity>, query: String = "") {
+		compose.waitUntil(10000) {
+			var ready = false
+			scenario.onActivity { activity ->
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().singleOrNull()
+				val model = local?.localContentModel() ?: return@onActivity
+				val content = model.content.value
+				ready = model.library.state.value.initialized &&
+					content.any { it is SmartLocalPanelModel && it.query == query } &&
+					content.any { it is SmartLocalCollectionHeaderModel }
+			}
+			ready
+		}
+	}
+
+	private data class NavigationFrameSample(val totalNs: Long, val deadlineNs: Long, val firstDraw: Boolean, val phases: List<Long>)
+
+	private fun measureNavigationFrames(
+		scenario: ActivityScenario<MainActivity>, window: Window, budgetNs: Long, label: String, block: () -> Unit,
+	) {
+		val worker = HandlerThread("NavigationFrameMetrics").apply { start() }
+		val samples = java.util.Collections.synchronizedList(mutableListOf<NavigationFrameSample>())
+		val dropped = AtomicInteger()
+		val phaseIds = listOf(
+			"unknown" to FrameMetrics.UNKNOWN_DELAY_DURATION,
+			"input" to FrameMetrics.INPUT_HANDLING_DURATION,
+			"animation" to FrameMetrics.ANIMATION_DURATION,
+			"layout" to FrameMetrics.LAYOUT_MEASURE_DURATION,
+			"draw" to FrameMetrics.DRAW_DURATION,
+			"sync" to FrameMetrics.SYNC_DURATION,
+			"command" to FrameMetrics.COMMAND_ISSUE_DURATION,
+			"swap" to FrameMetrics.SWAP_BUFFERS_DURATION,
+		) + if (Build.VERSION.SDK_INT >= 31) listOf("gpu" to FrameMetrics.GPU_DURATION) else emptyList()
+		val listener = Window.OnFrameMetricsAvailableListener { _, metrics, count ->
+			val total = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
+			val deadline = if (Build.VERSION.SDK_INT >= 31) metrics.getMetric(FrameMetrics.DEADLINE) else budgetNs
+			dropped.addAndGet(count.coerceAtLeast(0))
+			if (total >= 0) samples.add(NavigationFrameSample(total, deadline.takeIf { it > 0 } ?: budgetNs,
+				metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L, phaseIds.map { metrics.getMetric(it.second) }))
+		}
+		var registered = false
+		try {
+			scenario.onActivity {
+				window.addOnFrameMetricsAvailableListener(listener, Handler(worker.looper))
+				registered = true
+			}
+			block()
+			// Allow queued reports to arrive; no screenshots or forced redraws.
+			SystemClock.sleep(100)
+		} finally {
+			try {
+				if (registered) scenario.onActivity { window.removeOnFrameMetricsAvailableListener(listener) }
+			} finally {
+				worker.quitSafely()
+				worker.join(5000)
+			}
+		}
+		assertFalse("FrameMetrics worker must terminate", worker.isAlive)
+		val all = synchronized(samples) { samples.toList() }
+		val measured = all.filterNot { it.firstDraw }
+		assertTrue("No usable frames: $label", measured.isNotEmpty())
+		val totals = measured.map { it.totalNs }.sorted()
+		fun percentile(p: Double) = totals[((totals.size - 1) * p).toInt()]
+		val missed = measured.count { it.totalNs > it.deadlineNs }
+		Log.i("MiyorareNavPerf", "$label frames=${measured.size} first_draw=${all.size - measured.size} " +
+			"dropped=${dropped.get()} missed=$missed p50_ns=${percentile(0.50)} p95_ns=${percentile(0.95)} " +
+			"max_ns=${totals.last()} budget_ns=$budgetNs")
+		// Phases can overlap; do not sum their percentiles or equate GPU time with total duration.
+		Log.i("MiyorareNavPhase", "$label " + phaseIds.mapIndexed { i, phase ->
+			val values = measured.map { it.phases[i] }.filter { it >= 0 }.sorted()
+			val p95 = if (values.isEmpty()) -1L else values[((values.size - 1) * 0.95).toInt()]
+			"${phase.first}_p95_ns=$p95 ${phase.first}_count=${values.size}"
+		}.joinToString(" "))
+		// Raw pairs support post-run reanalysis without retaining screenshot or user data.
+		measured.chunked(60).forEachIndexed { index, chunk ->
+			Log.i("MiyorareNavPerf", "$label chunk=$index total_deadline_ns=" +
+				chunk.joinToString(",") { "${it.totalNs}:${it.deadlineNs}" })
+		}
+	}
+
 	@Test fun modernRootKeepsHubViewAndScrollAcrossTabSwitchAndSettingsRoundTrip() {
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
 		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
