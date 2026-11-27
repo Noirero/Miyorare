@@ -35,9 +35,16 @@ import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksFragment
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.prefs.NavigationTransitionPreferences
+import org.koitharu.kotatsu.core.prefs.ScreenTransition
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.core.ui.widgets.DragNavigationRailView
+import org.koitharu.kotatsu.core.ui.widgets.DirectionalSlide
+import org.koitharu.kotatsu.core.ui.widgets.DirectionalSlidePresentation
+import org.koitharu.kotatsu.core.ui.widgets.InteractiveTabSlidePresentation
+import org.koitharu.kotatsu.core.ui.widgets.TabSlideFrame
+import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.core.ui.widgets.SlidingBottomNavigationView
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
@@ -68,8 +75,13 @@ class MainNavigationDelegate(
 	NavigationBarView.OnItemReselectedListener, View.OnClickListener {
 
 	private val listeners = LinkedList<OnFragmentChangedListener>()
-	private var tabPreview: TabPreview? = null
+	private val interactiveSlide = InteractiveTabSlidePresentation()
+	private var previewFavourites: FavouritesContainerFragment? = null
+	private var previewHeader: Pair<View, Int>? = null
 	private var committingTabDrag = false
+	private var dragPreviewMatched = false
+	private val transitionPreferences = NavigationTransitionPreferences(navBar.context)
+	private val slidePresentation = DirectionalSlidePresentation()
 	val navRailHeader = (navBar as? NavigationRailView)?.headerView?.let {
 		NavigationRailFabBinding.bind(it)
 	}
@@ -98,8 +110,17 @@ class MainNavigationDelegate(
 	}
 
 	override fun onNavigationItemSelected(item: MenuItem): Boolean {
-		return if (onNavigationItemSelected(item.itemId)) {
+		val fromId = primaryFragment?.let(::getItemId)
+		val userNavbar = committingTabDrag || when (navBar) {
+			is FloatingBottomNavigationView -> navBar.isUserSelection
+			is DragNavigationRailView -> !navBar.isProgrammaticSelection && navBar.isLaidOut
+			else -> false
+		}
+		return if (onNavigationItemSelected(item.itemId, userNavbar)) {
 			item.isChecked = true
+			if (userNavbar && !committingTabDrag && fromId != null && fromId != item.itemId) {
+				(navBar as? DragNavigationRailView)?.animateTabSelection(fromId, item.itemId)
+			}
 			navBar.hapticFeedback(HapticEffect.CONFIRM)
 			true
 		} else {
@@ -133,7 +154,7 @@ class MainNavigationDelegate(
 			createMenu(settings.mainNavItems, navBar.menu)
 		}
 		(navBar as? FloatingBottomNavigationView)?.let { floating ->
-			floating.setTabDragListeners(::previewTab, ::commitTabDrag)
+			floating.setTabDragListeners(::previewTab, ::commitTabDrag, ::seekTabSlide)
 			floating.setComposeItems(settings.mainNavItems)
 			floating.setComposeLabeled(settings.isNavLabelsVisible)
 			floating.setUseLegacyNavigation(settings.isLegacyNavigationBar)
@@ -141,8 +162,11 @@ class MainNavigationDelegate(
 				if (itemId == R.id.nav_favorites) openPrivateFavourites()
 			}
 		}
-		(navBar as? DragNavigationRailView)?.setTabDragListeners(::previewTab, ::commitTabDrag)
+		(navBar as? DragNavigationRailView)?.setTabDragListeners(::previewTab, ::commitTabDrag, ::seekTabSlide)
 		installNativePrivateLongClick()
+		applyMotionPreference()
+		settings.observe(NavigationTransitionPreferences.KEY_MOTION, NavigationTransitionPreferences.KEY_TRANSITION)
+			.onEach { cancelTabDrag(); applyMotionPreference() }.launchIn(lifecycleOwner.lifecycleScope)
 		observeSettings(lifecycleOwner)
 		val fragment = primaryFragment
 		if (fragment != null && navBar.menu.findItem(getItemId(fragment))?.isVisible == true) {
@@ -246,9 +270,10 @@ class MainNavigationDelegate(
 		}
 	}
 
-	private fun onNavigationItemSelected(@IdRes itemId: Int): Boolean {
+	private fun onNavigationItemSelected(@IdRes itemId: Int, userNavbar: Boolean = false): Boolean {
 		val newFragment = fragmentClassForItem(itemId) ?: return false
-		if (!setPrimaryFragment(newFragment)) {
+		if (userNavbar && fragmentManager.isStateSaved) return false
+		if (!setPrimaryFragment(newFragment, userNavbar)) {
 			onNavigationItemReselected()
 		}
 		return true
@@ -288,25 +313,79 @@ class MainNavigationDelegate(
 		clearTabPreview()
 	}
 
+	private fun applyMotionPreference() {
+		val motion = transitionPreferences.motion
+		(navBar as? FloatingBottomNavigationView)?.setNavigationMotion(motion)
+		(navBar as? DragNavigationRailView)?.setNavigationMotion(motion)
+	}
+
+	private fun slideDirection(fromId: Int, toId: Int): Int {
+		val visibleIds = (0 until navBar.menu.size).map { navBar.menu.getItem(it) }
+			.filter { it.isVisible && it.isEnabled }.map { it.itemId }
+		return DirectionalSlide.direction(visibleIds.indexOf(fromId), visibleIds.indexOf(toId),
+			navBar !is DragNavigationRailView && navBar.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+	}
+
 	private fun clearTabPreview(keepFavouritesWork: Boolean = false) {
-		val preview = tabPreview ?: return
-		tabPreview = null
-		if (!keepFavouritesWork) preview.favourites?.setTabPreviewVisible(false)
-		preview.target.visibility = preview.targetVisibility
-		preview.current.visibility = preview.currentVisibility
-		preview.externalHeader?.let { (view, visibility) -> view.visibility = visibility }
+		slidePresentation.finish()
+		interactiveSlide.finish()
+		if (!keepFavouritesWork) previewFavourites?.setTabPreviewVisible(false)
+		previewFavourites = null
+		restorePreviewHeader()
+	}
+
+	private fun restorePreviewHeader() {
+		previewHeader?.let { (view, visibility) -> view.visibility = visibility }
+		previewHeader = null
 	}
 
 	private fun previewTab(@IdRes itemId: Int?): Boolean {
-		clearTabPreview()
-		if (itemId == null) return true
-		if (fragmentManager.isStateSaved || navBar.menu.findItem(itemId)?.isVisible != true) return false
-		val current = primaryFragment ?: return false
-		if (getItemId(current) == itemId) return true
-		val currentView = current.view ?: return false
-		val type = fragmentClassForItem(itemId) ?: return false
+		// A final null after release must not interrupt the accepted settlement.
+		if (itemId == null) {
+			if (interactiveSlide.isActive) clearTabPreview()
+			return true
+		}
+		return !fragmentManager.isStateSaved && navBar.menu.findItem(itemId)?.let {
+			it.isVisible && it.isEnabled
+		} == true && fragmentClassForItem(itemId) != null
+	}
+
+	private fun seekTabSlide(frame: TabSlideFrame) {
+		if (fragmentManager.isStateSaved) { clearTabPreview(); return }
+		val current = primaryFragment ?: return
+		val currentView = current.view ?: return
+		val currentId = getItemId(current)
+		if (!interactiveSlide.isActive) slidePresentation.finish()
+		// Keep the existing FragmentManager as selection/lifecycle owner. Only the two
+		// visible pages of the continuous frame are resolved, at most once per gesture.
+		val rendered = interactiveSlide.seek(frame, currentId, currentView) { id ->
+			if (id == currentId) currentView else previewFragment(id)?.view
+		}
+		if (!rendered) { clearTabPreview(); return }
+
+		val favourites = if (currentId != R.id.nav_favorites && frame.contains(R.id.nav_favorites)) {
+			fragmentManager.findFragmentByTag(FavouritesContainerFragment::class.java.name) as? FavouritesContainerFragment
+		} else null
+		if (previewFavourites !== favourites) {
+			previewFavourites?.setTabPreviewVisible(false)
+			previewFavourites = favourites
+			favourites?.setTabPreviewVisible(true)
+		}
+		// The external header remains activity-owned. Never reparent it during a gesture.
+		if (current is FavouritesContainerFragment && frame.hasOtherThan(currentId)) {
+			if (previewHeader == null) {
+				val header = (navBar.context.findActivity() as? AppBarOwner)?.appBar
+					?.findViewById<View>(R.id.layout_category_header)
+				previewHeader = header?.let { it to it.visibility }
+				header?.visibility = View.INVISIBLE
+			}
+		} else restorePreviewHeader()
+	}
+
+	private fun previewFragment(@IdRes id: Int): Fragment? {
+		if (!previewTab(id)) return null
+		val type = fragmentClassForItem(id) ?: return null
 		val target = fragmentManager.findFragmentByTag(type.name) ?: newBottomTab(type).also { fragment ->
-			// First visit can load content, but doesn't resume the tab or hand off shared chrome.
 			fragmentManager.beginTransaction()
 				.setReorderingAllowed(true)
 				.add(R.id.container, fragment, type.name)
@@ -314,59 +393,41 @@ class MainNavigationDelegate(
 				.setMaxLifecycle(fragment, Lifecycle.State.STARTED)
 				.commitNow()
 		}
-		if (!target.isHidden) return false
-		val targetView = target.view ?: return false
-		// Fragment.show/hide dispatches search/app bar/account refresh hooks. Change
-		// only root view visibility during preview; preserve the committed lifecycle.
-		// Favorites reparents its category header to the activity app bar. Hide it
-		// for another tab's preview without changing app-bar ownership or layout.
-		val externalHeader = if (current is FavouritesContainerFragment) {
-			(navBar.context.findActivity() as? AppBarOwner)?.appBar
-				?.findViewById<View>(R.id.layout_category_header)
-		} else null
-		tabPreview = TabPreview(
-			currentView, currentView.visibility, targetView, targetView.visibility,
-			externalHeader?.let { it to it.visibility },
-			target as? FavouritesContainerFragment,
-		)
-		externalHeader?.visibility = View.INVISIBLE
-		currentView.visibility = View.INVISIBLE
-		targetView.visibility = View.VISIBLE
-		(target as? FavouritesContainerFragment)?.setTabPreviewVisible(true)
-		return true
+		return target.takeIf { it.isHidden }
 	}
 
 	private fun commitTabDrag(@IdRes itemId: Int) {
-		if (fragmentManager.isStateSaved || primaryFragment?.let(::getItemId) == itemId ||
-			navBar.menu.findItem(itemId)?.isVisible != true
-		) return
-		// Transfer the already-visible Favorites producer to RESUMED without
-		// cancelling it in between. A different release target gets no handoff.
-		val favourites = tabPreview?.favourites.takeIf { itemId == R.id.nav_favorites }
+		if (!previewTab(itemId)) { clearTabPreview(); return }
+		val alreadySelected = primaryFragment?.let(::getItemId) == itemId
+		val matched = interactiveSlide.contains(itemId)
+		val handoff = interactiveSlide.captureHandoff(itemId)
+		// Keep Favorites list work continuous across preview -> real commit.
+		val favourites = previewFavourites.takeIf { matched && itemId == R.id.nav_favorites && !alreadySelected }
 		clearTabPreview(keepFavouritesWork = favourites != null)
+		if (alreadySelected) {
+			// A short/reversed drag settles back without triggering a reselection or lifecycle change.
+			handoff?.let(slidePresentation::resume)
+			return
+		}
+		dragPreviewMatched = matched
 		committingTabDrag = true
 		try {
 			navBar.selectedItemId = itemId
+			if (handoff != null && primaryFragment?.view === handoff.incoming) {
+				slidePresentation.resume(handoff)
+			}
 		} finally {
 			committingTabDrag = false
+			dragPreviewMatched = false
 			favourites?.setTabPreviewVisible(false)
 		}
 	}
-
-	private data class TabPreview(
-		val current: View,
-		val currentVisibility: Int,
-		val target: View,
-		val targetVisibility: Int,
-		val externalHeader: Pair<View, Int>?,
-		val favourites: FavouritesContainerFragment?,
-	)
 
 	private fun newBottomTab(type: Class<out Fragment>): Fragment = instantiateFragment(type).apply {
 		arguments = buildBundle(1) { putBoolean(AppRouter.KEY_IS_BOTTOMTAB, true) }
 	}
 
-	private fun setPrimaryFragment(fragmentClass: Class<out Fragment>): Boolean {
+	private fun setPrimaryFragment(fragmentClass: Class<out Fragment>, userNavbar: Boolean = false): Boolean {
 		cancelTabDrag()
 		if (fragmentManager.isStateSaved || fragmentClass.isInstance(primaryFragment)) {
 			return false
@@ -378,7 +439,15 @@ class MainNavigationDelegate(
 			.setReorderingAllowed(true)
 		val involvesFavourites = fragmentClass == FavouritesContainerFragment::class.java ||
 			current is FavouritesContainerFragment
-		if (!involvesFavourites && !committingTabDrag) {
+		val direction = if (current != null && userNavbar && transitionPreferences.transition == ScreenTransition.DIRECTIONAL_SLIDE) {
+			val targetId = (0 until navBar.menu.size).map { navBar.menu.getItem(it).itemId }
+				.firstOrNull { fragmentClassForItem(it) == fragmentClass }
+			if (targetId != null) slideDirection(getItemId(current), targetId) else 0
+		} else 0
+		if (userNavbar && direction != 0 && !dragPreviewMatched && navBar.context.isAnimationsEnabled) {
+			val animations = DirectionalSlide.animations(direction)
+			transaction.setCustomAnimations(animations.first, animations.second)
+		} else if (!userNavbar && !involvesFavourites && !committingTabDrag) {
 			transaction.setCustomAnimations(
 				R.anim.m3_fade_through_enter,
 				R.anim.m3_fade_through_exit,
@@ -409,7 +478,9 @@ class MainNavigationDelegate(
 			val shown = primaryFragment ?: shownFragment
 			onFragmentChanged(shown, fromUser = true)
 		}
-		if (committingTabDrag) transaction.commitNow() else transaction.commit()
+		// A direct user selection is accepted synchronously so a later gesture cannot read a stale primary tab.
+		// Programmatic, restore and back paths retain their existing transaction policy.
+		if (committingTabDrag || (userNavbar && current != null)) transaction.commitNow() else transaction.commit()
 		return true
 	}
 

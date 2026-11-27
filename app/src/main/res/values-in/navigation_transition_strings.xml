@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="navigation_transition_title">Navigasi &amp; Transisi</string>
+    <string name="navigation_transition_summary">Pilih gerakan indikator dan transisi halaman</string>
+    <string name="navigation_motion_title">Gerakan Navigasi</string>
+    <string name="navigation_motion_classic">Classic Glide</string>
+    <string name="navigation_motion_elastic">Elastic Glide</string>
+    <string name="navigation_motion_fluid">Fluid Lens</string>
+    <string name="navigation_screen_transition_title">Transisi Layar</string>
+    <string name="navigation_transition_directional">Directional Slide</string>
+    <string name="navigation_transition_preview">Pratinjau Interaktif</string>
+    <string name="navigation_transition_preview_hint">Ketuk atau geser tab pratinjau. Halaman asli tidak akan dibuka.</string>
+    <string name="navigation_transition_reset">Kembalikan ke default</string>
+    <string name="navigation_transition_reset_summary">Hanya mengembalikan Classic Glide dan Directional Slide</string>
+</resources>
