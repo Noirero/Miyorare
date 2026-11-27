@@ -799,12 +799,15 @@ class DownloadedLocalStateTest {
 		db.getFavouriteDownloadIndexDao().upsert(
 			FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.canonicalPath),
 		)
-		val before = requireNotNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL))
+		assertTrue(detailsNormalResolver.appliesTo(manga, FavouriteSpace.NORMAL))
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		val before = requireNotNull(detailsNormalResolver.readDetailsCopy(manga, FavouriteSpace.NORMAL))
 		assertEquals(setOf(first.id, second.id), before.manga.chapters.orEmpty().map { it.id }.toSet())
 
 		val special = File(container, "Chapter 1 Special.cbz")
 		assertTrue(original.renameTo(special))
-		val after = requireNotNull(resolver.findSavedManga(manga, FavouriteSpace.NORMAL))
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		val after = requireNotNull(detailsNormalResolver.readDetailsCopy(manga, FavouriteSpace.NORMAL))
 		val chapters = after.manga.chapters.orEmpty()
 		assertTrue("The untouched canonical chapter must survive", chapters.any { it.id == second.id })
 		assertFalse("The missing canonical filename must not remain mapped", chapters.any { it.id == first.id })

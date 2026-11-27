@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.core.db.migrations.Migration52To53
 import org.koitharu.kotatsu.core.db.migrations.Migration53To54
 import org.koitharu.kotatsu.core.db.migrations.Migration54To55
 import org.koitharu.kotatsu.core.db.migrations.Migration55To56
+import org.koitharu.kotatsu.core.db.migrations.Migration56To57
 import org.koitharu.kotatsu.favourites.data.*
 import org.koitharu.kotatsu.favourites.domain.CategorySetIdentity
 
@@ -57,13 +58,14 @@ class CategorySetsMigrationTest {
 				execSQL("DROP TABLE chapter_progress")
                 // v49 has no v55 bookmark-origin column.
                 execSQL("ALTER TABLE bookmarks DROP COLUMN origin")
+				execSQL("DROP TABLE normal_download_observation")
 				execSQL("DROP TABLE room_master_table")
 				version = 49
 			}
 			initial.close()
 			repeat(2) {
 				val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name)
-					.addMigrations(Migration49To50(), Migration50To51(), Migration51To52(), Migration52To53(), Migration53To54(), Migration54To55(), Migration55To56())
+					.addMigrations(Migration49To50(), Migration50To51(), Migration51To52(), Migration52To53(), Migration53To54(), Migration54To55(), Migration55To56(), Migration56To57())
 					.build()
 				try {
 					assertTrue(migrated.openHelper.writableDatabase.isOpen) // Room validates the migrated schema.
