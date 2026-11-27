@@ -462,6 +462,7 @@ class DiscoveryNavigationRuntimeTest {
 		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
 		assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
 			.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+			.putBoolean(AppSettings.KEY_NAV_PINNED, false)
 			.putString("favourites_header_scroll_mode", if (pinned) "PINNED" else "SCROLL_AWAY").commit())
 		launch().use { scenario ->
 			compose.waitForIdle()
@@ -479,7 +480,9 @@ class DiscoveryNavigationRuntimeTest {
 				initialRange = activity.appBar.totalScrollRange
 				initialPagerY = y(favourites.requireView().findViewById<View>(R.id.pager))
 				if (collapsed) assertTrue("Fixture must be collapsed", initialTop < 0)
-				if (pinned) assertEquals(0, initialRange)
+				Log.i("MiyorareNavGeometry", "initial-header collapsed=$collapsed pinned=$pinned " +
+					"appBarTop=$initialTop scrollRange=$initialRange pagerY=$initialPagerY")
+				if (pinned) assertEquals("Pinned Favorites header must remain pinned with unpinned bottom bar", 0, initialRange)
 			}
 			val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
 				.fetchSemanticsNode().boundsInWindow.center

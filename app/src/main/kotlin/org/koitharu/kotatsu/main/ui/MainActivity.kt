@@ -90,6 +90,7 @@ import org.koitharu.kotatsu.core.util.ext.setOptionalIconsVisibleCompat
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityMainBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
+import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.explore.ui.ExploreFragment
 import org.koitharu.kotatsu.history.ui.HistoryListFragment
@@ -914,9 +915,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private fun setNavbarPinned(isPinned: Boolean) {
 		val bottomNavBar = viewBinding.bottomNav
 		bottomNavBar?.isPinned = isPinned
+		// The bottom-bar preference can emit after Favorites has attached its header.
+		// Unpinning the bar must not undo the independently pinned Favorites header.
+		val favouritesHeaderPinned = navigationDelegate.primaryFragment is FavouritesContainerFragment &&
+			FavouriteHeaderScrollMode.current(this) == FavouriteHeaderScrollMode.PINNED
 		for (view in viewBinding.appbar.children) {
 			val lp = view.layoutParams as? AppBarLayout.LayoutParams ?: continue
-			val scrollFlags = if (isPinned) {
+			val scrollFlags = if (isPinned || favouritesHeaderPinned) {
 				lp.scrollFlags and SCROLL_FLAG_SCROLL.inv()
 			} else {
 				lp.scrollFlags or SCROLL_FLAG_SCROLL
