@@ -1071,6 +1071,121 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	@Test fun pausedOwnedDragRetainsLocalQueryAndHubScroll() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		val prefs = NavigationTransitionPreferences(app)
+		val query = "Retained navigation fixture"
+		try {
+			shell("settings put global animator_duration_scale 1")
+			assertEquals(1f, android.provider.Settings.Global.getFloat(app.contentResolver,
+				android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f), 0.01f)
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+			assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
+				.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+				.putBoolean(AppSettings.KEY_NAV_LABELS, true).commit())
+			prefs.setMotion(NavigationMotion.FLUID_LENS)
+			launch().use { scenario ->
+				showHub(scenario)
+				compose.onNodeWithTag("catalog_home_list").performScrollToNode(hasTestTag("catalog_section_NOVEL_TOP_RATED"))
+				compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
+				val providerCalls = calls.get()
+				lateinit var hub: DiscoveryHubFragment
+				lateinit var local: LocalListFragment
+				lateinit var hubRoot: View
+				lateinit var localRoot: View
+				scenario.onActivity { activity ->
+					hub = activity.supportFragmentManager.fragments.filterIsInstance<DiscoveryHubFragment>().single()
+					hubRoot = hub.requireView()
+					checkNotNull(activity.bottomNav as? FloatingBottomNavigationView).selectFromUser(R.id.nav_local)
+				}
+				assertLocalContentReady(scenario)
+				scenario.onActivity { activity ->
+					local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+					localRoot = local.requireView()
+					local.localContentModel().setLocalQuery(query)
+				}
+				assertLocalContentReady(scenario, query)
+				fun settled(id: Int) {
+					val expected = if (id == R.id.nav_local) local else hub
+					compose.waitUntil(10000) {
+						var ready = false
+						scenario.onActivity { activity ->
+							val fm = activity.supportFragmentManager
+							val active = fm.fragments.filter { it.id == R.id.container && it.isAdded && !it.isHidden }
+							ready = activity.bottomNav!!.selectedItemId == id &&
+								active.singleOrNull() === expected &&
+								expected.lifecycle.currentState == Lifecycle.State.RESUMED &&
+								fm.backStackEntryCount == 0 &&
+								listOf(local, hub).all { fragment ->
+									val v = fragment.view
+									v != null && kotlin.math.abs(v.translationX) < 0.1f &&
+										v.visibility == (if (fragment === expected) View.VISIBLE else View.GONE)
+								}
+						}
+						ready
+					}
+					scenario.onActivity {
+						assertSame(localRoot, local.requireView())
+						assertSame(hubRoot, hub.requireView())
+						assertEquals(NavigationMotion.FLUID_LENS, prefs.motion)
+					}
+				}
+				settled(R.id.nav_local)
+				val from = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+					.fetchSemanticsNode().boundsInWindow.center
+				val to = compose.onNodeWithContentDescription(app.getString(NavItem.DISCOVERY_HUB.navTitle))
+					.fetchSemanticsNode().boundsInWindow.center
+				val down = SystemClock.uptimeMillis()
+				fun send(action: Int, fraction: Float, elapsed: Long) = scenario.onActivity { activity ->
+					val bar = checkNotNull(activity.bottomNav)
+					val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+					val pt = from + (to - from) * fraction
+					val ev = MotionEvent.obtain(down, down + elapsed, action, pt.x - origin[0], pt.y - origin[1], 0)
+					try { bar.dispatchTouchEvent(ev) } finally { ev.recycle() }
+				}
+				send(MotionEvent.ACTION_DOWN, 0f, 0)
+				try {
+					send(MotionEvent.ACTION_MOVE, 0.65f, 32)
+					scenario.onActivity {
+						assertEquals(R.id.nav_local, it.bottomNav!!.selectedItemId)
+						assertEquals(Lifecycle.State.RESUMED, local.lifecycle.currentState)
+						assertTrue(hub.isHidden)
+						assertEquals(Lifecycle.State.STARTED, hub.lifecycle.currentState)
+						assertEquals(View.VISIBLE, hubRoot.visibility)
+						assertTrue(kotlin.math.abs(hubRoot.translationX) > 1f)
+					}
+					// Exercise MainActivity.onPause, not a direct call to the cancellation helper.
+					scenario.moveToState(Lifecycle.State.STARTED)
+					scenario.moveToState(Lifecycle.State.RESUMED)
+					settled(R.id.nav_local)
+					send(MotionEvent.ACTION_UP, 1f, SystemClock.uptimeMillis() - down)
+					settled(R.id.nav_local)
+					assertLocalContentReady(scenario, query)
+				} finally {
+					send(MotionEvent.ACTION_CANCEL, 1f, SystemClock.uptimeMillis() - down)
+				}
+				// Fresh touch after interruption must navigate through the actual renderer.
+				compose.onNodeWithContentDescription(app.getString(NavItem.DISCOVERY_HUB.navTitle))
+					.performTouchInput { click() }
+				settled(R.id.nav_discovery_hub)
+				compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed()
+				assertEquals(providerCalls, calls.get())
+				compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+					.performTouchInput { click() }
+				settled(R.id.nav_local)
+				assertLocalContentReady(scenario, query)
+			}
+		} finally {
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
 	private fun captureNavigationGesture(motion: NavigationMotion, night: Int) {
 		launch().use { scenario ->
 			compose.waitForIdle()
