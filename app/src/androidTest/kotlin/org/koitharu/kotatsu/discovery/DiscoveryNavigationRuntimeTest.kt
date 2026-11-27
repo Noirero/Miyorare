@@ -324,6 +324,111 @@ class DiscoveryNavigationRuntimeTest {
 			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
 	}
+	@Test fun fullLocalPreviewUsesSameVerticalViewportAsCommittedLocal() {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
+			.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+			.putString("favourites_header_scroll_mode", "SCROLL_AWAY").commit())
+		launch().use { scenario ->
+			fun selectExpanded(id: Int) {
+				scenario.onActivity { activity ->
+					activity.bottomNav!!.selectedItemId = id
+					activity.supportFragmentManager.executePendingTransactions()
+					activity.appBar.setExpanded(true, false)
+				}
+				compose.waitForIdle()
+			}
+			fun windowY(view: View): Int = IntArray(2).also { view.getLocationInWindow(it) }[1]
+			fun geometry(stage: String): Int {
+				var gap = Int.MIN_VALUE
+				scenario.onActivity { activity ->
+					val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+					val root = local.requireView()
+					val search = activity.findViewById<View>(R.id.layout_search)
+					val header = activity.appBar.findViewById<View>(R.id.layout_category_header)
+					assertEquals("$stage local root must be visible", View.VISIBLE, root.visibility)
+					assertTrue("$stage local root must be laid out", root.isLaidOut && root.height > 0)
+					gap = windowY(root) - (windowY(search) + search.height)
+					Log.i("MiyorareNavGeometry", "$stage gap=$gap rootY=${windowY(root)} " +
+						"rootHeight=${root.height} appBarBottom=${activity.appBar.bottom} " +
+						"scrollRange=${activity.appBar.totalScrollRange} headerHeight=${header?.height} " +
+						"headerVisibility=${header?.visibility} selected=${activity.bottomNav!!.selectedItemId}")
+				}
+				return gap
+			}
+			selectExpanded(R.id.nav_local)
+			val reference = geometry("committed-reference")
+			selectExpanded(R.id.nav_favorites)
+			scenario.onActivity { activity ->
+				val header = checkNotNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+				assertTrue("Fixture requires expanded Favourites header", header.isShown && header.height > 0)
+			}
+			val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			var down = SystemClock.uptimeMillis()
+			fun send(action: Int, position: Offset, elapsed: Long) = scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(down, down + elapsed, action,
+					position.x - origin[0], position.y - origin[1], 0)
+				try { bar.dispatchTouchEvent(event) } finally { event.recycle() }
+			}
+			fun preview(): Int {
+				down = SystemClock.uptimeMillis()
+				send(MotionEvent.ACTION_DOWN, from, 0)
+				send(MotionEvent.ACTION_MOVE, to, 32)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+					assertTrue("Preview must not commit navigation", local.isHidden)
+					assertEquals(Lifecycle.State.STARTED, local.lifecycle.currentState)
+					assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+					assertEquals("At target center Local must fill the horizontal viewport",
+						0f, local.requireView().translationX, 2f)
+				}
+				return geometry("full-local-preview")
+			}
+			val cancelledPreview = try {
+				preview()
+			} finally {
+				send(MotionEvent.ACTION_CANCEL, to, 64)
+			}
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val header = checkNotNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+				assertTrue("Cancel must restore Favourites header", header.isShown)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(View.GONE, local.requireView().visibility)
+			}
+			var released = false
+			val committedPreview = try {
+				val gap = preview()
+				send(MotionEvent.ACTION_UP, to, 64)
+				released = true
+				gap
+			} finally {
+				if (!released) send(MotionEvent.ACTION_CANCEL, to, 64)
+			}
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				assertEquals(R.id.nav_local, activity.bottomNav!!.selectedItemId)
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(Lifecycle.State.RESUMED, local.lifecycle.currentState)
+			}
+			val committed = geometry("committed-after-drag")
+			assertTrue("Local committed viewport changed: before=$reference after=$committed",
+				kotlin.math.abs(reference - committed) <= 2)
+			assertTrue("Unexpected vertical gap during full Local preview: reference=$reference " +
+				"cancelledPreview=$cancelledPreview committedPreview=$committedPreview committed=$committed",
+				kotlin.math.abs(reference - cancelledPreview) <= 2 &&
+					kotlin.math.abs(reference - committedPreview) <= 2)
+		}
+	}
+
 	@Test fun floatingDragPreviewsCustomTabAndHomeBeforeRelease() {
 		assertTabDragPreviewsCustomTabAndHome(legacy = false)
 	}
