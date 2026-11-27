@@ -21,6 +21,7 @@ import android.view.FrameMetrics
 import android.view.Window
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsNode
@@ -55,6 +56,8 @@ import org.koitharu.kotatsu.discovery.domain.*
 import org.koitharu.kotatsu.discovery.ui.DiscoveryHubFragment
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.settings.SettingsActivity
+import org.koitharu.kotatsu.settings.nav.NavigationTransitionPreview
+import org.koitharu.kotatsu.settings.nav.NavigationTransitionSettingsFragment
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService as Service
 import javax.inject.Inject
@@ -474,7 +477,7 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
-	private data class NavigationFrameSample(val totalNs: Long, val deadlineNs: Long, val firstDraw: Boolean)
+	private data class NavigationFrameSample(val totalNs: Long, val deadlineNs: Long, val firstDraw: Boolean, val phases: List<Long>)
 
 	private fun measureNavigationFrames(
 		scenario: ActivityScenario<MainActivity>, window: Window, budgetNs: Long, label: String, block: () -> Unit,
@@ -482,12 +485,22 @@ class DiscoveryNavigationRuntimeTest {
 		val worker = HandlerThread("NavigationFrameMetrics").apply { start() }
 		val samples = java.util.Collections.synchronizedList(mutableListOf<NavigationFrameSample>())
 		val dropped = AtomicInteger()
+		val phaseIds = listOf(
+			"unknown" to FrameMetrics.UNKNOWN_DELAY_DURATION,
+			"input" to FrameMetrics.INPUT_HANDLING_DURATION,
+			"animation" to FrameMetrics.ANIMATION_DURATION,
+			"layout" to FrameMetrics.LAYOUT_MEASURE_DURATION,
+			"draw" to FrameMetrics.DRAW_DURATION,
+			"sync" to FrameMetrics.SYNC_DURATION,
+			"command" to FrameMetrics.COMMAND_ISSUE_DURATION,
+			"swap" to FrameMetrics.SWAP_BUFFERS_DURATION,
+		) + if (Build.VERSION.SDK_INT >= 31) listOf("gpu" to FrameMetrics.GPU_DURATION) else emptyList()
 		val listener = Window.OnFrameMetricsAvailableListener { _, metrics, count ->
 			val total = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
 			val deadline = if (Build.VERSION.SDK_INT >= 31) metrics.getMetric(FrameMetrics.DEADLINE) else budgetNs
 			dropped.addAndGet(count.coerceAtLeast(0))
 			if (total >= 0) samples.add(NavigationFrameSample(total, deadline.takeIf { it > 0 } ?: budgetNs,
-				metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L))
+				metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L, phaseIds.map { metrics.getMetric(it.second) }))
 		}
 		var registered = false
 		try {
@@ -516,6 +529,12 @@ class DiscoveryNavigationRuntimeTest {
 		Log.i("MiyorareNavPerf", "$label frames=${measured.size} first_draw=${all.size - measured.size} " +
 			"dropped=${dropped.get()} missed=$missed p50_ns=${percentile(0.50)} p95_ns=${percentile(0.95)} " +
 			"max_ns=${totals.last()} budget_ns=$budgetNs")
+		// Phases can overlap; do not sum their percentiles or equate GPU time with total duration.
+		Log.i("MiyorareNavPhase", "$label " + phaseIds.mapIndexed { i, phase ->
+			val values = measured.map { it.phases[i] }.filter { it >= 0 }.sorted()
+			val p95 = if (values.isEmpty()) -1L else values[((values.size - 1) * 0.95).toInt()]
+			"${phase.first}_p95_ns=$p95 ${phase.first}_count=${values.size}"
+		}.joinToString(" "))
 		// Raw pairs support post-run reanalysis without retaining screenshot or user data.
 		measured.chunked(60).forEachIndexed { index, chunk ->
 			Log.i("MiyorareNavPerf", "$label chunk=$index total_deadline_ns=" +
@@ -588,6 +607,186 @@ class DiscoveryNavigationRuntimeTest {
 					assertEquals(motion, NavigationTransitionPreferences(app).motion)
 					assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
 				}
+			}
+		} finally {
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
+	/** Counterbalanced same-window control for the saturated emulator measurements; not an Amain2 baseline. */
+	@Test fun adjacentFrameTimingAnimationScaleControl() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		val previousNight = androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode()
+		try {
+			instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES) }
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+			PreferenceManager.getDefaultSharedPreferences(app).edit()
+				.putBoolean(AppSettings.KEY_NAV_LEGACY, false).putBoolean(AppSettings.KEY_NAV_LABELS, true).commit()
+			for (motion in NavigationMotion.entries) {
+				NavigationTransitionPreferences(app).setMotion(motion)
+				shell("settings put global animator_duration_scale 1")
+				launch().use { scenario ->
+					fun select(id: Int) = scenario.onActivity {
+						checkNotNull(it.bottomNav as? FloatingBottomNavigationView).selectFromUser(id)
+					}
+					select(R.id.nav_local)
+					assertLocalContentReady(scenario)
+					select(R.id.nav_favorites)
+					SystemClock.sleep(600)
+					compose.waitForIdle()
+					lateinit var window: Window
+					var hz = 0f
+					var night = 0
+					scenario.onActivity {
+						window = it.window
+						hz = window.decorView.display?.refreshRate ?: 0f
+						night = it.resources.configuration.uiMode and AndroidConfiguration.UI_MODE_NIGHT_MASK
+					}
+					assertTrue(hz > 0f)
+					val budget = (1_000_000_000.0 / hz).toLong()
+					repeat(3) { index ->
+						for (scale in if (index % 2 == 0) listOf(1, 0) else listOf(0, 1)) {
+							shell("settings put global animator_duration_scale $scale")
+							assertEquals(scale.toFloat(), android.provider.Settings.Global.getFloat(app.contentResolver,
+								android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, -1f), 0.01f)
+							SystemClock.sleep(300)
+							compose.waitForIdle()
+							measureNavigationFrames(scenario, window, budget,
+								"motion=${motion.storedValue} actual_night=$night refresh_hz=$hz scenario=adjacent_scale_control scale=$scale repeat=${index + 1}") {
+								// Three identical roundtrips per window provide more frames at scale zero.
+								repeat(3) {
+									select(R.id.nav_local); SystemClock.sleep(500)
+									select(R.id.nav_favorites); SystemClock.sleep(500)
+								}
+							}
+							compose.waitForIdle()
+							scenario.onActivity {
+								assertEquals(R.id.nav_favorites, it.bottomNav!!.selectedItemId)
+								val active = it.supportFragmentManager.fragments.filter { f -> f.id == R.id.container && f.isAdded && !f.isHidden }
+								assertTrue(active.single() is FavouritesContainerFragment)
+								assertEquals(Lifecycle.State.RESUMED, active.single().lifecycle.currentState)
+							}
+						}
+					}
+				}
+			}
+		} finally {
+			instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(previousNight) }
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
+	private fun findNavigationPreview(view: View): NavigationTransitionPreview? {
+		if (view is NavigationTransitionPreview) return view
+		if (view is ViewGroup) for (index in 0 until view.childCount) {
+			findNavigationPreview(view.getChildAt(index))?.let { return it }
+		}
+		return null
+	}
+
+	@Test fun navigationSettingsPreviewLocalGestureAndReset() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		val prefs = NavigationTransitionPreferences(app)
+		try {
+			shell("settings put global animator_duration_scale 1")
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			val raw = PreferenceManager.getDefaultSharedPreferences(app)
+			raw.edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).putBoolean(AppSettings.KEY_NAV_LABELS, true).commit()
+			prefs.reset()
+			val originalCalls = calls.get()
+			ActivityScenario.launch<SettingsActivity>(Intent(app, SettingsActivity::class.java)).use { scenario ->
+				scenario.onActivity { it.openFragment(NavigationTransitionSettingsFragment::class.java, null, false) }
+				compose.waitUntil(10000) { compose.onAllNodesWithText(app.getString(R.string.navigation_motion_title)).fetchSemanticsNodes().isNotEmpty() }
+				compose.waitForIdle()
+				lateinit var preview: NavigationTransitionPreview
+				lateinit var pages: FrameLayout
+				lateinit var bar: FloatingBottomNavigationView
+				var stack = 0
+				scenario.onActivity {
+					preview = checkNotNull(findNavigationPreview(it.window.decorView))
+					pages = preview.getChildAt(0) as FrameLayout
+					bar = preview.getChildAt(1) as FloatingBottomNavigationView
+					stack = it.supportFragmentManager.backStackEntryCount
+					assertEquals(3, pages.childCount)
+				}
+				fun settled(id: Int, page: Int) {
+					compose.waitUntil(10000) {
+						var ready = false
+						scenario.onActivity {
+							ready = bar.selectedItemId == id && (0 until pages.childCount).all { index ->
+								val v = pages.getChildAt(index)
+								kotlin.math.abs(v.translationX) < 0.1f &&
+									(v.visibility == View.VISIBLE) == (index == page)
+							}
+						}
+						ready
+					}
+					scenario.onActivity {
+						assertTrue(it.supportFragmentManager.findFragmentById(R.id.container) is NavigationTransitionSettingsFragment)
+						assertEquals(stack, it.supportFragmentManager.backStackEntryCount)
+					}
+				}
+				for ((motion, option) in listOf(NavigationMotion.ELASTIC_GLIDE to R.string.navigation_motion_elastic,
+					NavigationMotion.FLUID_LENS to R.string.navigation_motion_fluid,
+					NavigationMotion.CLASSIC_GLIDE to R.string.navigation_motion_classic)) {
+					compose.onNodeWithText(app.getString(R.string.navigation_motion_title)).performScrollTo().performClick()
+					compose.onNodeWithText(app.getString(option)).performClick()
+					compose.waitUntil(5000) { prefs.motion == motion }
+					assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
+					// Use the actual preview bar's selection callback; no app route.
+					scenario.onActivity { bar.selectFromUser(R.id.nav_discovery_hub) }
+					settled(R.id.nav_discovery_hub, 1)
+					scenario.onActivity { bar.selectFromUser(R.id.nav_favorites) }
+					settled(R.id.nav_favorites, 0)
+				}
+				// Direct gesture dispatch to the real nested preview bar, not the main runtime bar.
+				compose.onNodeWithText(app.getString(R.string.navigation_transition_preview)).performScrollTo()
+				compose.waitForIdle()
+				val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle)).fetchSemanticsNode().boundsInWindow.center
+				val to = compose.onNodeWithContentDescription(app.getString(NavItem.DISCOVERY_HUB.navTitle)).fetchSemanticsNode().boundsInWindow.center
+				for (scale in listOf(1, 0)) {
+					shell("settings put global animator_duration_scale $scale")
+					assertEquals(scale.toFloat(), android.provider.Settings.Global.getFloat(app.contentResolver,
+						android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, -1f), 0.01f)
+					val down = SystemClock.uptimeMillis()
+					fun send(action: Int, fraction: Float, elapsed: Long) = scenario.onActivity {
+						val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+						val pt = from + (to - from) * fraction
+						val ev = MotionEvent.obtain(down, down + elapsed, action, pt.x - origin[0], pt.y - origin[1], 0)
+						try { bar.dispatchTouchEvent(ev) } finally { ev.recycle() }
+					}
+					send(MotionEvent.ACTION_DOWN, 0f, 0)
+					try {
+						send(MotionEvent.ACTION_MOVE, if (scale == 1) 0.5f else 1f, 32)
+						scenario.onActivity {
+							assertEquals(R.id.nav_favorites, bar.selectedItemId)
+							val incoming = pages.getChildAt(1)
+							assertEquals(View.VISIBLE, incoming.visibility)
+							val sign = if (to.x > from.x) 1f else -1f
+							assertEquals(if (scale == 1) sign * pages.width * 0.5f else 0f, incoming.translationX, 2f)
+						}
+					} finally { send(MotionEvent.ACTION_CANCEL, 1f, 64) }
+					settled(R.id.nav_favorites, 0)
+				}
+				prefs.setMotion(NavigationMotion.FLUID_LENS)
+				compose.waitForIdle()
+				compose.onNodeWithText(app.getString(R.string.navigation_transition_reset)).performScrollTo().performClick()
+				compose.waitUntil(5000) { prefs.motion == NavigationMotion.CLASSIC_GLIDE }
+				assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
+				assertFalse(raw.getBoolean(AppSettings.KEY_NAV_LEGACY, true))
+				assertTrue(raw.getBoolean(AppSettings.KEY_NAV_LABELS, false))
+				assertEquals(originalCalls, calls.get())
 			}
 		} finally {
 			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
