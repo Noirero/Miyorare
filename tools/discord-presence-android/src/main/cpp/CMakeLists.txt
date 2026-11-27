@@ -1,7 +1,0 @@
-cmake_minimum_required(VERSION 3.22.1)
-project(MiyorareDiscordPresence LANGUAGES CXX)
-
-find_package(discord_partner_sdk REQUIRED CONFIG)
-add_library(miyorare_discord_presence SHARED presence.cpp)
-target_compile_features(miyorare_discord_presence PRIVATE cxx_std_20)
-target_link_libraries(miyorare_discord_presence PRIVATE discord_partner_sdk::discord_partner_sdk)

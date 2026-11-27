@@ -11,13 +11,6 @@ plugins {
 	id 'org.jetbrains.kotlin.plugin.compose'
 }
 
-def discordSdkAar = providers.gradleProperty('discordSocialSdkAar').orNull
-def discordPresenceAppId = providers.gradleProperty('discordPresenceAppId').orNull
-def withDiscordSdk = discordSdkAar != null
-if (withDiscordSdk && (!file(discordSdkAar).isFile() || discordPresenceAppId == null || !(discordPresenceAppId ==~ /[1-9][0-9]{16,18}/) || !discordPresenceAppId.isLong())) {
-	throw new GradleException('Set discordSocialSdkAar to the official Android AAR and discordPresenceAppId to a registered Application ID.')
-}
-
 android {
 	compileSdk {
 		version = release(37) {
@@ -33,8 +26,6 @@ android {
 	defaultConfig {
 		applicationId = 'org.noirero.miyorare'
 		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
-		buildConfigField 'boolean', 'DISCORD_SOCIAL_SDK_INCLUDED', withDiscordSdk.toString()
-		buildConfigField 'long', 'DISCORD_PRESENCE_APP_ID', withDiscordSdk ? "${discordPresenceAppId}L" : '0L'
 		minSdk = 26
 		targetSdk = 37
 		versionCode = 75
@@ -95,15 +86,6 @@ android {
 		buildConfig = true
 		compose = true
 		 aidl = true
-		prefab = withDiscordSdk
-	}
-	if (withDiscordSdk) {
-		externalNativeBuild {
-			cmake {
-				path = file('src/discordSdk/cpp/CMakeLists.txt')
-				version = '3.22.1'
-			}
-		}
 	}
 	packaging {
 		resources {
@@ -119,7 +101,6 @@ android {
 		}
 	}
 	sourceSets {
-		main.java.srcDir(withDiscordSdk ? 'src/discordSdk/java' : 'src/noDiscordSdk/java')
 		preview.kotlin.srcDirs += 'src/release/kotlin'
 		preview.res.srcDirs += 'src/release/res'
 	}
@@ -221,9 +202,6 @@ def tsukiHostJar = files(prepareTsukiHostJar.flatMap { it.archiveFile })
 tsukiHostJar.builtBy(prepareTsukiHostJar)
 
 dependencies {
-	if (withDiscordSdk) {
-		implementation files(discordSdkAar)
-	}
 	//noinspection UseTomlInstead
 	implementation("com.github.Gekkoushi:plugin-source:${libs.versions.parsers.get()}") {
 		exclude group: 'org.json', module: 'json'
