@@ -64,12 +64,12 @@ fun MangaDetails.mapChapters(
 		for (chapter in remoteChapters) {
 			// Keep source identity stable while displaying a downloaded artifact.
 			val local = localMap?.remove(chapter.id)
-				?: localMap?.findAndRemoveEquivalent(chapter, reservedIds = remoteIds)
+				?: if (!exactNormalDownloadIdentity) localMap?.findAndRemoveEquivalent(chapter, reservedIds = remoteIds) else null
 			val isCurrent = chapter.id == currentChapterId
 			val presentedChapter = if (local != null) {
 				chapter.copy(url = local.url, source = local.source)
 			} else chapter
-			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById)
+			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById, exactNormalDownloadIdentity)
 			val saved = progressByKey[key]
 			val readOverride = readOverrides[local?.id] ?: readOverrides[chapter.id]
 			val isRead = readOverride ?: if (isNovel) (!legacyUnread || isCurrent) else (saved != null || isCurrent)
@@ -94,7 +94,7 @@ fun MangaDetails.mapChapters(
 	if (!localMap.isNullOrEmpty()) {
 		for (chapter in localMap.values) {
 			val isCurrent = chapter.id == currentChapterId
-			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById)
+			val key = resolveChapterPersonalKey(chapter, sourceChapters, sourceChaptersById, exactNormalDownloadIdentity)
 			val saved = progressByKey[key]
 			val readOverride = readOverrides[chapter.id]
 			val isRead = readOverride ?: if (isNovel) (!legacyUnread || isCurrent) else (saved != null || isCurrent)
@@ -123,7 +123,13 @@ internal fun resolveChapterPersonalKey(
 	chapter: MangaChapter,
 	sourceChapters: List<MangaChapter>,
 	sourceChaptersById: Map<Long, List<MangaChapter>> = sourceChapters.groupBy { it.id },
+	exactNormal: Boolean = false,
 ): ChapterPersonalKey {
+	if (exactNormal) {
+		// Only verified reconciliation may assign a source ID to a local artifact.
+		val canonical = if (chapter.source == LocalMangaSource) sourceChaptersById[chapter.id]?.singleOrNull() else null
+		return ChapterPersonalKey.of(canonical ?: chapter)
+	}
 	// Personal metadata is owned by the source chapter locator, not by the downloaded/local artifact.
 	// A sidecar-free download may be reparsed with a different local id, especially in an isolated
 	// Private root. Recover the unique source chapter with the same bounded equivalence rules used by

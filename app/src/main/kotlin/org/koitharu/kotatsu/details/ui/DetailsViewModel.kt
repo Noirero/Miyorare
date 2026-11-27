@@ -86,6 +86,7 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.NormalDownloadChapterAction
+import org.koitharu.kotatsu.local.domain.NormalDownloadReadResolver
 import org.koitharu.kotatsu.local.domain.NormalStandaloneSelection
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -151,6 +152,7 @@ class DetailsViewModel @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val downloadedMangaResolver: DownloadedMangaResolver,
 	private val normalChapterAction: NormalDownloadChapterAction,
+	private val normalReadResolver: NormalDownloadReadResolver,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val syncProgressFromScrobblersUseCase: SyncProgressFromScrobblersUseCase,
@@ -177,6 +179,7 @@ class DetailsViewModel @Inject constructor(
 		savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
 	),
 	downloadSpaceProvenance = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let { FavouriteSpace.fromArgument(it) },
+	normalDetailsResolver = normalReadResolver,
 	deleteLocalMangaUseCase = deleteLocalMangaUseCase,
 	localStorageChanges = localStorageChanges,
 	mangaDataRepository = mangaDataRepository,
@@ -643,7 +646,7 @@ class DetailsViewModel @Inject constructor(
 		launchJob(Dispatchers.Default + SkipErrors) {
 			val manga = mangaDetails.firstOrNull { !it?.chapters.isNullOrEmpty() } ?: return@launchJob
 			val h = history.firstOrNull()
-			if (h != null) {
+			if (h != null && !normalReadResolver.appliesTo(manga.sourceManga, intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) })) {
 				progressUpdateUseCase(manga.toManga())
 			}
 		}
@@ -657,8 +660,8 @@ class DetailsViewModel @Inject constructor(
 		// are reflected instantly, without waiting for a manual reload or re-entering the screen.
 		mangaDataRepository.observeOverridesTrigger(emitInitialState = false)
 			.onEach {
-				val current = mangaDetails.value ?: return@onEach
-				mangaDetails.value = current.withOverride(mangaDataRepository.getOverride(mangaId))
+				val override = mangaDataRepository.getOverride(mangaId)
+				mangaDetails.update { it?.withOverride(override) }
 			}
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
@@ -912,7 +915,10 @@ class DetailsViewModel @Inject constructor(
 					firstEmission = false
 					if (it.allChapters.isNotEmpty()) {
 						val manga = it.toManga()
-						val hist = PerformanceDiagnostics.measure("repository", "details_history", performanceTrace) { historyRepository.getOne(manga) }
+						val hist = PerformanceDiagnostics.measure("repository", "details_history", performanceTrace) {
+							if (it.exactNormalDownloadIdentity || normalReadResolver.appliesTo(it.sourceManga, intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }))
+								historyRepository.getOneExact(manga.id) else historyRepository.getOne(manga)
+						}
 						val preferredBranch = manga.getPreferredBranch(hist)
 						val resolvedBranch = resolveSelectedBranch(
 							selectedBranch = selectedBranch.value,
@@ -923,12 +929,12 @@ class DetailsViewModel @Inject constructor(
 							selectedBranch.value = resolvedBranch
 						}
 					}
-					mangaDetails.update { previous ->
+					publishDetailsSnapshot(it) { previous, incoming ->
 						val local = previous?.local
 						// A confirmed archive can arrive while the source refresh is in flight.
-						if (it.isOfficialExhentai && previous?.id == it.id &&
+						if (incoming.isOfficialExhentai && previous?.id == incoming.id &&
 							local != null && local !== localFromLoad && local.file.exists()
-						) it.copy(localManga = local) else it
+						) incoming.copy(localManga = local) else incoming
 					}
 					localFromLoad = it.local
 					PerformanceDiagnostics.milestone(performanceTrace, "manga_ready")
@@ -939,7 +945,8 @@ class DetailsViewModel @Inject constructor(
 						initialLoading = false
 					}
 					_isRefreshing.value = !initialLoading && !it.isLoaded
-					if (force && it.isLoaded && !scrobblingSynced) {
+					if (force && it.isLoaded && !scrobblingSynced &&
+						!normalReadResolver.appliesTo(it.sourceManga, intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) })) {
 						scrobblingSynced = true
 						launchJob(Dispatchers.Default + SkipErrors) {
 							syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->

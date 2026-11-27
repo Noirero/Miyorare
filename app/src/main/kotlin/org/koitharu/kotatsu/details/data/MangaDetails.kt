@@ -24,6 +24,7 @@ data class MangaDetails(
     private val override: MangaOverride?,
     val description: CharSequence?,
     val isLoaded: Boolean,
+    val exactNormalDownloadIdentity: Boolean = false,
 ) {
 
     constructor(manga: Manga) : this(

@@ -2,6 +2,9 @@ package org.koitharu.kotatsu.favourites.domain
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -15,6 +18,8 @@ import org.koitharu.kotatsu.favourites.data.NormalDownloadObservationDao
 import org.koitharu.kotatsu.favourites.data.NormalDownloadObservationEntity
 import org.koitharu.kotatsu.local.data.NormalCandidateResolution
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryDiscovery
+import org.koitharu.kotatsu.local.data.verifiedLocalProjection
+import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
 import java.io.IOException
@@ -69,6 +74,7 @@ internal data class NormalObservationWork(
 internal data class NormalObservationSnapshot(
 	val row: NormalDownloadObservationEntity,
 	val fact: NormalObservationFact,
+	val localProjection: LocalManga? = null,
 )
 
 internal data class NormalObservationRequests(val full: Boolean, val ids: Set<Long>)
@@ -245,8 +251,10 @@ internal class NormalDownloadObservationStore(
 		fun rejected(): Boolean { pending += id; return false }
 		if (!valid(work, refreshRoot())) return@withLock rejected()
 		val fact = fact(work, result)
+		val projection = if (fact.status == NormalObservationStatus.PRESENT) result?.verifiedLocalProjection() else null
 		val old = published[id]
-		val same = old != null && old.context == work.context && old.snapshot.fact == fact
+		val same = old != null && old.context == work.context && old.snapshot.fact == fact &&
+			old.snapshot.localProjection == projection
 		val nextRevision = if (same) work.revision else work.revision + 1L
 		val row = NormalDownloadObservationEntity(id, session, epoch, nextRevision,
 			work.root.normal, fact.status.name, fact.path)
@@ -266,7 +274,7 @@ internal class NormalDownloadObservationStore(
 			if (!valid(work, root)) return@withDestinationMutationLock rejected()
 			revisions[id] = nextRevision
 			tickets.remove(id)
-			published[id] = Published(NormalObservationSnapshot(row, fact), work.context)
+			published[id] = Published(NormalObservationSnapshot(row, fact, projection), work.context)
 			pending.remove(id)
 			if (!same) changed()
 			true
@@ -375,6 +383,44 @@ internal class NormalDownloadObservationStore(
 			mutex.unlock()
 		}
 	}
+
+	/** Apply accepted scoped Details facts under the same root/revision fence.
+	 * A stale source caller may not invalidate a newer accepted observation.
+	 */
+	internal suspend fun withDetailsProjection(
+		manga: Manga, space: FavouriteSpace?,
+		apply: (scoped: Boolean, sourceCurrent: Boolean, local: LocalManga?) -> Unit,
+	) = mutex.withLock {
+		while (true) {
+			val active = refreshRoot() ?: continue
+			val applied = db.withTransaction {
+				val scoped = scope.appliesTo(manga, space)
+				val id = manga.id
+				val ctx = if (scoped) context(manga, space) else null
+				val locators = if (scoped) dao.findChapterLocators(listOf(id)).map { Triple(it.chapterId, it.source, it.url) } else emptyList()
+				val sourceCurrent = !scoped || (ctx != null && locators == ctx.chapterLocators.orEmpty())
+				val value = published[id]
+				val valid = scoped && sourceCurrent && active.available && mutations[id].isNullOrEmpty() &&
+					value != null && value.context == ctx && value.snapshot.row.revision == revision(id) &&
+					dao.findCurrent(session, epoch, listOf(id)).singleOrNull() == value.snapshot.row
+				if (scoped && sourceCurrent && active.available && !valid) pending += id
+				if (refreshRoot() != active) return@withTransaction false
+				destinations.withDestinationMutationLock {
+					if (active.generation != rootChanges.value) false else {
+						apply(scoped, sourceCurrent, if (valid) value?.snapshot?.localProjection else null)
+						true
+					}
+				}
+			}
+			if (applied) break
+		}
+	}
+
+	internal fun observeDetailsChanges(): Flow<Unit> = merge(
+		changes.map { Unit }, rootChanges.map { Unit },
+		db.invalidationTracker.createFlow("favourites", "private_favourites", "manga", "chapters",
+			"normal_download_observation", emitInitialState = true).map { Unit },
+	)
 
 	suspend fun isCurrent(manga: Manga, space: FavouriteSpace?, snapshot: NormalObservationSnapshot): Boolean =
 		readVisible(listOf(manga), space)[manga.id] == snapshot

@@ -52,6 +52,25 @@ internal data class NormalCandidateResolution(
 		get() = verified.singleOrNull()?.takeIf { inventoryComplete && unresolvedPaths.isEmpty() }
 }
 
+/** Same logical chapter identity as a new scoped Reader; null is unresolved identity. */
+internal fun NormalCandidateResolution.verifiedLocalProjection(): LocalManga? {
+	val physical = uniqueCandidate ?: return null
+	val migrated = migratedArchiveIdentity
+	if (migrated != null) {
+		val selectors = migrated.selectorsByRemoteId
+		return physical.copy(
+			manga = physical.manga.copy(chapters = selectors.map { (id, chapter) -> chapter.copy(id = id) }),
+			normalReaderSelectors = selectors,
+		)
+	}
+	val projection = when {
+		directoryIdentity != null -> directoryIdentity.projection ?: return null
+		physical.file.isFile -> physical
+		else -> return null
+	}
+	return projection.copy(normalReaderSelectors = projection.manga.chapters.orEmpty().associateBy { it.id })
+}
+
 private data class NormalVerifiedCandidate(
 	val physical: LocalManga,
 	val migratedArchiveIdentity: NormalMigratedArchiveIdentity? = null,

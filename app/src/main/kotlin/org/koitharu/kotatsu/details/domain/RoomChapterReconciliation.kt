@@ -39,6 +39,8 @@ internal suspend fun MutableStateFlow<MangaDetails?>.reconcileRoomChapters(
 		currentCoroutineContext().ensureActive()
 		if (loadingJob() !== observedLoad || value !== current) continue
 		if (updated.sourceManga.chapters == current.sourceManga.chapters) return null
+		// A changed source locator set cannot retain the old scoped local observation.
+		if (current.exactNormalDownloadIdentity) updated = updated.copy(localManga = null)
 		if (!compareAndSet(current, updated)) continue
 		return updated
 	}

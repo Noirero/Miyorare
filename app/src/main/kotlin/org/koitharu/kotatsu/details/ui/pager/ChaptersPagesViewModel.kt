@@ -91,6 +91,7 @@ import tachiyomi.core.common.util.lang.compareToWithCollator
 import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 import org.koitharu.kotatsu.details.data.ChapterProgressRepository
+import org.koitharu.kotatsu.local.domain.NormalDownloadReadResolver
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -109,6 +110,7 @@ abstract class ChaptersPagesViewModel(
     private val localContentReader: LocalContentReader,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
 	private val downloadSpaceProvenance: FavouriteSpace? = null,
+	private val normalDetailsResolver: NormalDownloadReadResolver? = null,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
@@ -228,6 +230,7 @@ abstract class ChaptersPagesViewModel(
 		.distinctUntilChanged { old, new ->
 			old?.id == new?.id &&
 				old?.isLocal == new?.isLocal &&
+				old?.exactNormalDownloadIdentity == new?.exactNormalDownloadIdentity &&
 				old?.sourceManga?.chapters === new?.sourceManga?.chapters &&
 				old?.local?.manga?.chapters === new?.local?.manga?.chapters
 		}
@@ -469,6 +472,28 @@ abstract class ChaptersPagesViewModel(
 					if (mangaDetails.value?.id == id) chapterReadOverrides.value = overrides
 				}
 		}
+		normalDetailsResolver?.let { resolver ->
+			launchJob(Dispatchers.Default) {
+				combine(mangaDetails.map { it?.sourceManga }.distinctUntilChanged(),
+					resolver.observeDetailsChanges(), isScanlatorsMerged) { source, _, _ -> source }
+					.filterNotNull().collect { source ->
+						var leftScope = false
+						resolver.withDetailsProjection(source, downloadSpaceProvenance) { scoped, _, local ->
+							while (true) {
+								val latest = mangaDetails.value ?: break
+								if (latest.sourceManga != source || (!scoped && !latest.exactNormalDownloadIdentity)) break
+								val candidate = latest.copy(localManga = local, exactNormalDownloadIdentity = scoped)
+								val updated = if (scoped && isScanlatorsMerged.value) candidate.withMergedBranches() else candidate
+								if (mangaDetails.compareAndSet(latest, updated)) {
+									leftScope = !scoped && latest.exactNormalDownloadIdentity
+									break
+								}
+							}
+						}
+						if (leftScope) reload()
+					}
+			}
+		}
 		launchJob(Dispatchers.Default) {
 			localStorageChanges
 				.collect { onDownloadComplete(it) }
@@ -639,7 +664,7 @@ abstract class ChaptersPagesViewModel(
 		val details = mangaDetails.value ?: return ChapterOpenMode.NORMAL
 		val manga = details.toManga()
 		val history = runCatchingCancellable {
-			historyRepository.getOne(manga)
+			if (details.exactNormalDownloadIdentity) historyRepository.getOneExact(manga.id) else historyRepository.getOne(manga)
 		}.getOrNull() ?: return ChapterOpenMode.NORMAL
 		if (chapterId == history.chapterId) {
 			return ChapterOpenMode.NORMAL
@@ -1011,6 +1036,31 @@ abstract class ChaptersPagesViewModel(
 		reload()
 	}
 
+	/** Source-load emissions may be older than an observation; never publish their local payload. */
+	protected suspend fun publishDetailsSnapshot(
+		incoming: MangaDetails,
+		legacyMerge: (MangaDetails?, MangaDetails) -> MangaDetails = { _, value -> value },
+	) {
+		val resolver = normalDetailsResolver
+		if (resolver == null) {
+			mangaDetails.update { legacyMerge(it, incoming) }
+			return
+		}
+		resolver.withDetailsProjection(incoming.sourceManga, downloadSpaceProvenance) { scoped, sourceCurrent, local ->
+			mangaDetails.update { previous ->
+				if (scoped) {
+					if (!sourceCurrent && previous?.exactNormalDownloadIdentity == true &&
+						previous.id == incoming.id && previous.sourceManga != incoming.sourceManga
+					) previous else {
+						val projected = incoming.copy(localManga = local, exactNormalDownloadIdentity = true)
+						if (isScanlatorsMerged.value) projected.withMergedBranches() else projected
+					}
+				} else legacyMerge(previous, if (incoming.exactNormalDownloadIdentity)
+					incoming.copy(localManga = null, exactNormalDownloadIdentity = false) else incoming)
+			}
+		}
+	}
+
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		if (isSmartLocal) return
 		// A versioned Reader owns its displayed CBZ until an explicit reload or close.
@@ -1018,6 +1068,8 @@ abstract class ChaptersPagesViewModel(
 		if (this is ReaderViewModel && hasPinnedExhentaiVersion) return
 		if (downloadedManga != null && this is ReaderViewModel && hasExhentaiSessionChoice) return
 		val current = mangaDetails.value ?: return
+		if (current.exactNormalDownloadIdentity ||
+			normalDetailsResolver?.appliesTo(current.sourceManga, downloadSpaceProvenance) == true) return
 		// Official ExHentai publications carry an explicit space; the generic signal is for Local.
 		if (downloadedManga != null && current.isOfficialExhentai) return
 		val sourceName = current.sourceManga.source.name
@@ -1070,7 +1122,8 @@ abstract class ChaptersPagesViewModel(
 		// Do not pre-filter by Local id: sidecar-free downloads can have a different physical Local id.
 		val updated = interactor.updateLocal(current, downloadedManga) ?: return
 		if (updated === current) return
-		mangaDetails.value = if (isScanlatorsMerged.value) updated.withMergedBranches() else updated
+		if (normalDetailsResolver?.appliesTo(current.sourceManga, downloadSpaceProvenance) == true) return
+		if (!mangaDetails.compareAndSet(current, if (isScanlatorsMerged.value) updated.withMergedBranches() else updated)) return
 		// A normal download only enriches a remote title with an on-device copy. Updating Details is
 		// enough; reloading Reader would blank the current content and refetch the chapter. Local-source
 		// file changes still reload because their chapter/page URLs can genuinely have changed.

@@ -120,7 +120,8 @@ class DetailsLoadUseCase @Inject constructor(
 			// Reader's existing favouriteSpace can be defaulted Normal; use original
 			// nullable navigation provenance for the scoped policy.
 			val readerProvenance = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }
-			val normalReader = preferLocalBeforeInitialSnapshot && normalReadResolver.appliesTo(manga, readerProvenance)
+			val normalScope = normalReadResolver.appliesTo(manga, readerProvenance)
+			val normalReader = preferLocalBeforeInitialSnapshot && normalScope
 			// Room chapters are the fastest durable snapshot after process recreation. Do not hold them
 			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
 			// stale Local index rebuild. Only titles without any initialized persistent details snapshot keep
@@ -128,6 +129,9 @@ class DetailsLoadUseCase @Inject constructor(
 			suspend fun findLocal(target: Manga = manga): LocalManga? =
 				PerformanceDiagnostics.measure("repository", "details_download_local", trace) {
 					if (normalReader) return@measure normalReadResolver.resolve(target, readerProvenance)
+					if (!preferLocalBeforeInitialSnapshot && (normalScope || normalReadResolver.appliesTo(target, readerProvenance))) {
+						return@measure normalReadResolver.readDetailsCopy(target, readerProvenance)
+					}
 					if (chooseExhentaiFile != null && target.chapters?.size == 1 &&
 						(target.source.name == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
 							target.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) {
@@ -157,7 +161,7 @@ class DetailsLoadUseCase @Inject constructor(
 					}
 					downloadedMangaResolver.findSavedManga(target, favouriteSpace, forExhentaiDetails = true)
 				}
-			fun detailsSnapshots(lookup: suspend () -> LocalManga?) = flow {
+			fun detailsSnapshots(lookup: suspend () -> LocalManga?) = flow<MangaDetails> {
 				val savedManga = emitRemoteInitialSnapshot(
 					manga = manga,
 					override = override,
@@ -178,6 +182,7 @@ class DetailsLoadUseCase @Inject constructor(
 					cachedIsFresh = cachedState.fresh,
 					trace = trace,
 					findSavedManga = lookup,
+					resolveFreshDetailsLocal = if (!preferLocalBeforeInitialSnapshot) ({ target: Manga -> findLocal(target) }) else null,
 					resolveFreshReaderLocal = if (normalReader) {
 						{ target: Manga -> findLocal(target) }
 					} else if (chooseExhentaiFile != null &&
@@ -186,7 +191,7 @@ class DetailsLoadUseCase @Inject constructor(
 						{ target: Manga -> findLocal(target) }
 					} else null,
 				)
-			}
+			}.map { it.copy(exactNormalDownloadIdentity = normalScope) }
 			if (!preferLocalBeforeInitialSnapshot && !cachedState.fresh &&
 				org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.isOfficialSource(manga.source.name)
 			) {
@@ -251,6 +256,7 @@ class DetailsLoadUseCase @Inject constructor(
 		trace: DiagnosticsSession.Trace?,
 		findSavedManga: suspend () -> LocalManga?,
 		resolveFreshReaderLocal: (suspend (Manga) -> LocalManga?)?,
+		resolveFreshDetailsLocal: (suspend (Manga) -> LocalManga?)?,
 	) = coroutineScope {
 		// Details must not wait for download/local enrichment before starting source work. Reader passes
 		// an already resolved local copy and keeps its local-first offline semantics.
@@ -402,7 +408,7 @@ class DetailsLoadUseCase @Inject constructor(
 		emit(visibleDetails)
 
 		val discoveredLocal = readerLocal ?: localLookup.await()
-			?: if (resolveFreshReaderLocal != null) null else
+			?: if (resolveFreshReaderLocal != null) null else if (resolveFreshDetailsLocal != null) resolveFreshDetailsLocal(remoteDetails) else
 				PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, forExhentaiDetails = true) }
 		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(

@@ -59,6 +59,19 @@ import org.koitharu.kotatsu.core.ui.widgets.IconsView
 import org.koitharu.kotatsu.core.util.ext.MimeType
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.domain.DetailsInteractor
+import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
+import org.koitharu.kotatsu.details.data.ChapterProgressRepository
+import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
+import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter
+import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
+import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import kotlinx.coroutines.withContext
+import android.view.ContextThemeWrapper
+import android.widget.FrameLayout
 import org.koitharu.kotatsu.details.data.ChapterPersonalEntity
 import org.koitharu.kotatsu.details.data.ChapterPersonalKey
 import org.koitharu.kotatsu.details.data.ChapterProgressEntity
@@ -119,6 +132,13 @@ import javax.inject.Inject
 class DownloadedLocalStateTest {
 	@get:Rule val hiltRule = HiltAndroidRule(this)
 	@Inject lateinit var db: MangaDatabase
+	@Inject lateinit var detailsInteractor: DetailsInteractor
+	@Inject lateinit var detailsBookmarks: BookmarksRepository
+	@Inject lateinit var detailsHistory: HistoryRepository
+	@Inject lateinit var detailsScheduler: DownloadWorker.Scheduler
+	@Inject lateinit var detailsPersonal: ChapterPersonalRepository
+	@Inject lateinit var detailsProgress: ChapterProgressRepository
+	@Inject lateinit var detailsNormalResolver: NormalDownloadReadResolver
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var data: MangaDataRepository
 	@Inject lateinit var index: LocalMangaIndex
@@ -3217,6 +3237,103 @@ class DownloadedLocalStateTest {
 			output.finish()
 		} finally { output.close() }
 		return LocalMangaParser(output.rootFile).getManga(withDetails = true).also { ids += it.manga.id }
+	}
+
+	/** Same production chapter consumer, with source refresh controlled by this fixture. */
+	private inner class ScopedDetailsViewModel : ChaptersPagesViewModel(
+		settings, detailsInteractor, detailsBookmarks, detailsHistory, detailsScheduler,
+		destinations, FavouriteSpace.NORMAL, deleteLocal, events, data, readerRepositoryFactory,
+		detailsPersonal, detailsProgress, readerContent,
+		downloadSpaceProvenance = FavouriteSpace.NORMAL, normalDetailsResolver = detailsNormalResolver,
+	) {
+		override fun reload() = Unit
+		suspend fun accept(incoming: MangaDetails) = publishDetailsSnapshot(incoming)
+	}
+
+	@Test
+	fun normalDetailsProjectionKeepsExactSpecialAndRejectsStaleCopy() = runBlocking {
+		val seed = remote(810_280L)
+		val original = seed.chapters.orEmpty().single().copy(title = "Chapter 0", number = 0f, branch = null)
+		val manga = seed.copy(chapters = listOf(original))
+		favourite(manga)
+		val container = download(root, manga).file.canonicalFile
+		db.getFavouriteDownloadIndexDao().upsert(FavouriteDownloadIndexEntity(manga.id, FavouriteSpace.NORMAL.dbValue, container.path))
+		val originalFile = requireNotNull(container.listFiles()).single { it.extension == "cbz" }
+		val specialFile = File(container, "Chapter 0 Special.cbz")
+		val bytes = originalFile.readBytes()
+		val key = ChapterPersonalKey.of(original)
+		val personal = ChapterPersonalEntity(manga.id, key.source, key.url, 5, "Original note")
+		db.getChapterPersonalDao().upsert(personal)
+		val progress = ChapterProgressEntity(manga.id, key.source, key.url, FavouriteSpace.NORMAL.dbValue, 1, 0, 2)
+		db.getChapterProgressDao().upsert(progress)
+		val history = HistoryEntity(manga.id, 100L, 200L, original.id, 0, 0f, 0.5f, 0L, 1)
+		db.getHistoryDao().insert(history)
+		settings.setChapterReadOverrides(manga.id, mapOf(original.id to true))
+		lateinit var vm: ScopedDetailsViewModel
+		instrumentation.runOnMainSync {
+			vm = ScopedDetailsViewModel()
+			viewModels.put("normal-details", vm)
+		}
+		suspend fun awaitRows(predicate: (List<ChapterListItem>) -> Boolean) =
+			withTimeout(10_000) { vm.chapters.first(predicate) }
+		suspend fun assertIcon(row: ChapterListItem, downloaded: Boolean) = withContext(Dispatchers.Main) {
+			// Exercise the existing real row binder, not a second rendering implementation.
+			val adapter = ChaptersAdapter(OnListItemClickListener { _, _ -> }, {}, {}, {}, {})
+			val parent = FrameLayout(ContextThemeWrapper(context, R.style.Theme_Kotatsu))
+			adapter.emit(listOf(row.copy(flags = (row.flags.toInt() and ChapterListItem.FLAG_GRID.toInt().inv()).toByte())))
+			val holder = adapter.onCreateViewHolder(parent, adapter.getItemViewType(0))
+			adapter.onBindViewHolder(holder, 0)
+			assertEquals(if (downloaded) View.VISIBLE else View.GONE,
+				holder.itemView.findViewById<View>(R.id.imageView_downloaded).visibility)
+		}
+		vm.accept(MangaDetails(manga))
+		assertFalse(awaitRows { it.size == 1 }.single().isDownloaded)
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		val ready = awaitRows { it.size == 1 && it.single().isDownloaded }.single()
+		assertEquals(key, ready.personalKey)
+		assertIcon(ready, true)
+		val positive = requireNotNull(vm.mangaDetails.value)
+		val page = local.getPages(ready.chapter).first()
+		val bookmark = BookmarkEntity(manga.id, page.id, original.id, 0, 0, page.url, 100L, 0.5f)
+		db.getBookmarksDao().insert(bookmark)
+		assertTrue(originalFile.renameTo(specialFile))
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		val renamed = awaitRows { rows -> rows.size == 2 && rows.any { it.chapter.id == original.id && !it.isDownloaded } }
+		val originalRow = renamed.single { it.chapter.id == original.id }
+		val special = renamed.single { it.chapter.id != original.id }
+		assertTrue(special.isDownloaded)
+		assertEquals(key, originalRow.personalKey)
+		assertEquals(ChapterPersonalKey.of(special.chapter), special.personalKey)
+		assertNotEquals(key, special.personalKey)
+		assertTrue(special.isUnread)
+		assertFalse(special.isBookmarked)
+		assertTrue(local.getPages(special.chapter).isNotEmpty())
+		assertArrayEquals(bytes, specialFile.readBytes())
+		assertIcon(originalRow, false)
+		assertIcon(special, true)
+		vm.accept(positive)
+		assertEquals(special.chapter.id, requireNotNull(vm.mangaDetails.value?.local).manga.chapters.orEmpty().single().id)
+		val staleSpecial = requireNotNull(vm.mangaDetails.value)
+		assertTrue(specialFile.delete())
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		assertIcon(awaitRows { it.size == 1 && !it.single().isDownloaded }.single(), false)
+		vm.accept(staleSpecial)
+		assertNull(vm.mangaDetails.value?.local)
+		val negative = requireNotNull(vm.mangaDetails.value)
+		originalFile.writeBytes(bytes)
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		assertIcon(awaitRows { it.size == 1 && it.single().isDownloaded }.single(), true)
+		vm.accept(negative)
+		assertNotNull(vm.mangaDetails.value?.local)
+		assertEquals(listOf(personal), db.getChapterPersonalDao().findAll(listOf(manga.id)))
+		assertEquals(listOf(progress), db.getChapterProgressDao().findAll(listOf(manga.id), FavouriteSpace.NORMAL.dbValue))
+		assertEquals(listOf(bookmark), db.getBookmarksDao().findAll(manga.id))
+		assertEquals(history, db.getHistoryDao().findIncludingDeleted(manga.id))
+		assertEquals(mapOf(original.id to true), settings.getChapterReadOverrides(manga.id))
+		val missingHistory = history.copy(chapterId = special.chapter.id)
+		db.getHistoryDao().update(missingHistory)
+		assertEquals(missingHistory.chapterId, detailsHistory.getOneExact(manga.id)?.chapterId)
+		assertEquals(missingHistory, db.getHistoryDao().findIncludingDeleted(manga.id))
 	}
 
 	private fun favouritesViewModel(categoryId: Long = 0L): FavouritesListViewModel {

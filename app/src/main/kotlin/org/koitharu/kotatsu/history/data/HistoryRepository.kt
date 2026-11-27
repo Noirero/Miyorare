@@ -285,6 +285,9 @@ class HistoryRepository @Inject constructor(
 		return db.getHistoryDao().find(manga.id)?.recoverIfNeeded(manga)?.toMangaHistory()
 	}
 
+	/** A removed local-only chapter must not be reassigned by percentage/ordinal recovery. */
+	suspend fun getOneExact(mangaId: Long): MangaHistory? = db.getHistoryDao().find(mangaId)?.toMangaHistory()
+
 	suspend fun getProgress(mangaId: Long, mode: ProgressIndicatorMode): ReadingProgress? {
 		val entity = db.getHistoryDao().find(mangaId) ?: return null
 		val fixedPercent = if (ReadingProgress.isCompleted(entity.percent)) 1f else entity.percent
