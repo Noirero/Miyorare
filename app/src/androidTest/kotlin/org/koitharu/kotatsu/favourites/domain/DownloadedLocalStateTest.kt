@@ -2990,7 +2990,7 @@ class DownloadedLocalStateTest {
 					val prefix = context.getString(R.string.normal_download_scan_progress, 0, 1024).substringBefore("0")
 					assertTrue(prefix.isNotBlank())
 					var observedProgress: NormalDownloadScanState? = null
-					ui.waitUntil(30_000) {
+					ui.waitUntil(timeoutMillis = 30_000L) {
 						val before = coordinator.state.value
 						val visible = before.running && before.total == 1024 &&
 							ui.onAllNodes(hasText(prefix, substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
