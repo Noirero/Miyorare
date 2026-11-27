@@ -1,6 +1,6 @@
 package org.koitharu.kotatsu.settings.sources
 
-import android.util.LruCache
+import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -37,6 +37,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -48,18 +49,16 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.IOException
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.isNsfw
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
 import org.koitharu.kotatsu.settings.compose.SettingsItem
-import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.model.TsukiCompatibilityStatus
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
-import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
+import org.koitharu.kotatsu.tsuki.runtime.TsukiSourceConfig
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Provider
@@ -153,38 +152,54 @@ internal fun UmaSourceRow(
 	)
 }
 
-/** View-scoped bounded metadata cache. Never resolves a parser for an unavailable/non-UMA row. */
+/**
+ * Metadata-only resolution: no plugin class loader, parser handle or mutable registry dependency.
+ * The installed descriptor SHA binds the bundled default to the exact verified release artifact.
+ * Native overrides are read from the same preferences as Tsuki, never written by icon loading.
+ */
 internal class UmaWebsiteIconResolver(
-	private val pluginManager: TsukiPluginManager,
-	private val runtimeProvider: Provider<TsukiPluginRuntime>,
-	private val settings: AppSettings,
+	private val plugins: StateFlow<List<TsukiPluginDescriptor>>,
+	private val context: Context,
+	private val isNsfwDisabled: () -> Boolean,
 ) {
 	private val permits = Semaphore(2)
-	private val cache = LruCache<Pair<String, String>, String>(128)
+
+	private fun currentSource(requested: TsukiMangaSource): TsukiMangaSource? {
+		val plugin = plugins.value.firstOrNull {
+			it.provider == TsukiPluginProvider.UMA &&
+				it.pluginId == requested.pluginId &&
+				it.sha256.equals(requested.plugin.sha256, ignoreCase = true) &&
+				it.fileSize == requested.plugin.fileSize &&
+				it.lastModified == requested.plugin.lastModified &&
+				it.version == requested.plugin.version
+		} ?: return null
+		val source = plugin.sources.firstOrNull { it.name == requested.descriptor.name }
+			?.takeIf { canNavigateTsukiSource(plugin, it) } ?: return null
+		return TsukiMangaSource(plugin, source).takeUnless { isNsfwDisabled() && it.isNsfw() }
+	}
 
 	suspend fun load(requested: TsukiMangaSource): String? = withContext(Dispatchers.IO) {
-		if (requested.plugin.provider != TsukiPluginProvider.UMA) return@withContext null
-		val cacheKey = requested.name to requested.plugin.sha256
+		if (requested.plugin.provider != TsukiPluginProvider.UMA || requested.diagnosticTest) return@withContext null
 		permits.withPermit {
-			val current = pluginManager.resolveSource(requested.name)
-				?.takeIf { it.plugin.sha256 == requested.plugin.sha256 } ?: return@withPermit null
-			if (settings.isNsfwContentDisabled && current.isNsfw()) return@withPermit null
-			cache.get(cacheKey)?.let { return@withPermit it.ifBlank { null } }
+			val current = currentSource(requested) ?: return@withPermit null
 			val url = try {
-				val runtime = runtimeProvider.get()
-				val domain = (runtime.peekHandle(current) ?: runtime.getHandle(current)).parser.domain
-				umaWebsiteIconUrl(domain)
+				val override = TsukiSourceConfig.readStoredDomainOverride(
+					context, current.plugin.storageKey, current.descriptor.name,
+				)
+				// Do not contact the original site if an explicitly configured domain is
+				// rejected by the stricter icon policy.
+				val domain = override ?: UmaWebsiteMetadata.defaultDomain(current.plugin, current.descriptor.name)
+				domain?.let(::umaWebsiteIconUrl)
 			} catch (error: CancellationException) {
 				throw error
+			} catch (_: LinkageError) {
+				null
 			} catch (_: Exception) {
 				null
 			}
 			currentCoroutineContext().ensureActive()
-			val latest = pluginManager.resolveSource(requested.name) ?: return@withPermit null
-			if (latest.plugin.sha256 != current.plugin.sha256 || (settings.isNsfwContentDisabled && latest.isNsfw())) {
-				return@withPermit null
-			}
-			cache.put(cacheKey, url.orEmpty())
+			val latest = currentSource(requested) ?: return@withPermit null
+			if (latest.descriptor != current.descriptor) return@withPermit null
 			url
 		}
 	}
@@ -256,9 +271,11 @@ internal fun UmaWebsiteIcon(
 	load: Boolean,
 	imageLoader: ImageLoader?,
 	loadWebsiteIcon: suspend (TsukiMangaSource) -> String?,
+	iconSession: Int?,
 ) {
-	key(source.name, source.plugin.sha256, load) {
-		val url by produceState<String?>(null, source.name, source.plugin.sha256, load) {
+	key(source.name, source.plugin.sha256, source.plugin.fileSize, source.plugin.lastModified,
+		source.plugin.version, load, iconSession) {
+		val url by produceState<String?>(null) {
 			value = if (load) loadWebsiteIcon(source) else null
 		}
 		val fallback = painterResource(R.drawable.ic_web)

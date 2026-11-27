@@ -60,7 +60,6 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
-import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
 import javax.inject.Provider
 import java.util.Locale
 import javax.inject.Inject
@@ -78,13 +77,12 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	lateinit var settings: AppSettings
 
 	@Inject
-	lateinit var runtimeProvider: Provider<TsukiPluginRuntime>
-
-	@Inject
 	@BaseHttpClient
 	lateinit var baseClientProvider: Provider<OkHttpClient>
 
 	private var busy by mutableStateOf(false)
+	private var iconSession by mutableStateOf<Int?>(null)
+	private var nextIconSession = 0
 
 	private val importJarLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
 		if (uri != null && !busy) {
@@ -100,6 +98,16 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 		pluginManager.initialize()
 	}
 
+	override fun onResume() {
+		super.onResume()
+		iconSession = ++nextIconSession
+	}
+
+	override fun onPause() {
+		iconSession = null
+		super.onPause()
+	}
+
 	override fun onCreateView(
 		inflater: LayoutInflater,
 		container: ViewGroup?,
@@ -112,7 +120,10 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 				val nsfwDisabled by remember {
 					settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled }
 				}.collectAsState(initial = settings.isNsfwContentDisabled)
-				val iconResolver = remember { UmaWebsiteIconResolver(pluginManager, runtimeProvider, settings) }
+				val appContext = LocalContext.current.applicationContext
+				val iconResolver = remember(appContext) {
+					UmaWebsiteIconResolver(pluginManager.plugins, appContext) { settings.isNsfwContentDisabled }
+				}
 				TsukiPluginsScreen(
 					plugins = plugins.filterNot { it.provider == TsukiPluginProvider.MIYORARE },
 					busy = busy,
@@ -126,6 +137,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 					onSourceOpen = { openUmaSource(it, browse = true) },
 					onSourceSettings = { openUmaSource(it, browse = false) },
 					loadWebsiteIcon = iconResolver::load,
+					iconSession = iconSession,
 					baseClientProvider = baseClientProvider,
 					canCheckUpdate = pluginInstaller::supportsRemoteUpdate,
 					onCheckUpdate = ::checkUpdate,
@@ -338,6 +350,7 @@ private fun TsukiPluginsScreen(
 	onSourceOpen: (TsukiSourceIdentity) -> Unit,
 	onSourceSettings: (TsukiSourceIdentity) -> Unit,
 	loadWebsiteIcon: suspend (TsukiMangaSource) -> String?,
+	iconSession: Int?,
 	baseClientProvider: Provider<OkHttpClient>,
 	canCheckUpdate: (TsukiPluginDescriptor) -> Boolean,
 	onCheckUpdate: (TsukiPluginDescriptor) -> Unit,
@@ -637,7 +650,7 @@ private fun TsukiPluginsScreen(
 						onSettings = if (canNavigate) ({ onSourceSettings(mangaSource.identity) }) else null,
 						onCheckedChange = { onSourceEnabled(plugin, source, it) },
 						leading = {
-							UmaWebsiteIcon(mangaSource, canBrowse, umaImageLoader, loadWebsiteIcon)
+							UmaWebsiteIcon(mangaSource, canBrowse && iconSession != null, umaImageLoader, loadWebsiteIcon, iconSession)
 						},
 					)
 				} else {

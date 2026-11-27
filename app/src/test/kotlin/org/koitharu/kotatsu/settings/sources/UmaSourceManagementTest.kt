@@ -53,4 +53,24 @@ class UmaSourceManagementTest {
 		assertTrue(canNavigateTsukiSource(plugin, broken, allowBroken = true))
 		assertFalse(canNavigateTsukiSource(plugin.copy(state = TsukiPluginState.BROKEN), broken, allowBroken = true))
 	}
+	@Test
+	fun metadataIsBoundToExactUmaArtifactAndSource() {
+		val source = TsukiSourceDescriptor("BACAMI", "Bacami", "id", "MANGA")
+		val plugin = TsukiPluginDescriptor(
+			pluginId = "uma", displayName = "UMA", provider = TsukiPluginProvider.UMA,
+			version = "2462a1f", origin = "fixture", sha256 = UmaWebsiteMetadata.JAR_SHA256,
+			fileSize = 1257110, lastModified = 0, requiredApi = null,
+			compatibility = TsukiCompatibilityStatus.COMPATIBLE, state = TsukiPluginState.ENABLED,
+			sources = listOf(source),
+		)
+		assertEquals(265, UmaWebsiteMetadata.defaultDomains.size)
+		assertTrue(UmaWebsiteMetadata.defaultDomains.values.all { umaWebsiteIconUrl(it) != null })
+		assertEquals("v1.bacami.site", UmaWebsiteMetadata.defaultDomain(plugin, source.name))
+		assertEquals("mangaball.com", UmaWebsiteMetadata.defaultDomain(plugin, "MANGABALL_ID"))
+		assertNull(UmaWebsiteMetadata.defaultDomain(plugin, "EXHENTAI"))
+		assertNull(UmaWebsiteMetadata.defaultDomain(plugin, "UNKNOWN"))
+		assertNull(UmaWebsiteMetadata.defaultDomain(plugin.copy(sha256 = "unknown"), source.name))
+		assertNull(UmaWebsiteMetadata.defaultDomain(plugin.copy(provider = TsukiPluginProvider.CUSTOM), source.name))
+		assertNull(UmaWebsiteMetadata.defaultDomain(plugin.copy(pluginId = "other"), source.name))
+	}
 }
