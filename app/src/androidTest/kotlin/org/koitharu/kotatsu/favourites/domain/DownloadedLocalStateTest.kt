@@ -3274,8 +3274,26 @@ class DownloadedLocalStateTest {
 			vm = ScopedDetailsViewModel()
 			viewModels.put("normal-details", vm)
 		}
-		suspend fun awaitRows(predicate: (List<ChapterListItem>) -> Boolean) =
-			withTimeout(10_000) { vm.chapters.first(predicate) }
+		suspend fun awaitRows(stage: String, predicate: (List<ChapterListItem>) -> Boolean): List<ChapterListItem> {
+			val rows = withTimeoutOrNull(10_000) { vm.chapters.first(predicate) }
+			if (rows != null) return rows
+			// Capture the failed boundary before a fresh read can change observation state.
+			val details = vm.mangaDetails.value
+			val rendered = vm.chapters.value.map { row ->
+				"${row.chapter.id}:${row.chapter.title}:downloaded=${row.isDownloaded}:key=${row.personalKey}"
+			}
+			val visible = liveObservations.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]
+			val fresh = normalDirectoryDiscovery.resolveCandidates(manga, FavouriteSpace.NORMAL)
+			throw AssertionError(
+				"$stage timed out: rows=$rendered; selectedBranch=${vm.selectedBranch.value}; " +
+					"exact=${details?.exactNormalDownloadIdentity}; source=${details?.sourceManga?.chapters}; " +
+					"local=${details?.local?.manga?.chapters}; observation=${visible?.fact}; " +
+					"acceptedProjection=${visible?.localProjection?.manga?.chapters}; " +
+					"files=${container.list()?.sorted()}; freshVerified=${fresh?.verified?.map { it.manga.chapters }}; " +
+					"freshUnresolved=${fresh?.unresolvedPaths}; inventoryComplete=${fresh?.inventoryComplete}; " +
+					"priorEvidence=${fresh?.directoryIdentity?.evidence}; freshProjection=${fresh?.directoryIdentity?.projection?.manga?.chapters}",
+			)
+		}
 		suspend fun assertIcon(row: ChapterListItem, downloaded: Boolean) = withContext(Dispatchers.Main) {
 			// Exercise the existing real row binder, not a second rendering implementation.
 			val adapter = ChaptersAdapter(OnListItemClickListener { _, _ -> }, {}, {}, {}, {})
@@ -3290,9 +3308,9 @@ class DownloadedLocalStateTest {
 				holder.itemView.findViewById<View>(R.id.imageView_downloaded).visibility)
 		}
 		vm.accept(MangaDetails(manga))
-		assertFalse(awaitRows { it.size == 1 }.single().isDownloaded)
+		assertFalse(awaitRows("initial remote row") { it.size == 1 }.single().isDownloaded)
 		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
-		val ready = awaitRows { it.size == 1 && it.single().isDownloaded }.single()
+		val ready = awaitRows("initial downloaded row") { it.size == 1 && it.single().isDownloaded }.single()
 		assertEquals(key, ready.personalKey)
 		assertIcon(ready, true)
 		val positive = requireNotNull(vm.mangaDetails.value)
@@ -3301,7 +3319,7 @@ class DownloadedLocalStateTest {
 		db.getBookmarksDao().insert(bookmark)
 		assertTrue(originalFile.renameTo(specialFile))
 		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
-		val renamed = awaitRows { rows -> rows.size == 2 && rows.any { it.chapter.id == original.id && !it.isDownloaded } }
+		val renamed = awaitRows("rename separates Special from original") { rows -> rows.size == 2 && rows.any { it.chapter.id == original.id && !it.isDownloaded } }
 		val originalRow = renamed.single { it.chapter.id == original.id }
 		val special = renamed.single { it.chapter.id != original.id }
 		assertTrue(special.isDownloaded)
@@ -3319,13 +3337,13 @@ class DownloadedLocalStateTest {
 		val staleSpecial = requireNotNull(vm.mangaDetails.value)
 		assertTrue(specialFile.delete())
 		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
-		assertIcon(awaitRows { it.size == 1 && !it.single().isDownloaded }.single(), false)
+		assertIcon(awaitRows("delete removes Special") { it.size == 1 && !it.single().isDownloaded }.single(), false)
 		vm.accept(staleSpecial)
 		assertNull(vm.mangaDetails.value?.local)
 		val negative = requireNotNull(vm.mangaDetails.value)
 		originalFile.writeBytes(bytes)
 		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
-		assertIcon(awaitRows { it.size == 1 && it.single().isDownloaded }.single(), true)
+		assertIcon(awaitRows("restore original download") { it.size == 1 && it.single().isDownloaded }.single(), true)
 		vm.accept(negative)
 		assertNotNull(vm.mangaDetails.value?.local)
 		assertEquals(listOf(personal), db.getChapterPersonalDao().findAll(listOf(manga.id)))
