@@ -158,25 +158,36 @@ class DiscoveryNavigationRuntimeTest {
 				lateinit var window: Window
 				var refreshHz = 0f
 				var actualNight = 0
-				var screenOffset = Offset.Zero
 				scenario.onActivity { activity ->
 					window = activity.window
 					val decor = window.decorView
 					refreshHz = decor.display?.refreshRate ?: 0f
 					actualNight = activity.resources.configuration.uiMode and AndroidConfiguration.UI_MODE_NIGHT_MASK
-					val screen = IntArray(2).also { decor.getLocationOnScreen(it) }
-					val inWindow = IntArray(2).also { decor.getLocationInWindow(it) }
-					screenOffset = Offset((screen[0] - inWindow[0]).toFloat(), (screen[1] - inWindow[1]).toFloat())
 				}
 				assertTrue("A measured display refresh rate is required", refreshHz > 0f)
 				assertEquals(AndroidConfiguration.UI_MODE_NIGHT_YES, actualNight)
-				fun center(item: NavItem) = compose.onNodeWithContentDescription(app.getString(item.navTitle))
-					.fetchSemanticsNode().boundsInWindow.center + screenOffset
-				val favoritesPoint = center(NavItem.FAVORITES)
-				val destinationPoint = center(destination)
-				assertTrue("Distinct visible tab centers are required", favoritesPoint != destinationPoint)
 				val prefix = "motion=classic_glide actual_night=$actualNight refresh_hz=$refreshHz scale=1 scenario=matched_pre_feature_${route}_tap"
-				Log.i("MiyorareNavMatched", "$prefix animator=1 transition=1 window=1 favorites=$favoritesPoint target=$destinationPoint dwell_ms=750")
+				Log.i("MiyorareNavMatched", "$prefix harness=2 animator=1 transition=1 window=1 dwell_ms=750")
+				// Resolve fresh geometry because the selected label changes floating-tab widths.
+				fun center(item: NavItem, step: String): Offset {
+					val bounds = compose.onNodeWithContentDescription(app.getString(item.navTitle))
+						.fetchSemanticsNode().boundsInWindow
+					assertTrue("Empty tab bounds: $step", bounds.width > 0f && bounds.height > 0f)
+					var point = Offset.Zero
+					scenario.onActivity { activity ->
+						val decor = activity.window.decorView
+						val screen = IntArray(2).also { decor.getLocationOnScreen(it) }
+						val inWindow = IntArray(2).also { decor.getLocationInWindow(it) }
+						point = bounds.center + Offset((screen[0] - inWindow[0]).toFloat(), (screen[1] - inWindow[1]).toFloat())
+						val bar = checkNotNull(activity.bottomNav)
+						val origin = IntArray(2).also { bar.getLocationOnScreen(it) }
+						assertTrue("Tap outside current navbar: $step point=$point",
+							point.x >= origin[0] && point.x < origin[0] + bar.width &&
+								point.y >= origin[1] && point.y < origin[1] + bar.height)
+						Log.i("MiyorareNavMatched", "$prefix step=$step target=${item.name} before_id=${bar.selectedItemId} bounds=$bounds point=$point")
+					}
+					return point
+				}
 				fun inject(action: Int, down: Long, eventTime: Long, point: Offset) {
 					val event = MotionEvent.obtain(down, eventTime, action, point.x, point.y, 0)
 					event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
@@ -185,7 +196,8 @@ class DiscoveryNavigationRuntimeTest {
 							instrumentation.uiAutomation.injectInputEvent(event, true))
 					} finally { event.recycle() }
 				}
-				fun tap(point: Offset): Triple<Long, Long, Long> {
+				fun tap(item: NavItem, step: String): Triple<Long, Long, Long> {
+					val point = center(item, step)
 					val down = SystemClock.uptimeMillis()
 					var released = false
 					try {
@@ -199,11 +211,13 @@ class DiscoveryNavigationRuntimeTest {
 						if (!released) runCatching { inject(MotionEvent.ACTION_CANCEL, down, SystemClock.uptimeMillis(), point) }
 					}
 				}
-				fun observedSettled(item: NavItem): Long {
+				fun observedSettled(item: NavItem, step: String): Long {
 					var observed = 0L
 					scenario.onActivity { activity ->
 						val fm = activity.supportFragmentManager
-						assertEquals(item.id, activity.bottomNav!!.selectedItemId)
+						val actual = activity.bottomNav!!.selectedItemId
+						Log.i("MiyorareNavMatched", "$prefix step=$step expected_id=${item.id} actual_id=$actual observed_ms=${SystemClock.uptimeMillis()}")
+						assertEquals("Selection mismatch: $step", item.id, actual)
 						assertEquals(0, fm.backStackEntryCount)
 						val active = fm.fragments.filter { it.id == R.id.container && it.isAdded && !it.isHidden }
 						assertEquals(1, active.size)
@@ -221,16 +235,16 @@ class DiscoveryNavigationRuntimeTest {
 					}
 					return observed
 				}
-				fun warm(item: NavItem, point: Offset) {
-					tap(point)
+				fun warm(item: NavItem, step: String) {
+					tap(item, step)
 					SystemClock.sleep(750)
 					compose.waitForIdle()
-					observedSettled(item)
+					observedSettled(item, step)
 				}
 				// Keep Hub and Local as separate test cases: baseline B01 must remain a real failure,
 				// not prevent the independent Hub experiment from running.
-				warm(NavItem.FAVORITES, favoritesPoint)
-				warm(destination, destinationPoint)
+				warm(NavItem.FAVORITES, "warm_start")
+				warm(destination, "warm_destination")
 				when (destination) {
 					NavItem.LOCAL -> assertLocalContentReady(scenario)
 					NavItem.DISCOVERY_HUB -> compose.waitUntil(10000) {
@@ -238,22 +252,23 @@ class DiscoveryNavigationRuntimeTest {
 					}
 					else -> error("Unexpected route")
 				}
-				warm(NavItem.FAVORITES, favoritesPoint)
+				warm(NavItem.FAVORITES, "warm_return")
 				val budgetNs = (1_000_000_000.0 / refreshHz).toLong()
 				repeat(5) { repeatIndex ->
 					val label = "$prefix repeat=${repeatIndex + 1}"
 					val timestamps = mutableListOf<String>()
-					fun sampleTap(item: NavItem, point: Offset, index: Int) {
-						val (down, up, injectionDone) = tap(point)
+					fun sampleTap(item: NavItem, index: Int) {
+						val step = "repeat_${repeatIndex + 1}_tap_$index"
+						val (down, up, injectionDone) = tap(item, step)
 						SystemClock.sleep(750)
-						val settled = observedSettled(item)
+						val settled = observedSettled(item, step)
 						timestamps += "$label tap=$index destination=${item.name} down_ms=$down up_ms=$up injection_done_ms=$injectionDone observed_settled_ms=$settled"
 					}
 					try {
 						measureNavigationFrames(scenario, window, budgetNs, label) {
 							repeat(3) { roundtrip ->
-								sampleTap(destination, destinationPoint, roundtrip * 2 + 1)
-								sampleTap(NavItem.FAVORITES, favoritesPoint, roundtrip * 2 + 2)
+								sampleTap(destination, roundtrip * 2 + 1)
+								sampleTap(NavItem.FAVORITES, roundtrip * 2 + 2)
 							}
 						}
 					} finally {
