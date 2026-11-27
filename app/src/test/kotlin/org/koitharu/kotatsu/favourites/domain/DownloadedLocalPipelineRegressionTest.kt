@@ -36,8 +36,8 @@ class DownloadedLocalPipelineRegressionTest {
 
 	@Test fun `download completion preserves the existing durable ownership before concrete event`() {
 		val worker = source("download/ui/worker/DownloadWorker.kt")
-		val finish = worker.indexOf("output.finish()")
-		val ownership = worker.indexOf("recordDownloadOwnership(mangaDetails.id,task,output.rootFile)", finish)
+		val finish = worker.indexOf("writer.finish()")
+		val ownership = worker.indexOf("recordDownloadOwnership(mangaDetails.id,task,writer.rootFile)", finish)
 		val alias = worker.indexOf("rememberDownloadedIdentity(mangaDetails,localManga)", ownership)
 		val event = worker.indexOf("localStorageChanges.emit(localManga)", alias)
 		assertTrue(finish >= 0 && ownership > finish && alias > ownership && event > alias)
@@ -45,8 +45,8 @@ class DownloadedLocalPipelineRegressionTest {
 
 	@Test fun `ExHentai completion registers the committed archive before publishing`() {
 		val worker = source("download/ui/worker/DownloadWorker.kt")
-		val finish = worker.indexOf("output.finish()")
-		val register = worker.indexOf("registerExhentaiArtifact(mangaDetails,task,checkNotNull(output.committedFile))", finish)
+		val finish = worker.indexOf("writer.finish()")
+		val register = worker.indexOf("registerExhentaiArtifact(mangaDetails,task,checkNotNull(writer.committedFile))", finish)
 		assertTrue(finish >= 0 && register > finish)
 		val delegation = worker.substringAfter("privatesuspendfunregisterExhentaiArtifact(", "")
 			.substringBefore("privatesuspendfunpublishExistingExhentaiCopy(")
