@@ -74,6 +74,7 @@ class LocalListViewModel @Inject constructor(
 	private val showAllReading = MutableStateFlow(savedStateHandle["all_reading"] ?: false)
 	private val showAllGroups = MutableStateFlow(savedStateHandle["all_groups"] ?: false)
 	private val revision = MutableStateFlow(0)
+	private val activeGroup = MutableStateFlow<String?>(null)
 	private val localQuery = MutableStateFlow(savedStateHandle["local_query"] ?: "")
 	private val contentType = MutableStateFlow(restoreLocalContentSelection(
 		hasSavedValue = savedStateHandle.contains("content_type"),
@@ -165,7 +166,6 @@ class LocalListViewModel @Inject constructor(
 	fun restore(key: String) { launchLoadingJob(Dispatchers.IO) { library.restore(key) } }
 	fun acknowledgeDiscoveries(ids: Set<Long>) { launchJob(Dispatchers.IO) { library.acknowledgeDiscoveries(ids) } }
 
-	private val activeGroup = MutableStateFlow<String?>(null)
 	fun toggleGroups() {
 		showAllGroups.value = !showAllGroups.value
 		savedStateHandle["all_groups"] = showAllGroups.value

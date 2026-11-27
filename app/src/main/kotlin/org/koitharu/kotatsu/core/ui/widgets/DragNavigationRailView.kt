@@ -9,6 +9,7 @@ import android.widget.ScrollView
 import androidx.compose.ui.geometry.Rect
 import com.google.android.material.navigationrail.NavigationRailView
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import org.koitharu.kotatsu.core.prefs.NavigationMotion
 
 /** Preserves the Material rail, including header, labels, expand/collapse and accessibility. */
 class DragNavigationRailView @JvmOverloads constructor(
@@ -40,9 +41,30 @@ class DragNavigationRailView @JvmOverloads constructor(
 		},
 	)
 
-	internal fun setTabDragListeners(preview: (Int?) -> Boolean, commit: (Int) -> Unit) {
+	internal var isProgrammaticSelection = false
+		private set
+
+	override fun setSelectedItemId(itemId: Int) {
+		val previous = isProgrammaticSelection
+		isProgrammaticSelection = true
+		try {
+			super.setSelectedItemId(itemId)
+		} finally {
+			isProgrammaticSelection = previous
+		}
+	}
+
+	internal fun setNavigationMotion(motion: NavigationMotion) = drag.setMotion(motion)
+	internal fun animateTabSelection(from: Int, to: Int) = drag.animateSelection(from, to)
+
+	internal fun setTabDragListeners(
+		preview: (Int?) -> Boolean,
+		commit: (Int) -> Unit,
+		slideFrame: ((TabSlideFrame) -> Unit)? = null,
+	) {
 		drag.preview = preview
 		drag.commit = commit
+		drag.slideFrame = slideFrame
 	}
 
 	internal fun cancelTabDrag() = drag.cancel()

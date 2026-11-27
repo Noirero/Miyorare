@@ -21,6 +21,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,11 +42,13 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -53,6 +57,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -127,6 +132,7 @@ fun FloatingNavBar(
 	previewId: Int? = null,
 	indicatorMoving: Boolean = false,
 	onTabBounds: (Int, Rect) -> Unit = { _, _ -> },
+	motionDecoration: Modifier = Modifier,
 ) {
 	if (items.isEmpty()) return
 	val context = LocalContext.current
@@ -347,15 +353,16 @@ fun FloatingNavBar(
 		} else {
 			Modifier
 		}
-		Surface(
+		NavigationMotionSurface(
 			modifier = Modifier
 				.then(normalFavouritesGlow)
-				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 0.dp else 4.dp else 8.dp, barShape)
+				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 0.dp else 4.dp else 8.dp, barShape, clip = false)
 				.wrapContentWidth(),
 			shape = barShape,
 			color = if (normalFavouritesGlassBrush != null) Color.Transparent else Color(effectiveColors.container),
 			contentColor = cs.onSurface,
 			border = barOutline,
+			glass = normalFavouritesGlassBrush,
 		) {
 			Row(
 				modifier = Modifier
@@ -368,13 +375,8 @@ fun FloatingNavBar(
 							64.dp
 						},
 					)
-					.then(
-						if (normalFavouritesGlassBrush != null) {
-							Modifier.background(normalFavouritesGlassBrush, barShape)
-						} else {
-							Modifier
-						},
-					)
+					.then(motionDecoration)
+					.clip(barShape)
 					.padding(
 						horizontal = if (isMiyorareModern) 6.dp else 8.dp,
 						vertical = if (isMiyorareModern) 6.dp else 8.dp,
@@ -407,6 +409,34 @@ fun FloatingNavBar(
 			}
 		}
 		if (!continueOnLeft) continueAction()
+	}
+}
+
+/** Keep the static shaped Surface separate from the motion/content layer.
+ * The latter draws a single continuous material before the clipped icon content.
+ * A match-parent background does not participate in sizing or move tab hit targets.
+ */
+@Composable
+internal fun NavigationMotionSurface(
+	modifier: Modifier,
+	shape: Shape,
+	color: Color,
+	contentColor: Color,
+	border: BorderStroke?,
+	glass: Brush?,
+	content: @Composable () -> Unit,
+) {
+	Box(modifier = modifier, propagateMinConstraints = true) {
+		Surface(
+			modifier = Modifier.matchParentSize(),
+			shape = shape,
+			color = color,
+			contentColor = contentColor,
+			border = border,
+		) {
+			if (glass != null) Box(Modifier.fillMaxSize().background(glass, shape))
+		}
+		CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
 	}
 }
 
@@ -552,7 +582,7 @@ private fun FloatingNavItem(
 			)
 			.then(
 				if (selectedBrush != null) Modifier.background(selectedBrush, itemShape)
-				else Modifier.background(container, itemShape),
+				else Modifier.background(if (showSelectionChrome) container else Color.Transparent, itemShape),
 			)
 			.combinedClickable(onClick = onClick, onLongClick = onLongClick)
 			.semantics {
