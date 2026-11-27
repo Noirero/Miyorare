@@ -438,7 +438,26 @@ class DiscoveryNavigationRuntimeTest {
 	@Test fun pinnedFavouritesPreviewRestoresHeaderAndScrollRange() =
 		assertFavouritesPreviewHeaderRestored(collapsed = false, pinned = true)
 
-	private fun assertFavouritesPreviewHeaderRestored(collapsed: Boolean, pinned: Boolean) {
+	// CI disables system animations by default. A fractional two-page frame requires
+	// animations enabled, unlike the full-slot preview covered by the original regression.
+	private fun withFractionalTabPreview(block: () -> Unit) {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		try {
+			shell("settings put global animator_duration_scale 1")
+			assertEquals(1f, android.provider.Settings.Global.getFloat(app.contentResolver,
+				android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f), 0.01f)
+			block()
+		} finally {
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
+	private fun assertFavouritesPreviewHeaderRestored(collapsed: Boolean, pinned: Boolean) = withFractionalTabPreview {
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
 		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
 		assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
@@ -466,7 +485,7 @@ class DiscoveryNavigationRuntimeTest {
 				.fetchSemanticsNode().boundsInWindow.center
 			val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
 				.fetchSemanticsNode().boundsInWindow.center
-			val midpoint = Offset((from.x + to.x) / 2f, from.y)
+			val midpoint = Offset(from.x + (to.x - from.x) * 0.6f, from.y)
 			var down = SystemClock.uptimeMillis()
 			fun send(action: Int, point: Offset, elapsed: Long) = scenario.onActivity { activity ->
 				val bar = checkNotNull(activity.bottomNav)
@@ -488,8 +507,23 @@ class DiscoveryNavigationRuntimeTest {
 				compose.waitForIdle()
 				scenario.onActivity { activity ->
 					val favourites = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
-					val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
-					assertSame(favourites.requireView(), header.parent)
+					val local = checkNotNull(activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().singleOrNull()) {
+						"Fractional preview must instantiate the Local page"
+					}
+					val favouritesRoot = favourites.requireView()
+					val localRoot = local.requireView()
+					assertEquals(View.VISIBLE, favouritesRoot.visibility)
+					assertEquals(View.VISIBLE, localRoot.visibility)
+					assertTrue("Fixture must render two fractional page offsets",
+						kotlin.math.abs(favouritesRoot.translationX) > 0f &&
+							kotlin.math.abs(favouritesRoot.translationX) < favouritesRoot.width &&
+							kotlin.math.abs(localRoot.translationX) > 0f &&
+							kotlin.math.abs(localRoot.translationX) < localRoot.width)
+					Log.i("MiyorareNavGeometry", "fractional-preview collapsed=$collapsed pinned=$pinned " +
+						"initialAppBarTop=$initialTop appBarTop=${activity.appBar.top} " +
+						"initialPagerY=$initialPagerY pagerY=${y(favouritesRoot.findViewById<View>(R.id.pager))} " +
+						"favouritesX=${favouritesRoot.translationX} localX=${localRoot.translationX}")
+					assertSame(favouritesRoot, header.parent)
 					assertEquals(View.VISIBLE, header.visibility)
 					assertNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
 					assertEquals(Lifecycle.State.RESUMED, favourites.lifecycle.currentState)
