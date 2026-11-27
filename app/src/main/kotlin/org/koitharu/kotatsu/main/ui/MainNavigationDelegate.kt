@@ -379,7 +379,7 @@ class MainNavigationDelegate(
 		private val appBar: AppBarLayout,
 		private val parent: CoordinatorLayout,
 		private val behavior: AppBarLayout.Behavior,
-		private val scrollState: Parcelable,
+		private val scrollState: Parcelable?,
 		private val slot: View,
 		private val content: LinearLayout,
 		private val header: View,
@@ -393,7 +393,7 @@ class MainNavigationDelegate(
 			if (header.parent !== content) return
 			content.removeView(header)
 			appBar.addView(header, index.coerceAtMost(appBar.childCount), params)
-			behavior.onRestoreInstanceState(parent, appBar, scrollState)
+			scrollState?.let { behavior.onRestoreInstanceState(parent, appBar, it) }
 			appBar.requestLayout()
 		}
 	}
