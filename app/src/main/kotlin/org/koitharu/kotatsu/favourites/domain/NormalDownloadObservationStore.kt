@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.data.NormalDownloadObservationDao
@@ -72,6 +73,8 @@ internal data class NormalObservationSnapshot(
 
 internal data class NormalObservationRequests(val full: Boolean, val ids: Set<Long>)
 
+internal data class NormalLibraryVisibility(val eligible: Set<Long>, val present: Set<Long>, val resolved: Set<Long>)
+
 /**
  * Phase 3 boundary. Filesystem enumeration happens outside the mutex. Only metadata
  * checks, observation writes and read acceptance use it. Root edits use their existing
@@ -80,8 +83,7 @@ internal data class NormalObservationRequests(val full: Boolean, val ids: Set<Lo
  * Persisted rows are not trusted across process restart: a new session must revalidate.
  * Concrete chapter identity is held only for a currently verified observation.
  * Producers must register intent BEFORE mutation and finish in a cancellation-safe
- * finally block; this core does not yet hook actual workers, membership edits or external files.
- * No consumer uses this as authority yet.
+ * finally block. Library readers use the accepted snapshot, never raw persisted rows.
  */
 @Singleton
 internal class NormalDownloadObservationStore(
@@ -234,7 +236,6 @@ internal class NormalDownloadObservationStore(
 		val selectors = result.migratedArchiveIdentity?.selectorsByRemoteId?.entries?.map {
 			NormalObservedChapter(it.value.id, it.value.url, it.key)
 		}
-		// Direct and migrated archive personal-state projections remain unresolved here.
 		return NormalObservationFact(NormalObservationStatus.PRESENT, candidate.file.path, chapters, selectors)
 	}
 
@@ -314,6 +315,66 @@ internal class NormalDownloadObservationStore(
 				if (active.generation == rootChanges.value) result else emptyMap()
 			}
 		}
+
+	/**
+	 * Shared SQL/card/count boundary. Read persisted context and accepted in-memory revision in
+	 * the same transaction as the consumer query. Never trust a raw positive observation row
+	 * or a card's chapter-less seed. No directory/ZIP traversal; metadata queries are chunked.
+	 * A root edit during a query invalidates the result before returning it.
+	 */
+	internal suspend fun <T> withLibraryVisibility(ids: Collection<Long>?, read: suspend (NormalLibraryVisibility) -> T): T {
+		mutex.lock()
+		try {
+			while (true) {
+				val active = refreshRoot() ?: continue
+				val result = db.withTransaction {
+					val members = if (ids == null) dao.findLibraryMembers()
+						else ids.distinct().chunked(500).flatMap { dao.findLibraryMembers(it) }
+					val byId = members.groupBy { it.mangaId }
+					val supported = HashMap<String, Boolean>()
+					val eligible = buildSet {
+						for ((id, rows) in byId) {
+							val source = rows.first().source
+							val allowed = supported[source] ?: scope.supportsSource(MangaSource(source)).also { supported[source] = it }
+							if (allowed) add(id)
+						}
+					}
+					if (!active.available) return@withTransaction read(NormalLibraryVisibility(eligible, emptySet(), eligible))
+					val accepted = eligible.filter { published.containsKey(it) && mutations[it].isNullOrEmpty() }
+					val chunks = accepted.chunked(500)
+					val observations = chunks.flatMap { dao.findCurrent(session, epoch, it) }.associateBy { it.mangaId }
+					val privateCategories = chunks.flatMap { dao.findPrivateCategories(it) }.groupBy { it.mangaId }
+					val locators = chunks.flatMap { dao.findChapterLocators(it) }.groupBy { it.mangaId }
+					val present = HashSet<Long>()
+					val resolved = HashSet<Long>()
+					for (id in accepted) {
+						val value = published[id] ?: continue
+						val rows = byId.getValue(id)
+						val first = rows.first()
+						val ctx = value.context
+						val validContext = first.source == ctx.source && first.title == ctx.title && first.url == ctx.url &&
+							first.detailsRevision == ctx.detailsRevision && first.chaptersInitialized == ctx.chaptersInitialized &&
+							rows.map { it.categoryId }.distinct().sorted() == ctx.normalCategories &&
+							privateCategories[id].orEmpty().map { it.categoryId }.distinct().sorted() == ctx.privateCategories &&
+							locators[id].orEmpty().map { Triple(it.chapterId, it.source, it.url) } == ctx.chapterLocators.orEmpty()
+						if (!validContext || observations[id] != value.snapshot.row || value.snapshot.row.revision != revision(id)) {
+							invalidate(id)
+							continue
+						}
+						when (value.snapshot.fact.status) {
+							NormalObservationStatus.PRESENT -> { present += id; resolved += id }
+							NormalObservationStatus.ABSENT, NormalObservationStatus.UNAVAILABLE -> resolved += id
+							NormalObservationStatus.UNKNOWN -> Unit
+						}
+					}
+					read(NormalLibraryVisibility(eligible, present, resolved))
+				}
+				if (refreshRoot() == active && active.generation == rootChanges.value) return result
+			}
+		} finally {
+			mutex.unlock()
+		}
+	}
 
 	suspend fun isCurrent(manga: Manga, space: FavouriteSpace?, snapshot: NormalObservationSnapshot): Boolean =
 		readVisible(listOf(manga), space)[manga.id] == snapshot

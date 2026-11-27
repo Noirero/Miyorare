@@ -2,6 +2,9 @@ package org.koitharu.kotatsu.favourites.domain
 
 import android.database.DatabaseUtils.sqlEscapeString
 import dagger.Reusable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isNovelContentPath
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -22,10 +25,11 @@ import javax.inject.Inject
  * maintenance work, never work triggered by scrolling a new card into view.
  */
 @Reusable
-class DownloadedContentClassifier @Inject constructor(
+class DownloadedContentClassifier @Inject internal constructor(
 	private val db: MangaDatabase,
 	private val storageManager: LocalStorageManager,
 	private val downloadDestinationStore: DownloadDestinationStore,
+	private val observations: NormalDownloadObservationStore,
 ) {
 
 	/**
@@ -35,7 +39,12 @@ class DownloadedContentClassifier @Inject constructor(
 	 * is accepted only when Normal and Private have distinct physical roots. When both spaces share a
 	 * root, path alone cannot prove ownership and only favourite_download_index may classify the item.
 	 */
-	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
+	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> =
+		if (space == FavouriteSpace.NORMAL) observations.withLibraryVisibility(null) { visible ->
+			(getLegacyDownloadedIds(space) - visible.eligible) + visible.present
+		} else getLegacyDownloadedIds(space)
+
+	private suspend fun getLegacyDownloadedIds(space: FavouriteSpace): Set<Long> {
 		val allowedRoots = getDownloadRoots(space)
 		if (allowedRoots.isEmpty()) return emptySet()
 		val legacyRoots = getActiveLegacyExhentaiIndexRoots(space)
@@ -60,7 +69,28 @@ class DownloadedContentClassifier @Inject constructor(
 	 * maintenance records it.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> =
-		getLegacyKnownDownloadedIds(space, mangaIds)
+		getDownloadState(space, mangaIds).downloaded
+
+	internal data class DownloadState(val downloaded: Set<Long>, val resolved: Set<Long>, val eligible: Set<Long> = emptySet())
+
+	internal suspend fun getDownloadState(space: FavouriteSpace, ids: Collection<Long>): DownloadState {
+		val requested = ids.toSet()
+		if (requested.isEmpty()) return DownloadState(emptySet(), emptySet())
+		if (space != FavouriteSpace.NORMAL) return DownloadState(getLegacyKnownDownloadedIds(space, ids), requested)
+		return observations.withLibraryVisibility(requested) { visible ->
+			DownloadState(
+				(getLegacyKnownDownloadedIds(space, ids) - visible.eligible) + visible.present,
+				(requested - visible.eligible) + visible.resolved,
+				visible.eligible,
+			)
+		}
+	}
+
+	internal fun observeNormalChanges(): Flow<Unit> = merge(
+		observations.changes.map { Unit }, observations.rootChanges.map { Unit },
+		db.invalidationTracker.createFlow("favourites", "private_favourites", "manga", "chapters", "normal_download_observation",
+			emitInitialState = true).map { Unit },
+	)
 
 	// Keep the persisted historical lookup independent of the future active Normal projection.
 	// Maintenance must continue to see known copies after a root switch.
@@ -103,7 +133,17 @@ class DownloadedContentClassifier @Inject constructor(
 	 * favourite_download_index is always authoritative. local_index is additionally usable only when
 	 * the two spaces have distinct roots; on a shared root its path carries no Normal/Private identity.
 	 */
-	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
+	/** Query the exact accepted snapshot before LIMIT/order/count, not an OR with legacy ownership. */
+	internal suspend fun <T> withDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String, query: suspend (String) -> T): T {
+		if (space != FavouriteSpace.NORMAL) return query(getLegacyDownloadedCondition(space, mangaIdColumn))
+		return observations.withLibraryVisibility(null) { visible ->
+			fun inIds(ids: Set<Long>) = if (ids.isEmpty()) "0" else "$mangaIdColumn IN (${ids.joinToString(",")})"
+			val legacy = getLegacyDownloadedCondition(space, mangaIdColumn)
+			query("((${inIds(visible.present)}) OR (NOT(${inIds(visible.eligible)}) AND ($legacy)))")
+		}
+	}
+
+	internal fun getLegacyDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
 		val allRoots = getDownloadRoots(space)
 			.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }.distinct()
 		val defaultCondition = downloadConditionForRoots(space, mangaIdColumn, allRoots)

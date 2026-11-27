@@ -217,7 +217,7 @@ class FavouritesListViewModel @Inject constructor(
 		}
 		viewModelScope.launch(Dispatchers.Default) {
 			merge(
-				repository.observeDownloadedChanges(),
+				repository.observeDownloadedChanges(favouriteSpace),
 				localStorageChanges,
 				LocalMangaIndex.rebuildEvents,
 			).collect {
@@ -422,6 +422,12 @@ class FavouritesListViewModel @Inject constructor(
 					),
 				)
 			}
+			val currentDownloads = currentCardEnrichment?.takeIf {
+				favouriteSpace != FavouriteSpace.NORMAL || it.key.revision == enrichmentKey.revision
+			}
+			val recheckedDownloads = if (display.options.showDownloaded && favouriteSpace == FavouriteSpace.NORMAL &&
+				currentCardEnrichment?.downloadedIds != null && currentDownloads == null
+			) downloadedContentClassifier.getDownloadState(favouriteSpace, scanned.map { it.id }) else null
 			val mapped = scanned.mapList(
 				display.options.listMode,
 				emptySet(),
@@ -432,9 +438,9 @@ class FavouritesListViewModel @Inject constructor(
 				emptyList(),
 				emptyList(),
 				currentCardEnrichment?.snapshot ?: emptyCardSnapshot,
-				if (display.options.showDownloaded) currentCardEnrichment?.downloadedIds else null,
+				if (display.options.showDownloaded) recheckedDownloads?.downloaded ?: currentDownloads?.downloadedIds else null,
 				knownCardIds,
-				if (currentCardEnrichment?.downloadedIds != null) knownCardIds else emptySet(),
+				recheckedDownloads?.resolved ?: currentDownloads?.resolvedDownloadIds.orEmpty().intersect(knownCardIds),
 			)
 			return@contentTransform listOf(header) + mapped
 		}
@@ -458,11 +464,14 @@ class FavouritesListViewModel @Inject constructor(
 		val hasNotDownloadedFilter = filters.any {
 			it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
 		}
-		val filterDownloadedIds = when {
-			usesIndexedDownloadedShelf -> canonicalCandidates.mapTo(HashSet()) { it.id }
-			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter) ->
-				downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, canonicalCandidates.map { it.id })
-			else -> null
+		// Revalidate the previously paged shelf too: a root/mutation invalidation may arrive
+		// before its replacement SQL page. Never mark that old page as all downloaded.
+		val filterDownloadState = if (usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter)) {
+			downloadedContentClassifier.getDownloadState(favouriteSpace, canonicalCandidates.map { it.id })
+		} else null
+		val filterDownloadedIds = filterDownloadState?.let { state ->
+			if (usesIndexedDownloadedShelf) (canonicalCandidates.map { it.id }.toSet() - state.eligible) +
+				(state.downloaded intersect state.eligible) else state.downloaded
 		}
 		val statusFiltered = when {
 			filterDownloadedIds == null -> canonicalCandidates
@@ -492,14 +501,22 @@ class FavouritesListViewModel @Inject constructor(
             currentCardEnrichment?.key?.legacyNovelIds.orEmpty(), enrichmentKey.legacyNovelIds,
         )
         val cardSnapshot = currentCardEnrichment?.snapshot ?: emptyCardSnapshot
+        val currentDownloads = currentCardEnrichment?.takeIf {
+            favouriteSpace != FavouriteSpace.NORMAL || it.key.revision == enrichmentKey.revision
+        }
+        val recheckedDownloads = if (filterDownloadState == null && display.options.showDownloaded &&
+            usesSpaceScopedDownloadStatus && favouriteSpace == FavouriteSpace.NORMAL &&
+            currentCardEnrichment?.downloadedIds != null && currentDownloads == null
+        ) downloadedContentClassifier.getDownloadState(favouriteSpace, visible.map { it.id }) else null
         val downloadedIds = when {
             !usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
             filterDownloadedIds != null -> filterDownloadedIds
-            else -> currentCardEnrichment?.downloadedIds
+            else -> recheckedDownloads?.downloaded ?: currentDownloads?.downloadedIds
         }
         val knownDownloadedIds = when {
-            filterDownloadedIds != null -> enrichmentKey.ids.toSet()
-            downloadedIds != null -> knownCardIds
+            filterDownloadState != null -> filterDownloadState.resolved.intersect(enrichmentKey.ids.toSet())
+            recheckedDownloads != null -> recheckedDownloads.resolved
+            downloadedIds != null -> currentDownloads?.resolvedDownloadIds.orEmpty().intersect(knownCardIds)
             else -> emptySet()
         }
 		visible.mapList(
@@ -667,12 +684,13 @@ class FavouritesListViewModel @Inject constructor(
 
 	suspend fun getAllSelectableIds(): Set<Long>? = withContext(Dispatchers.Default) {
 		val scope = selectionContext.first()
+		val downloadRevision = cardEnrichmentRevision.get()
 		val ids = if (scope.scan != null) {
 			searchMatcher.filter(scope.scan.mangas, scope.query).mapTo(LinkedHashSet()) { it.id }
 		} else {
 			querySelectableIds(scope)
 		}
-		ids.takeIf { selectionContext.first() == scope }
+		ids.takeIf { selectionContext.first() == scope && (favouriteSpace != FavouriteSpace.NORMAL || downloadRevision == cardEnrichmentRevision.get()) }
 	}
 
 	private suspend fun querySelectableIds(scope: SelectionContext): Set<Long> {
@@ -723,7 +741,7 @@ class FavouritesListViewModel @Inject constructor(
 				it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
 			}
 			if (hasDownloadedFilter || hasNotDownloadedFilter) {
-				val downloadedIds = downloadedContentClassifier.getKnownDownloadedIds(
+				val downloadedIds = downloadedContentClassifier.getDownloadedIds(
 					favouriteSpace,
 					canonicalItems.map { it.id },
 				)
@@ -944,16 +962,15 @@ class FavouritesListViewModel @Inject constructor(
 						)
 					}
 					val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
-					val deltaDownloadedIds = if (key.includeDownloaded) {
+					val deltaDownloadState = if (key.includeDownloaded) {
 						PerformanceDiagnostics.measure("repository", "favourites_download_state") {
-							downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds)
+							downloadedContentClassifier.getDownloadState(favouriteSpace, deltaIds)
 						}
 					} else null
-					val downloadedIds = when {
-						!key.includeDownloaded -> null
-						previous == null -> deltaDownloadedIds.orEmpty()
-						else -> previous.downloadedIds.orEmpty() + deltaDownloadedIds.orEmpty()
-					}
+					val downloadedIds = if (key.includeDownloaded)
+						previous?.downloadedIds.orEmpty() + deltaDownloadState?.downloaded.orEmpty() else null
+					val resolvedDownloadIds = if (key.includeDownloaded)
+						previous?.resolvedDownloadIds.orEmpty() + deltaDownloadState?.resolved.orEmpty() else emptySet()
 					// The history handoff is also generation-owned: never publish from cancelled work.
 					coroutineContext.ensureActive()
 					synchronized(cardEnrichmentGate) {
@@ -962,7 +979,7 @@ class FavouritesListViewModel @Inject constructor(
 								pendingCardEnrichmentRequest === request, coroutineContext.isActive,
 						)) {
 							detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
-							cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
+							cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds, resolvedDownloadIds)
 						} else {
 							outcome = "stale_generation_discard"
 						}
@@ -1396,5 +1413,6 @@ class FavouritesListViewModel @Inject constructor(
 		val key: CardEnrichmentKey,
 		val snapshot: FavouriteUnreadCounter.Snapshot,
 		val downloadedIds: Set<Long>?,
+		val resolvedDownloadIds: Set<Long>,
 	)
 }

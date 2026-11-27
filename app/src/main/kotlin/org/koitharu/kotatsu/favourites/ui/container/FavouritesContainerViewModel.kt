@@ -108,7 +108,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		// recalculate counts, but should not force the same favourite rows to be reloaded from Room.
 		favouritesRepository.observeFavouritesChanges(favouriteSpace)
 			.onEach { searchRepository.invalidate(favouriteSpace) },
-		favouritesRepository.observeDownloadedShelfChanges(),
+		favouritesRepository.observeDownloadedShelfChanges(favouriteSpace),
 		LocalMangaIndex.rebuildEvents,
 	)
 
@@ -287,7 +287,7 @@ class FavouritesContainerViewModel @Inject constructor(
 			.filter { matchingIds == null || it in matchingIds }
 			.toCollection(LinkedHashSet())
 		val downloadedIds = if (downloadStatus != null) {
-			downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, candidateIds)
+			downloadedContentClassifier.getDownloadedIds(favouriteSpace, candidateIds)
 		} else {
 			emptySet()
 		}

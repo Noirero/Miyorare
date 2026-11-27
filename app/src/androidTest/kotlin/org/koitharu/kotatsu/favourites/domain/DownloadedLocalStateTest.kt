@@ -132,6 +132,7 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var ownership: FavouriteDownloadOwnershipIndex
 	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var classifier: DownloadedContentClassifier
+	@Inject internal lateinit var liveObservations: NormalDownloadObservationStore
 	@Inject lateinit var reconciler: LegacyFavouriteDownloadReconciler
 	@Inject lateinit var repository: FavouritesRepository
 	@Inject lateinit var mapper: MangaListMapper
@@ -276,6 +277,7 @@ class DownloadedLocalStateTest {
 			// Match the already-authoritative DownloadWorker: durable ownership and alias precede completion.
 			db.getFavouriteDownloadIndexDao().upsert(listOf(FavouriteDownloadIndexEntity(remote.id, 0, copy.file.canonicalPath)))
 			local.rememberDownloadedIdentity(remote, copy)
+			assertTrue(liveObservations.scan(remote, FavouriteSpace.NORMAL))
 			assertEquals(setOf(remote.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(remote.id)))
 			events.emit(copy)
 			vm.awaitContent("completed download badge") { it.grid(remote.id)?.isSaved == true }
@@ -315,6 +317,7 @@ class DownloadedLocalStateTest {
 			listOf(FavouriteDownloadIndexEntity(remote.id, FavouriteSpace.NORMAL.dbValue, copy.file.canonicalPath)),
 		)
 		local.rememberDownloadedIdentity(remote, copy)
+		assertTrue(liveObservations.scan(remote, FavouriteSpace.NORMAL))
 		assertEquals(setOf(remote.id), classifier.getKnownDownloadedIds(FavouriteSpace.NORMAL, listOf(remote.id)))
 
 		val vm = favouritesViewModel()
@@ -396,6 +399,7 @@ class DownloadedLocalStateTest {
 		val ownershipJob = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) { events.collect(ownership) }
 		try {
 			reconciler.reconcileOnce()
+			assertTrue(liveObservations.scan(normal, FavouriteSpace.NORMAL))
 			assertEquals(setOf(normal.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(normal.id, privateManga.id, titleOnly.id)))
 			assertEquals(setOf(privateManga.id), classifier.getDownloadedIds(FavouriteSpace.PRIVATE, listOf(normal.id, privateManga.id)))
 			assertFalse(titleOnly.id in index)
@@ -465,6 +469,8 @@ class DownloadedLocalStateTest {
 		assertTrue(copies.getValue(keptFile.id).file.exists())
 		assertTrue(repository.getCategoriesIds(keptFile.id).isEmpty())
 
+		assertTrue(liveObservations.scan(active, FavouriteSpace.NORMAL))
+		assertTrue(liveObservations.scan(hidden, FavouriteSpace.NORMAL))
 		val expected = owned.map { it.id }.toSet()
 		assertEquals(expected, repository.getDownloadedEntries().map { it.mangaId }.toSet())
 		assertEquals(
@@ -510,12 +516,16 @@ class DownloadedLocalStateTest {
 		suspend fun ordered(order: ListSortOrder, limit: Int = titles.size) =
 			repository.observeDownloaded(order, emptySet(), limit).first().map { it.id }
 
+		assertTrue(liveObservations.scan(older, FavouriteSpace.NORMAL))
+		assertTrue(liveObservations.scan(newer, FavouriteSpace.NORMAL))
 		val newestFirst = listOf(newer.id, older.id, withoutMembership.id, removed.id)
 		assertEquals(newestFirst, ordered(ListSortOrder.NEWEST))
 		assertEquals(listOf(older.id, newer.id, withoutMembership.id, removed.id), ordered(ListSortOrder.OLDEST))
 
 		data.storeManga(older, replaceExisting = true, detailsFetched = true)
 		assertTrue(data.getDetailsUpdatedAt(older.id) > data.getDetailsUpdatedAt(newer.id))
+		assertFalse(older.id in classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(older.id)))
+		assertTrue(liveObservations.scan(older, FavouriteSpace.NORMAL))
 		assertEquals(newestFirst, ordered(ListSortOrder.NEWEST))
 		assertEquals(newestFirst.take(2), ordered(ListSortOrder.NEWEST, limit = 2))
 	}
@@ -625,7 +635,11 @@ class DownloadedLocalStateTest {
 		suspend fun shelfIds() = repository.observeDownloaded(
 			ListSortOrder.ALPHABETIC, emptySet(), limit = 100,
 		).first().map { it.id }.toSet()
+		// A durable owner is not a current scanner observation.
+		assertEquals(setOf(nonFavourite.id), shelfIds())
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
 		assertEquals(setOf(manga.id, nonFavourite.id), shelfIds())
+		assertEquals(setOf(manga.id, nonFavourite.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(manga.id, nonFavourite.id)))
 
 		val oldFile = oldCopy.file.listFiles().orEmpty().single { it.extension.equals("cbz", true) }
 		val bytes = oldFile.readBytes()
@@ -638,6 +652,40 @@ class DownloadedLocalStateTest {
 		assertArrayEquals(bytes, oldFile.readBytes())
 		assertEquals("Only the eligible Normal favourite loses historical status; non-favourite is unchanged",
 			setOf(nonFavourite.id), shelfIds())
+		assertEquals(setOf(nonFavourite.id), classifier.getDownloadedIds(FavouriteSpace.NORMAL, listOf(manga.id, nonFavourite.id)))
+		destinations.setRoot(FavouriteSpace.NORMAL, root)
+		assertEquals(setOf(nonFavourite.id), shelfIds())
+		assertTrue(liveObservations.scan(manga, FavouriteSpace.NORMAL))
+		assertEquals(setOf(manga.id, nonFavourite.id), shelfIds())
+	}
+
+	/** Consumer parity and durable-mutation rejection with the production singleton store. */
+	@Test
+	fun normalConsumerShelfAndBadgeRejectInvalidatedObservation() = runBlocking {
+		val (manga, file) = observedDownload(810_184L)
+		val space = FavouriteSpace.NORMAL
+		val requested = listOf(manga.id)
+		assertTrue(liveObservations.scan(manga, space))
+		assertEquals(setOf(manga.id), classifier.getDownloadState(space, requested).downloaded)
+		assertEquals(setOf(manga.id), repository.getDownloadedEntries().map { it.mangaId }.toSet())
+		val vm = favouritesViewModel(DOWNLOADED_FAVOURITES_CATEGORY_ID)
+		vm.awaitContent("accepted shelf observation") { it.grid(manga.id)?.isSaved == true }
+		assertEquals(setOf(manga.id), vm.getAllSelectableIds())
+		val token = liveObservations.beginMutation(manga.id)
+		try {
+			assertTrue(file.exists())
+			assertTrue(classifier.getDownloadState(space, requested).downloaded.isEmpty())
+			assertTrue(classifier.getDownloadState(space, requested).resolved.isEmpty())
+			assertTrue(repository.getDownloadedEntries().isEmpty())
+			vm.awaitContent("invalidated shelf observation") { it.grid(manga.id) == null }
+			assertEquals(emptySet<Long>(), vm.getAllSelectableIds())
+		} finally {
+			liveObservations.finishMutation(manga.id, token)
+		}
+		assertTrue(repository.getDownloadedEntries().isEmpty())
+		assertTrue(liveObservations.scan(manga, space))
+		vm.awaitContent("revalidated shelf observation") { it.grid(manga.id)?.isSaved == true }
+		assertEquals(setOf(manga.id), vm.getAllSelectableIds())
 	}
 
 	/** Phase 0 T05 probe: exercise the scoped resolver with a real stale directory sidecar. */

@@ -5,11 +5,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isLocal
-import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.download.domain.ActiveNormalDownloadRoots
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
 import java.io.File
@@ -34,15 +35,19 @@ class NormalDownloadScope @Inject constructor(
 	 * Root availability never changes applicability.
 	 */
 	suspend fun appliesTo(manga: Manga, space: FavouriteSpace?): Boolean {
-		if (space == FavouriteSpace.PRIVATE || manga.source.isLocal || manga.isNovelContent) return false
-		val source = manga.source.name
-		if (EhentaiSourceFamily.supportsTitleMatchedDownloads(source)) return false
+		if (space == FavouriteSpace.PRIVATE || !supportsSource(manga.source)) return false
 		val eligibleMembership = db.withTransaction {
 			db.getFavouritesDao().findCategoriesCount(manga.id) != 0 &&
 				(space == FavouriteSpace.NORMAL || db.getPrivateFavouritesDao().findCategoriesCount(manga.id) == 0)
 		}
-		return eligibleMembership && sourceAliases.canonicalId(source) != EhentaiSourceFamily.CANONICAL_ID
+		return eligibleMembership
 	}
+
+	/** Same metadata-only source boundary for SQL/list consumers and explicit actions. */
+	internal suspend fun supportsSource(source: MangaSource): Boolean =
+		!source.isLocal && !source.isNovelContentSource &&
+			!EhentaiSourceFamily.supportsTitleMatchedDownloads(source.name) &&
+			sourceAliases.canonicalId(source.name) != EhentaiSourceFamily.CANONICAL_ID
 
 	/**
 	 * Entry point for active Normal discovery. Null means outside scanner scope, never
