@@ -3,6 +3,11 @@ package org.koitharu.kotatsu.explore.ui
 import android.os.Bundle
 import android.view.View
 import androidx.activity.viewModels
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,13 +21,25 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import dagger.hilt.android.AndroidEntryPoint
@@ -80,7 +97,7 @@ class SourceOverviewActivity : BaseActivity<ActivitySourceOverviewBinding>() {
 }
 
 @Composable
-private fun SourceOverview(
+internal fun SourceOverview(
     title: String,
     state: SourceOverviewViewModel.State,
     onBack: () -> Unit,
@@ -90,10 +107,15 @@ private fun SourceOverview(
     onSeeAll: (SortOrder) -> Unit,
     onManga: (Manga) -> Unit,
     onRetry: () -> Unit,
+    skeletonEffect: OverviewSkeletonEffect = OverviewSkeletonEffect.EDGE_AND_SOFT,
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val colors = MaterialTheme.colorScheme
+    val shimmerPhase = rememberOverviewSkeletonPhase(
+        !state.loading && !state.openCatalog && !state.failed &&
+            state.shelves.any { !it.failed && it.entries == null },
+    )
     Scaffold(
         // The Classic theme bridge maps the host surface pair; its background may still be a Material default.
         containerColor = colors.surface,
@@ -142,7 +164,7 @@ private fun SourceOverview(
                     TextButton(onClick = onCatalog) { Text(stringResource(R.string.source_overview_see_all)) }
                 }
                 else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().testTag("source_overview_shelves"),
                     contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -173,13 +195,29 @@ private fun SourceOverview(
                                     Text(stringResource(R.string.source_overview_load_failed))
                                     TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                                 }
-                                entries == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
-                                entries.isEmpty() -> Text(stringResource(R.string.nothing_found), Modifier.padding(16.dp))
+                                entries?.isEmpty() == true -> Text(stringResource(R.string.nothing_found), Modifier.padding(16.dp))
                                 else -> LazyRow(
+                                    modifier = Modifier.testTag("source_overview_shelf_${shelf.order.name}"),
                                     contentPadding = PaddingValues(12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    userScrollEnabled = entries != null,
                                 ) {
-                                    items(entries, key = { it.id }) { manga -> OverviewCover(manga) { onManga(manga) } }
+                                    if (entries == null) {
+                                        // Match the shelf's existing maximum; only visible placeholders are composed.
+                                        items(12) {
+                                            OverviewCoverFrame(
+                                                title = null,
+                                                modifier = Modifier.testTag("source_overview_skeleton_${shelf.order.name}"),
+                                                coverModifier = Modifier.overviewSkeletonShimmer(
+                                                    phase = shimmerPhase,
+                                                    effect = skeletonEffect,
+                                                    highlight = colors.onSurface,
+                                                ),
+                                            ) {}
+                                        }
+                                    } else {
+                                        items(entries, key = { it.id }) { manga -> OverviewCover(manga) { onManga(manga) } }
+                                    }
                                 }
                             }
                         }
@@ -196,15 +234,113 @@ private fun OverviewCover(manga: Manga, onClick: () -> Unit) {
     val request = remember(context, manga) {
         ImageRequest.Builder(context).data(manga.coverUrl).mangaExtra(manga).build()
     }
-    Column(Modifier.width(104.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)) {
+    OverviewCoverFrame(title = manga.title, modifier = Modifier.clickable(onClick = onClick)) {
         AsyncImage(
             model = request,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.matchParentSize(),
         )
-        Text(manga.title, Modifier.padding(top = 6.dp).heightIn(min = 48.dp),
-            maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun OverviewCoverFrame(
+    title: String?,
+    modifier: Modifier = Modifier,
+    coverModifier: Modifier = Modifier,
+    cover: @Composable BoxScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(Modifier.width(104.dp).clip(shape).then(modifier)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .then(coverModifier),
+            content = cover,
+        )
+        // Reserve the same two-line typography space at every font scale, without a visible fake title.
+        val titleModifier = Modifier.padding(top = 6.dp).heightIn(min = 48.dp)
+        Text(
+            text = title.orEmpty(),
+            modifier = if (title == null) titleModifier.clearAndSetSemantics {} else titleModifier,
+            minLines = 2,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+/** Local comparison variants share one renderer; only EDGE_AND_SOFT is the app default. */
+internal enum class OverviewSkeletonEffect {
+    SOFT,
+    EDGE,
+    EDGE_AND_SOFT,
+}
+
+/** One clock per resumed overview, only while a supported shelf is still loading. */
+@Composable
+internal fun rememberOverviewSkeletonPhase(hasPendingShelves: Boolean): State<Float>? {
+    if (!hasPendingShelves) return null
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateFlow.collectAsState()
+    if (!lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) return null
+
+    // Compose respects the system animator duration scale. At scale zero it settles
+    // at the target value (1f), which the renderer deliberately draws as static.
+    return rememberInfiniteTransition(label = "overview skeleton").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 2400, easing = LinearEasing)),
+        label = "shared shimmer phase",
+    )
+}
+
+/** Read the shared phase only at draw time; cache brushes and keep layout unchanged. */
+internal fun Modifier.overviewSkeletonShimmer(
+    phase: State<Float>?,
+    effect: OverviewSkeletonEffect,
+    highlight: Color,
+): Modifier {
+    if (phase == null) return this
+    return drawWithCache {
+        val bandWidth = size.width * 0.85f
+        val edgeTilt = size.height * 0.16f
+        val colors = listOf(highlight.copy(alpha = 0f), highlight.copy(alpha = 1f), highlight.copy(alpha = 0f))
+        val faceBrush = Brush.horizontalGradient(colors, startX = 0f, endX = bandWidth)
+        val edgeBrush = Brush.linearGradient(colors, start = Offset.Zero, end = Offset(bandWidth, edgeTilt))
+        val strokeWidth = 1.dp.toPx()
+        val inset = strokeWidth / 2f
+        val corner = CornerRadius((10.dp.toPx() - inset).coerceAtLeast(0f))
+        val edgeSize = Size((size.width - strokeWidth).coerceAtLeast(0f), (size.height - strokeWidth).coerceAtLeast(0f))
+
+        onDrawBehind {
+            val progress = phase.value
+            if (progress <= 0f || progress >= 1f || bandWidth <= 0f) return@onDrawBehind
+
+            if (effect != OverviewSkeletonEffect.EDGE) {
+                val x = -bandWidth + (size.width + bandWidth) * progress
+                translate(left = x) {
+                    drawRect(faceBrush, topLeft = Offset(-x, 0f), size = size, alpha = 0.10f)
+                }
+            }
+            if (effect != OverviewSkeletonEffect.SOFT) {
+                // Keep the rounded stroke fixed while its diagonal highlight moves.
+                val start = -bandWidth - edgeTilt * edgeTilt / bandWidth
+                val end = size.width + size.height * edgeTilt / bandWidth
+                val x = start + (end - start) * progress
+                translate(left = x) {
+                    drawRoundRect(
+                        brush = edgeBrush,
+                        topLeft = Offset(inset - x, inset),
+                        size = edgeSize,
+                        cornerRadius = corner,
+                        alpha = 0.24f,
+                        style = Stroke(strokeWidth),
+                    )
+                }
+            }
+        }
     }
 }
