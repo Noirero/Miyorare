@@ -383,11 +383,6 @@ class ReaderActivity :
         idlingDetector.onUserInteraction()
     }
 
-    override fun onStart() {
-        super.onStart()
-        viewModel.onStart(this)
-    }
-
     override fun onPause() {
         // Keep EPUB's pre-existing exact-offset lifecycle untouched.
         if (viewModel.getMangaOrNull()?.isNovelContent != true) {

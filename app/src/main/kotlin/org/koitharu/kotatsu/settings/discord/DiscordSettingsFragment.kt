@@ -32,7 +32,6 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.StateFlow
-import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordAuthActivity
@@ -81,7 +80,6 @@ private fun DiscordScreen(
 	val state by tokenState.collectAsState()
 
 	var rpcEnabled by rememberBooleanPref(AppSettings.KEY_DISCORD_RPC, false)
-	var officialRpc by rememberBooleanPref(AppSettings.KEY_DISCORD_SOCIAL_SDK, false)
 	var skipNsfw by rememberBooleanPref(AppSettings.KEY_DISCORD_RPC_SKIP_NSFW, false)
 
 	var showTokenDialog by remember { mutableStateOf(false) }
@@ -112,31 +110,14 @@ private fun DiscordScreen(
 						shape = pos.shape,
 					)
 				}
-				if (BuildConfig.DISCORD_SOCIAL_SDK_INCLUDED || officialRpc) {
-					item { pos ->
-						SwitchSettingsItem(
-							title = stringResource(R.string.discord_official_sdk),
-							subtitle = stringResource(
-								if (BuildConfig.DISCORD_SOCIAL_SDK_INCLUDED) R.string.discord_official_sdk_summary
-								else R.string.discord_official_sdk_unavailable,
-							),
-							checked = officialRpc,
-							onCheckedChange = { officialRpc = it },
-							icon = R.drawable.ic_discord,
-							shape = pos.shape,
-						)
-					}
-				}
-				if (!officialRpc) {
-					item { pos ->
-						ActionSettingsItem(
-							title = stringResource(R.string.discord_token),
-							subtitle = tokenSubtitle,
-							icon = if (isWarning) R.drawable.ic_alert_outline else R.drawable.ic_lock,
-							shape = pos.shape,
-							onClick = { showTokenDialog = true },
-						)
-					}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.discord_token),
+						subtitle = tokenSubtitle,
+						icon = if (isWarning) R.drawable.ic_alert_outline else R.drawable.ic_lock,
+						shape = pos.shape,
+						onClick = { showTokenDialog = true },
+					)
 				}
 				item { pos ->
 					SwitchSettingsItem(
@@ -154,7 +135,7 @@ private fun DiscordScreen(
 		item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
 	}
 
-	if (showTokenDialog && !officialRpc) {
+	if (showTokenDialog) {
 		DiscordTokenDialog(
 			hasSavedToken = state != TokenState.EMPTY && state != TokenState.REQUIRED,
 			message = ctx.getString(

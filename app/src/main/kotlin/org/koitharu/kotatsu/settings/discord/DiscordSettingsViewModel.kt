@@ -23,7 +23,7 @@ class DiscordSettingsViewModel @Inject constructor(
 	private val repository: DiscordRepository,
 ) : BaseViewModel() {
 
-	val tokenState: StateFlow<TokenState> = settings.observe(AppSettings.KEY_DISCORD_RPC, AppSettings.KEY_DISCORD_SOCIAL_SDK)
+	val tokenState: StateFlow<TokenState> = settings.observe(AppSettings.KEY_DISCORD_RPC)
 		.combine(settings.observeDiscordTokenChanges()) { _, _ -> Unit }
 		.flatMapLatest { checkToken() }
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, TokenState.CHECKING)
@@ -34,7 +34,7 @@ class DiscordSettingsViewModel @Inject constructor(
 
 	private fun checkToken(): Flow<TokenState> = flow {
 		val token = settings.discordToken
-		if (!settings.isDiscordRpcEnabled || settings.isDiscordSocialSdkEnabled) {
+		if (!settings.isDiscordRpcEnabled) {
 			emit(if (token == null) TokenState.EMPTY else TokenState.SAVED)
 			return@flow
 		}
