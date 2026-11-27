@@ -3281,8 +3281,11 @@ class DownloadedLocalStateTest {
 			val adapter = ChaptersAdapter(OnListItemClickListener { _, _ -> }, {}, {}, {}, {})
 			val parent = FrameLayout(ContextThemeWrapper(context, R.style.Theme_Kotatsu))
 			adapter.emit(listOf(row.copy(flags = (row.flags.toInt() and ChapterListItem.FLAG_GRID.toInt().inv()).toByte())))
-			val holder = adapter.onCreateViewHolder(parent, adapter.getItemViewType(0))
-			adapter.onBindViewHolder(holder, 0)
+			// RecyclerView's public wrappers initialize the holder type and binding state.
+			val viewType = adapter.getItemViewType(0)
+			val holder = adapter.createViewHolder(parent, viewType)
+			assertEquals(viewType, holder.itemViewType)
+			adapter.bindViewHolder(holder, 0)
 			assertEquals(if (downloaded) View.VISIBLE else View.GONE,
 				holder.itemView.findViewById<View>(R.id.imageView_downloaded).visibility)
 		}
