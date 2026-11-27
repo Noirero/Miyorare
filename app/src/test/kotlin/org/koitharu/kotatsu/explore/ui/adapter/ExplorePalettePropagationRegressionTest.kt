@@ -13,9 +13,9 @@ class ExplorePalettePropagationRegressionTest {
 		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(delegates.contains("valmodernPalette=context.miyorareViewPaletteFromPreferences()"))
+		assertTrue(delegates.contains("valmodernPalette=privatePalette?:context.miyorareViewPaletteFromPreferences()"))
 		assertTrue(delegates.contains("binding.applyModernResolvedPalette(modernPalette)"))
-		assertTrue(delegates.contains("binding.applyModernResolvedPalette(modernPalette,isExternal)"))
+		assertTrue(delegates.contains("binding.applyModernResolvedPalette(modernPalette,isExternal,preserveOriginIdentity=privatePalette!=null)"))
 		assertTrue(delegates.contains("palette.surfaceContainerHigh"))
 		assertTrue(delegates.contains("palette.surfaceContainerLow"))
 		assertTrue(delegates.contains("palette.surfaceContainerHighest"))
@@ -24,6 +24,18 @@ class ExplorePalettePropagationRegressionTest {
 		assertTrue(delegates.contains("imageViewIcon.strokeColor=ColorStateList.valueOf(palette.outline)"))
 		assertTrue(palette.contains("surfaceContainerLow=scheme.surfaceContainerLow.toArgb()"))
 		assertTrue(palette.contains("surfaceContainerHighest=scheme.surfaceContainerHighest.toArgb()"))
+	}
+
+	@Test
+	fun `Private Explore opts in without changing the Normal or Classic palette entry point`() {
+		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt").replace(Regex("\\s+"), "")
+		val header = source("kotlin/org/koitharu/kotatsu/explore/ui/MiyorareExploreHeaderLayout.kt").replace(Regex("\\s+"), "")
+		val fragment = source("kotlin/org/koitharu/kotatsu/explore/ui/ExploreFragment.kt").replace(Regex("\\s+"), "")
+		assertTrue(palette.contains("privateFavourites:Boolean=false"))
+		assertTrue(palette.contains("if(!isPrivateFavouritesHost()||privateFavouritesThemeFromPreferences()==PrivateFavouritesThemePreset.FOLLOW_NORMAL)returnnull"))
+		assertTrue(palette.contains("returnmiyorareViewPaletteFromPreferences(privateFavourites=true)"))
+		assertTrue(header.contains("valpalette=privatePalette?:context.miyorareViewPaletteFromPreferences()?:return"))
+		assertTrue(fragment.contains("context.explicitPrivateViewPaletteFromPreferences()?:context.miyorareViewPaletteFromPreferences()"))
 	}
 
 	private fun source(relativePath: String): String {

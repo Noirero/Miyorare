@@ -430,18 +430,12 @@ class ReaderActivity :
             request.answer.complete(null)
             finish()
         }
+        lateinit var content: ExhentaiReadPickerContent
         val dialog = buildAlertDialog(this) {
             setTitle(R.string.exhentai_choose_local_title)
-            setItems(request.choices.map { candidate ->
-                val id = candidate.galleryId?.let { getString(R.string.exhentai_choose_local_known_id, it) }
-                    ?: getString(R.string.exhentai_choose_local_unknown_id)
-                val warning = if (candidate.readable) "" else " · " + getString(R.string.exhentai_choose_local_changed)
-                "${java.io.File(candidate.path).name} · $id$warning\n${candidate.path}"
-            }.toTypedArray()) { _, index ->
-                if (canChoose()) {
-                    request.answer.complete(request.choices[index])
-                }
-            }
+            content = ExhentaiReadPickerContent(context, request.choices, ::canChoose)
+            setView(content)
+            setPositiveButton(R.string._continue, null)
             setNegativeButton(android.R.string.cancel) { _, _ -> cancel() }
             setOnCancelListener { cancel() }
         }
@@ -450,6 +444,15 @@ class ReaderActivity :
             if (exhentaiChoiceDialog === dialog) exhentaiChoiceDialog = null
         }
         dialog.show()
+        val continueButton = dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
+        continueButton.isEnabled = false
+        content.onSelectionChanged = { continueButton.isEnabled = canChoose() && content.selectedChoice != null }
+        continueButton.setOnClickListener {
+            val selected = content.selectedChoice
+            if (canChoose() && selected != null && request.answer.complete(selected)) {
+                dialog.dismiss()
+            }
+        }
     }
 
     override fun onStop() {

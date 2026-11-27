@@ -15,6 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -24,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.prefs.NavigationMotion
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
@@ -56,6 +63,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val previewIdState = MutableStateFlow<Int?>(null)
 	private val tabBounds = mutableMapOf<Int, Rect>()
 	private val movingIndicator = MutableStateFlow(false)
+	private val motionFrame = mutableIntStateOf(0)
 	private val labeledState = MutableStateFlow(true)
 	private val navColorsState = MutableStateFlow(readNavColors())
 	private val continueVisibleState = MutableStateFlow(false)
@@ -87,6 +95,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 			else context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
 		},
 		onIndicatorChanged = { movingIndicator.value = it },
+		onVisualFrameChanged = { motionFrame.intValue++ },
+		surfaceColor = { navColorsState.value.container },
 	)
 
 	private val composeView: ComposeView = ComposeView(context).apply {
@@ -107,6 +117,15 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				// Normal navigation keeps the approved Favourites glass/geometry on every destination.
 				// selectedId still moves the active indicator; only the container style remains stable.
 				val emphasizeFavourites = !privateFavouritesHost
+				// Draw the enhanced material behind icons in the existing Surface, not as an opaque overlay.
+				val motionDecoration = Modifier.onGloballyPositioned { coordinates ->
+					val position = coordinates.positionInWindow()
+					tabDrag.setMotionViewport(Rect(position.x, position.y,
+						position.x + coordinates.size.width, position.y + coordinates.size.height))
+				}.drawBehind {
+					motionFrame.intValue // invalidate just drawing, not layout/composition
+					drawIntoCanvas { tabDrag.drawInMotionViewport(it.nativeCanvas) }
+				}
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
@@ -130,7 +149,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							selectedId = selectedId,
 							showLabels = labeled,
 							colors = navColors,
-							onItemSelected = { id -> this@FloatingBottomNavigationView.selectedItemId = id },
+							onItemSelected = ::selectFromUser,
 							onItemReselected = { id ->
 								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
 							},
@@ -139,6 +158,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							emphasizeFavourites = emphasizeFavourites,
 							previewId = previewId,
 							indicatorMoving = indicatorMoving,
+							motionDecoration = motionDecoration,
 							onTabBounds = { id, bounds -> if (useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					} else {
@@ -147,7 +167,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							selectedId = selectedId,
 							showLabels = labeled,
 							colors = navColors,
-							onItemSelected = { id -> this@FloatingBottomNavigationView.selectedItemId = id },
+							onItemSelected = ::selectFromUser,
 							onItemReselected = { id ->
 								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
 							},
@@ -160,6 +180,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onContinueLongClick = { continueLongClickListener?.invoke() },
 							previewId = previewId,
 							indicatorMoving = indicatorMoving,
+							motionDecoration = motionDecoration,
 							onTabBounds = { id, bounds -> if (!useLegacyNavigation) tabBounds[id] = bounds },
 						)
 					}
@@ -190,6 +211,22 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 
 	override val maxItemCountOverride: Int
 		get() = MAX_RENDERED_ITEMS
+
+	internal var isUserSelection = false
+		private set
+
+	internal fun selectFromUser(@IdRes itemId: Int) {
+		val before = selectedItemId
+		isUserSelection = true
+		try {
+			selectedItemId = itemId
+		} finally {
+			isUserSelection = false
+		}
+		if (before != selectedItemId) tabDrag.animateSelection(before, selectedItemId)
+	}
+
+	internal fun setNavigationMotion(motion: NavigationMotion) = tabDrag.setMotion(motion)
 
 	override fun setSelectedItemId(@IdRes itemId: Int) {
 		cancelTabDrag()
@@ -252,6 +289,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		if (useLegacyNavigation == value) return
 		cancelTabDrag()
 		tabBounds.clear()
+		tabDrag.setMotionViewport(null)
 		useLegacyNavigation = value
 		legacyNavigationState.value = value
 		updateNavigationMode()
@@ -267,13 +305,18 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		rebuildComposeItems()
 	}
 
-	internal fun setTabDragListeners(preview: (Int?) -> Boolean, commit: (Int) -> Unit) {
+	internal fun setTabDragListeners(
+		preview: (Int?) -> Boolean,
+		commit: (Int) -> Unit,
+		slideFrame: ((TabSlideFrame) -> Unit)? = null,
+	) {
 		tabDrag.preview = { id ->
 			val accepted = preview(id)
 			previewIdState.value = id.takeIf { accepted }
 			accepted
 		}
 		tabDrag.commit = commit
+		tabDrag.slideFrame = slideFrame
 	}
 
 	internal fun cancelTabDrag() = tabDrag.cancel()

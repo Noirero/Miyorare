@@ -22,6 +22,9 @@ data class ExhentaiPresenceEntity(
 
 @Dao
 interface ExhentaiPresenceDao {
+    @Query("SELECT path FROM exhentai_presence WHERE space = :space AND root = :root AND mangaId = :mangaId")
+    suspend fun findPaths(space: Int, root: String, mangaId: Long): List<String>
+
     @Query("SELECT * FROM exhentai_presence WHERE space = :space")
     suspend fun findForSpace(space: Int): List<ExhentaiPresenceEntity>
 

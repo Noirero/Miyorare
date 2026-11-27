@@ -13,7 +13,9 @@ import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.graphics.ColorUtils
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.shape.MaterialShapeDrawable
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.explicitPrivateViewPaletteFromPreferences
 
 /**
  * Small self-contained help affordance for the Explore source-provenance filters.
@@ -31,7 +33,13 @@ class ExploreSourceProvenanceInfoButton @JvmOverloads constructor(
 		setOnClickListener { showProvenanceInfo() }
 	}
 
+	override fun onAttachedToWindow() {
+		super.onAttachedToWindow()
+		context.explicitPrivateViewPaletteFromPreferences()?.let { imageTintList = ColorStateList.valueOf(it.onSurfaceVariant) }
+	}
+
 	private fun showProvenanceInfo() {
+		val privatePalette = context.explicitPrivateViewPaletteFromPreferences()
 		val horizontalPadding = dp(24)
 		val verticalPadding = dp(8)
 		val rowGap = dp(10)
@@ -65,7 +73,7 @@ class ExploreSourceProvenanceInfoButton @JvmOverloads constructor(
 				setText(row.descriptionRes)
 				textSize = 14f
 				setTextColor(
-					MaterialColors.getColor(
+					privatePalette?.onSurfaceVariant ?: MaterialColors.getColor(
 						this,
 						com.google.android.material.R.attr.colorOnSurfaceVariant,
 					),
@@ -79,11 +87,16 @@ class ExploreSourceProvenanceInfoButton @JvmOverloads constructor(
 		val scrollView = ScrollView(context).apply {
 			addView(content)
 		}
-		MaterialAlertDialogBuilder(context)
+		val builder = MaterialAlertDialogBuilder(context)
 			.setTitle(R.string.explore_source_badge_info_title)
 			.setView(scrollView)
 			.setPositiveButton(android.R.string.ok, null)
-			.show()
+		privatePalette?.let { (builder.background as? MaterialShapeDrawable)?.setFillColor(ColorStateList.valueOf(it.surface)) }
+		val dialog = builder.show()
+		privatePalette?.let {
+			dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)?.setTextColor(it.primary)
+			dialog.findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.setTextColor(it.onSurface)
+		}
 	}
 
 	private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

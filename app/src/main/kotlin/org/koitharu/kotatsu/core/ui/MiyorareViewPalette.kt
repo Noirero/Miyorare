@@ -182,6 +182,12 @@ fun Context.miyorareViewPaletteFromPreferences(
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
 
+/** Opt-in projection for shared Views: leave Normal, Follow Normal and Classic on their existing path. */
+internal fun Context.explicitPrivateViewPaletteFromPreferences(): MiyorareViewPalette? {
+	if (!isPrivateFavouritesHost() || privateFavouritesThemeFromPreferences() == PrivateFavouritesThemePreset.FOLLOW_NORMAL) return null
+	return miyorareViewPaletteFromPreferences(privateFavourites = true)
+}
+
 private fun Context.isPrivateFavouritesHost(): Boolean {
 	val activity = findActivity() ?: return false
 	return activity.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==

@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
+import org.koitharu.kotatsu.core.ui.explicitPrivateViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.dialog.BigButtonsAlertDialog
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
@@ -583,6 +584,13 @@ class ExploreFragment :
 		binding.root.setBackgroundColor(Color.TRANSPARENT)
 		binding.header.root.background = null
 		binding.header.root.elevation = level.headerElevationDp * resources.displayMetrics.density
+		binding.root.context.explicitPrivateViewPaletteFromPreferences()?.let { palette ->
+			binding.stickyLanguageHeader.setTextColor(palette.onSurface)
+			(binding.stickyLanguageHeader.background?.mutate() as? android.graphics.drawable.GradientDrawable)?.apply {
+				setColor(palette.surfaceContainerLow)
+				setStroke(resources.displayMetrics.density.toInt().coerceAtLeast(1), palette.outlineVariant)
+			}
+		}
 	}
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
@@ -663,7 +671,8 @@ class ExploreFragment :
 		}
 		sourceFilterDialogOpenPending = false
 		val context = requireContext()
-		val palette = context.miyorareViewPaletteFromPreferences()
+		val privatePalette = context.explicitPrivateViewPaletteFromPreferences()
+		val palette = privatePalette ?: context.miyorareViewPaletteFromPreferences()
 		val padding = (20 * resources.displayMetrics.density).toInt()
 		val rowPadding = (12 * resources.displayMetrics.density).toInt()
 		val content = LinearLayout(context).apply {
@@ -709,6 +718,7 @@ class ExploreFragment :
 		palette?.let { active ->
 			dialog.setOnShowListener {
 				dialog.getButton(DialogInterface.BUTTON_POSITIVE)?.setTextColor(active.primary)
+				privatePalette?.let { dialog.findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.setTextColor(it.onSurface) }
 			}
 		}
 		dialog.show()
@@ -719,7 +729,7 @@ class ExploreFragment :
 		entries: List<MihonSourceFilterEntry>,
 	): () -> SourceFilterState {
 		val context = container.context
-		val palette = context.miyorareViewPaletteFromPreferences()
+		val palette = context.explicitPrivateViewPaletteFromPreferences() ?: context.miyorareViewPaletteFromPreferences()
 		val density = resources.displayMetrics.density
 		val rowPadding = (12 * density).toInt()
 		fun header(text: CharSequence) {

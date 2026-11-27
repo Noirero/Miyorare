@@ -283,6 +283,9 @@ add_full_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/download/DownloadFixRegressionTest.kt ]]; then
     add_class org.koitharu.kotatsu.download.DownloadFixRegressionTest
   fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/explore/ui/SourceOverviewSkeletonTest.kt ]]; then
+    add_class org.koitharu.kotatsu.explore.ui.SourceOverviewSkeletonTest
+  fi
   add_verbose_diagnostics_suite
   add_exhentai_presence_migration_test
 
@@ -700,6 +703,9 @@ self_test() {
   fi
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/history/ui/HistoryAccordionVisualRuntimeTest.kt ]]; then
     grep -q 'HistoryAccordionVisualRuntimeTest' <<<"$out"
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/explore/ui/SourceOverviewSkeletonTest.kt ]]; then
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.explore.ui.SourceOverviewSkeletonTest')" == 1 ]]
   fi
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"

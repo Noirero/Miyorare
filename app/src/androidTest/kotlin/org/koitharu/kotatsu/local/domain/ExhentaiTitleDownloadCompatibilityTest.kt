@@ -100,6 +100,42 @@ import javax.inject.Inject
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
 class ExhentaiTitleDownloadCompatibilityTest {
+	@Test
+	fun compactPickerExpandsPathWithoutSelectingAndRejectsUnreadableOrLockedChoice() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		instrumentation.runOnMainSync {
+			val themed = android.view.ContextThemeWrapper(
+				instrumentation.targetContext, com.google.android.material.R.style.Theme_Material3_DayNight,
+			)
+			val first = DownloadedMangaResolver.ExhentaiReadChoice("/storage/fixture/" + "long-folder".repeat(12) + "/Chapter.cbz", null, 1024L, 1L)
+			val second = first.copy(path = "/storage/fixture/other/Chapter.cbz", galleryId = 123L, readable = false)
+			var allowed = true
+			val content = org.koitharu.kotatsu.reader.ui.ExhentaiReadPickerContent(themed, listOf(first, second)) { allowed }
+			val details = content.findViewWithTag<android.widget.TextView>("exhentai-path-0")
+			val expand = content.findViewWithTag<android.view.View>("exhentai-details-0")
+			val radio = content.findViewWithTag<android.widget.RadioButton>("exhentai-choice-0")
+			val unreadable = content.findViewWithTag<android.widget.RadioButton>("exhentai-choice-1")
+			assertNull(content.selectedChoice)
+			assertEquals(android.view.View.GONE, details.visibility)
+			assertTrue(details.text.isEmpty())
+			assertFalse(radio.text.contains(first.path))
+			expand.performClick()
+			assertEquals(android.view.View.VISIBLE, details.visibility)
+			assertTrue(details.text.contains(first.path))
+			assertNull(content.selectedChoice)
+			expand.performClick()
+			assertEquals(android.view.View.GONE, details.visibility)
+			assertTrue(details.text.isEmpty())
+			assertFalse(unreadable.isEnabled)
+			radio.performClick()
+			assertTrue(content.selectedChoice === first)
+			allowed = false
+			assertNull(content.selectedChoice)
+			expand.performClick()
+			assertEquals(android.view.View.GONE, details.visibility)
+		}
+	}
+
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var detailsLoader: DetailsLoadUseCase
