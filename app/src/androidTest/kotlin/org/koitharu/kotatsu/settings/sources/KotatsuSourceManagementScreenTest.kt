@@ -7,6 +7,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -124,8 +126,14 @@ class KotatsuSourceManagementScreenTest {
 					)
 				}
 			}
-			compose.onNodeWithContentDescription(context.getString(R.string.kotatsu_source_enable_named, title)).assertIsNotEnabled()
-			compose.onNodeWithContentDescription(context.getString(R.string.kotatsu_source_settings_named, title)).assertIsNotEnabled()
+			val toggle = compose.onNodeWithContentDescription(context.getString(R.string.kotatsu_source_enable_named, title))
+			val settings = compose.onNodeWithContentDescription(context.getString(R.string.kotatsu_source_settings_named, title))
+			toggle.assertIsNotEnabled().assertIsOff()
+			settings.assertIsNotEnabled()
+			// Touch input must not invoke either disabled control or the diagnostic row.
+			toggle.performTouchInput { click() }
+			settings.performTouchInput { click() }
+			compose.runOnIdle { assertEquals(emptyList<String>(), actions) }
 			compose.onNodeWithText(title).performClick()
 			compose.runOnIdle { assertEquals(listOf("diagnostic"), actions) }
 		} finally {

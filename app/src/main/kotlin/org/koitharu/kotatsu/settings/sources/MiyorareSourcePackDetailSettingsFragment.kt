@@ -765,7 +765,8 @@ internal fun MiyorareSourceSwitchItem(
 			val switchLabel = stringResource(R.string.kotatsu_source_enable_named, title)
 			Switch(
 				checked = checked,
-				onCheckedChange = if (enabled) onCheckedChange else null,
+				// A null callback removes Switch toggle semantics, including its disabled state.
+				onCheckedChange = { value -> if (enabled) onCheckedChange(value) },
 				enabled = enabled,
 				modifier = Modifier.semantics { contentDescription = switchLabel },
 			)
