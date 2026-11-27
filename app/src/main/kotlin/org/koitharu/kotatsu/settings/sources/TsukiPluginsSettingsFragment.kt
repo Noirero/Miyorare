@@ -39,6 +39,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import okhttp3.OkHttpClient
+import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.network.BaseHttpClient
+import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
@@ -53,6 +59,9 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
+import javax.inject.Provider
 import java.util.Locale
 import javax.inject.Inject
 
@@ -64,6 +73,16 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 
 	@Inject
 	lateinit var pluginInstaller: TsukiPluginInstaller
+
+	@Inject
+	lateinit var settings: AppSettings
+
+	@Inject
+	lateinit var runtimeProvider: Provider<TsukiPluginRuntime>
+
+	@Inject
+	@BaseHttpClient
+	lateinit var baseClientProvider: Provider<OkHttpClient>
 
 	private var busy by mutableStateOf(false)
 
@@ -90,6 +109,10 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 		setContent {
 			MiyorareSettingsTheme("extensions") {
 				val plugins by pluginManager.plugins.collectAsState()
+				val nsfwDisabled by remember {
+					settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled }
+				}.collectAsState(initial = settings.isNsfwContentDisabled)
+				val iconResolver = remember { UmaWebsiteIconResolver(pluginManager, runtimeProvider, settings) }
 				TsukiPluginsScreen(
 					plugins = plugins.filterNot { it.provider == TsukiPluginProvider.MIYORARE },
 					busy = busy,
@@ -99,6 +122,11 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 					onPluginEnabled = ::setPluginEnabled,
 					onLanguageEnabled = ::setLanguageEnabled,
 					onSourceEnabled = ::setSourceEnabled,
+					nsfwDisabled = nsfwDisabled,
+					onSourceOpen = { openUmaSource(it, browse = true) },
+					onSourceSettings = { openUmaSource(it, browse = false) },
+					loadWebsiteIcon = iconResolver::load,
+					baseClientProvider = baseClientProvider,
 					canCheckUpdate = pluginInstaller::supportsRemoteUpdate,
 					onCheckUpdate = ::checkUpdate,
 					onRemove = ::confirmRemove,
@@ -201,6 +229,16 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 		}
 	}
 
+	private fun openUmaSource(identity: TsukiSourceIdentity, browse: Boolean) {
+		if (busy || identity.provider != TsukiPluginProvider.UMA) return
+		val source = pluginManager.resolveSource(identity.storedName) ?: return
+		if (browse) {
+			if (!settings.isNsfwContentDisabled || !source.isNsfw()) router.openSourceOverview(source)
+		} else {
+			router.openSourceSettings(source)
+		}
+	}
+
 	private fun setSourceEnabled(plugin: TsukiPluginDescriptor, source: TsukiSourceDescriptor, enabled: Boolean) {
 		if (busy || plugin.state == TsukiPluginState.BROKEN || source.isBroken) return
 		lifecycleScope.launch(Dispatchers.IO) {
@@ -296,6 +334,11 @@ private fun TsukiPluginsScreen(
 	onPluginEnabled: (TsukiPluginDescriptor, Boolean) -> Unit,
 	onLanguageEnabled: (TsukiPluginDescriptor, String, Boolean) -> Unit,
 	onSourceEnabled: (TsukiPluginDescriptor, TsukiSourceDescriptor, Boolean) -> Unit,
+	nsfwDisabled: Boolean,
+	onSourceOpen: (TsukiSourceIdentity) -> Unit,
+	onSourceSettings: (TsukiSourceIdentity) -> Unit,
+	loadWebsiteIcon: suspend (TsukiMangaSource) -> String?,
+	baseClientProvider: Provider<OkHttpClient>,
 	canCheckUpdate: (TsukiPluginDescriptor) -> Boolean,
 	onCheckUpdate: (TsukiPluginDescriptor) -> Unit,
 	onRemove: (TsukiPluginDescriptor) -> Unit,
@@ -303,6 +346,13 @@ private fun TsukiPluginsScreen(
 	val context = LocalContext.current
 	var sourceQuery by rememberSaveable { mutableStateOf("") }
 	var showUnavailableSources by rememberSaveable { mutableStateOf(false) }
+	var umaLanguage by rememberSaveable { mutableStateOf<String?>(null) }
+	val umaLanguages = remember(plugins) {
+		plugins.filter { it.provider == TsukiPluginProvider.UMA }
+			.flatMap { plugin -> plugin.sources.map { umaLanguageCode(it.locale) } }.distinct()
+	}
+	val selectedUmaLanguage = umaLanguage?.takeIf { it in umaLanguages }
+	val umaImageLoader = if (umaLanguages.isNotEmpty()) rememberUmaWebsiteImageLoader(baseClientProvider) else null
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
 	val unavailableSourceCount = remember(plugins) {
 		plugins.sumOf { plugin ->
@@ -335,13 +385,16 @@ private fun TsukiPluginsScreen(
 			)
 		}
 	}
-	val pluginModels = remember(baseModels, normalizedQuery, showUnavailableSources) {
+	val pluginModels = remember(baseModels, normalizedQuery, showUnavailableSources, selectedUmaLanguage) {
 		baseModels.map { model ->
 			model.copy(
 				filteredSources = model.plugin.sources.asSequence()
 					.filter { source ->
 						showUnavailableSources ||
 							(model.plugin.state != TsukiPluginState.BROKEN && !source.isBroken)
+					}
+					.filter { source ->
+						matchesUmaLanguage(model.plugin.provider, source.locale, selectedUmaLanguage)
 					}
 					.filter { source ->
 						normalizedQuery.isEmpty() ||
@@ -433,6 +486,16 @@ private fun TsukiPluginsScreen(
 					singleLine = true,
 					label = { Text(stringResource(R.string.tsuki_source_search_hint)) },
 				)
+			}
+			if (umaLanguages.isNotEmpty()) {
+				item(key = "uma-language-filter") {
+					UmaLanguageFilter(
+						languages = umaLanguages,
+						selected = selectedUmaLanguage,
+						showProvider = plugins.any { it.provider != TsukiPluginProvider.UMA },
+						onSelect = { umaLanguage = it },
+					)
+				}
 			}
 			if (unavailableSourceCount > 0) {
 				item(key = "show-unavailable-sources") {
@@ -561,13 +624,31 @@ private fun TsukiPluginsScreen(
 					append(source.contentType)
 					if (unavailable) append(" · ").append(context.getString(R.string.tsuki_source_broken))
 				}
-				SwitchSettingsItem(
-					title = source.title.ifBlank { source.name },
-					subtitle = subtitle,
-					checked = checked,
-					onCheckedChange = { onSourceEnabled(plugin, source, it) },
-					enabled = !busy && !unavailable,
-				)
+				if (plugin.provider == TsukiPluginProvider.UMA) {
+					val mangaSource = TsukiMangaSource(plugin, source)
+					val canNavigate = !busy && canNavigateTsukiSource(plugin, source)
+					val canBrowse = canNavigate && !(nsfwDisabled && mangaSource.isNsfw())
+					UmaSourceRow(
+						title = mangaSource.displayName,
+						subtitle = subtitle,
+						checked = checked,
+						switchEnabled = !busy && !unavailable,
+						onBrowse = if (canBrowse) ({ onSourceOpen(mangaSource.identity) }) else null,
+						onSettings = if (canNavigate) ({ onSourceSettings(mangaSource.identity) }) else null,
+						onCheckedChange = { onSourceEnabled(plugin, source, it) },
+						leading = {
+							UmaWebsiteIcon(mangaSource, canBrowse, umaImageLoader, loadWebsiteIcon)
+						},
+					)
+				} else {
+					SwitchSettingsItem(
+						title = source.title.ifBlank { source.name },
+						subtitle = subtitle,
+						checked = checked,
+						onCheckedChange = { onSourceEnabled(plugin, source, it) },
+						enabled = !busy && !unavailable,
+					)
+				}
 			}
 		}
 	}

@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -42,6 +44,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -55,6 +59,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
@@ -85,6 +93,9 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 
 	@Inject
 	lateinit var imageLoader: ImageLoader
+
+	@Inject
+	lateinit var settings: AppSettings
 
 	private var busy by mutableStateOf(false)
 	private var latestTag by mutableStateOf<String?>(null)
@@ -117,6 +128,9 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		setContent {
 			MiyorareSettingsTheme("extensions") {
 				val plugins by pluginManager.plugins.collectAsState()
+				val nsfwDisabled by remember {
+					settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled }
+				}.collectAsState(initial = settings.isNsfwContentDisabled)
 				MiyorareSourcePackDetailScreen(
 					pack = pack,
 					plugins = plugins,
@@ -130,6 +144,9 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 					onAllSourcesEnabled = ::setAllSourcesEnabled,
 					onSourceEnabled = ::setSourceEnabled,
 					onSourceTest = ::confirmTestSource,
+					nsfwDisabled = nsfwDisabled,
+					onSourceOpen = { openPackSource(it, browse = true) },
+					onSourceSettings = { openPackSource(it, browse = false) },
 					onRemove = ::confirmRemove,
 				)
 			}
@@ -206,13 +223,24 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		}
 	}
 
+	private fun openPackSource(row: MiyorareSourcePackRow, browse: Boolean) {
+		if (busy) return
+		val identity = TsukiSourceIdentity(row.plugin.provider, row.plugin.pluginId, row.source.name)
+		val source = pluginManager.resolveSource(identity.storedName) ?: return
+		if (browse) {
+			if (!settings.isNsfwContentDisabled || !source.isNsfw()) router.openSourceOverview(source)
+		} else {
+			router.openSourceSettings(source)
+		}
+	}
+
 	/**
 	 * Offer a one-off diagnostic open for a source upstream marked broken. The source is not
 	 * enabled and nothing is persisted; the browse screen either loads (the broken verdict was
 	 * stale) or shows the network/parser error that proves the site is really gone.
 	 */
 	private fun confirmTestSource(row: MiyorareSourcePackRow) {
-		if (busy) return
+		if (busy || (settings.isNsfwContentDisabled && row.source.contentType.equals("HENTAI", ignoreCase = true))) return
 		MaterialAlertDialogBuilder(requireContext())
 			.setTitle(R.string.tsuki_source_test_title)
 			.setMessage(
@@ -228,7 +256,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				val source = pluginManager.resolveDiagnosticSource(identity.storedName)
 				if (source == null) {
 					showError(IllegalStateException("Source ${row.source.name} is no longer available"))
-				} else {
+				} else if (!settings.isNsfwContentDisabled || !source.isNsfw()) {
 					startActivity(
 						AppRouter.listIntent(requireContext(), source, null, null, diagnosticTest = true),
 					)
@@ -369,6 +397,9 @@ private fun MiyorareSourcePackDetailScreen(
 	onAllSourcesEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
 	onSourceEnabled: (MiyorareSourcePackRow, Boolean) -> Unit,
 	onSourceTest: (MiyorareSourcePackRow) -> Unit,
+	nsfwDisabled: Boolean,
+	onSourceOpen: (MiyorareSourcePackRow) -> Unit,
+	onSourceSettings: (MiyorareSourcePackRow) -> Unit,
 	onRemove: (MiyorarePackDetailModel) -> Unit,
 ) {
 	val context = LocalContext.current
@@ -633,17 +664,21 @@ private fun MiyorareSourcePackDetailScreen(
 						)
 					}
 				}
+				val canNavigate = !busy && canNavigateTsukiSource(row.plugin, source)
+				val canBrowse = !(nsfwDisabled && source.contentType.equals("HENTAI", ignoreCase = true))
+				val canTest = !busy && source.isBroken && canNavigateTsukiSource(row.plugin, source, allowBroken = true)
 				MiyorareSourceSwitchItem(
 					title = source.title.ifBlank { source.name },
 					subtitle = subtitle,
 					checked = checked,
 					enabled = enabled,
 					onCheckedChange = { onSourceEnabled(row, it) },
-					onRowClick = if (row.source.isBroken && row.plugin.state != TsukiPluginState.BROKEN) {
-						{ onSourceTest(row) }
-					} else {
-						null
+					onRowClick = when {
+						canBrowse && canTest -> ({ onSourceTest(row) })
+						canBrowse && canNavigate -> ({ onSourceOpen(row) })
+						else -> null
 					},
+					onSettings = if (canNavigate) ({ onSourceSettings(row) }) else null,
 					source = source,
 					imageLoader = imageLoader,
 				)
@@ -672,13 +707,14 @@ private fun formatDetailSourcePackVersion(value: String): String {
 }
 
 @Composable
-private fun MiyorareSourceSwitchItem(
+internal fun MiyorareSourceSwitchItem(
 	title: String,
 	subtitle: String,
 	checked: Boolean,
 	enabled: Boolean,
 	onCheckedChange: (Boolean) -> Unit,
 	onRowClick: (() -> Unit)? = null,
+	onSettings: (() -> Unit)? = null,
 	source: TsukiSourceDescriptor,
 	imageLoader: ImageLoader,
 ) {
@@ -691,35 +727,47 @@ private fun MiyorareSourceSwitchItem(
 		Row(
 			modifier = Modifier
 				.heightIn(min = 64.dp)
-				.clickable(enabled = enabled || onRowClick != null) {
-					if (onRowClick != null) onRowClick() else onCheckedChange(!checked)
-				}
 				.padding(horizontal = 14.dp, vertical = 10.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			MiyorareSourceLogo(source = source, imageLoader = imageLoader, enabled = enabled)
-			Spacer(Modifier.width(12.dp))
-			Column(modifier = Modifier.weight(1f)) {
-				Text(
-					text = title,
-					style = MaterialTheme.typography.titleMedium,
-					color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
-					maxLines = 2,
-					overflow = TextOverflow.Ellipsis,
-				)
-				if (subtitle.isNotBlank()) {
+			Row(
+				modifier = Modifier.weight(1f).let { modifier ->
+					if (onRowClick != null) modifier.clickable(onClick = onRowClick) else modifier
+				},
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				MiyorareSourceLogo(source = source, imageLoader = imageLoader, enabled = enabled)
+				Spacer(Modifier.width(12.dp))
+				Column(modifier = Modifier.weight(1f)) {
 					Text(
-						text = subtitle,
-						style = MaterialTheme.typography.bodySmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
+						text = title,
+						style = MaterialTheme.typography.titleMedium,
+						color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+						maxLines = 2,
+						overflow = TextOverflow.Ellipsis,
 					)
+					if (subtitle.isNotBlank()) {
+						Text(
+							text = subtitle,
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
+						)
+					}
 				}
 			}
 			Spacer(Modifier.width(8.dp))
+			IconButton(onClick = { onSettings?.invoke() }, enabled = onSettings != null) {
+				Icon(
+					painterResource(R.drawable.ic_more_vert),
+					contentDescription = stringResource(R.string.kotatsu_source_settings_named, title),
+				)
+			}
+			val switchLabel = stringResource(R.string.kotatsu_source_enable_named, title)
 			Switch(
 				checked = checked,
 				onCheckedChange = if (enabled) onCheckedChange else null,
 				enabled = enabled,
+				modifier = Modifier.semantics { contentDescription = switchLabel },
 			)
 		}
 	}
