@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.reader.ui
 
 import android.net.Uri
+import android.os.FileObserver
 import androidx.annotation.AnyThread
 import androidx.annotation.MainThread
 import androidx.annotation.WorkerThread
@@ -9,10 +10,14 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -21,6 +26,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -75,7 +83,9 @@ import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion
 import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaPage
@@ -95,6 +105,7 @@ import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
 import org.koitharu.kotatsu.stats.domain.StatsCollector
 import java.time.Instant
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.flow.catch
@@ -135,7 +146,7 @@ class ReaderViewModel @Inject constructor(
     chapterProgressRepository: ChapterProgressRepository,
     localContentReader: LocalContentReader,
     appLogger: AppLogger,
-    database: MangaDatabase,
+    private val database: MangaDatabase,
 ) : ChaptersPagesViewModel(
     settings = settings,
     interactor = interactor,
@@ -167,6 +178,157 @@ class ReaderViewModel @Inject constructor(
 
     private val titleSettings = settings
     private val intent = MangaIntent(savedStateHandle)
+    internal class ExhentaiChoiceRequest(
+        val choices: List<DownloadedMangaResolver.ExhentaiReadChoice>,
+        val privateOnly: Boolean,
+        val answer: CompletableDeferred<DownloadedMangaResolver.ExhentaiReadChoice?> = CompletableDeferred(),
+    )
+
+    private val mutableExhentaiChoiceRequest = MutableStateFlow<ExhentaiChoiceRequest?>(null)
+    internal val exhentaiChoiceRequest = mutableExhentaiChoiceRequest
+    // Owned by this Reader ViewModel only; a new Reader never inherits it.
+    @Volatile private var exhentaiSessionChoice: DownloadedMangaResolver.ExhentaiSessionChoice? = null
+    internal val hasExhentaiSessionChoice: Boolean get() = exhentaiSessionChoice != null
+
+    private suspend fun chooseExhentaiFile(
+        manga: Manga,
+        space: FavouriteSpace,
+        choices: List<DownloadedMangaResolver.ExhentaiReadChoice>,
+    ): DownloadedMangaResolver.ExhentaiSessionChoice? {
+        exhentaiSessionChoice?.let { return it }
+        if (choices.isEmpty()) return null
+        // Determine Private-only content from Room before exposing any filesystem path.
+        val privateOnly = space == FavouriteSpace.PRIVATE ||
+            database.getPrivateFavouritesDao().observePrivateOnly(manga.id).first()
+        val request = ExhentaiChoiceRequest(choices, privateOnly)
+        mutableExhentaiChoiceRequest.value = request
+        try {
+            val selected = request.answer.await() ?: throw CancellationException("CBZ choice cancelled")
+            val approved = detailsLoadUseCase.approveExhentaiReadChoice(manga, space, selected)
+                ?: throw java.io.IOException("Selected CBZ changed or is unreadable")
+            exhentaiSessionChoice = approved
+            return approved
+        } finally {
+            if (mutableExhentaiChoiceRequest.value === request) mutableExhentaiChoiceRequest.value = null
+        }
+    }
+    internal enum class ExhentaiFileChange { CHANGED, RELOADING, UNAVAILABLE }
+
+    private val mutableExhentaiFileChange = MutableStateFlow<ExhentaiFileChange?>(null)
+    internal val exhentaiFileChange = mutableExhentaiFileChange
+    internal val hasPinnedExhentaiVersion: Boolean
+        get() = mangaDetails.value?.local?.exhentaiContentVersion != null
+    private var exhentaiReloadJob: Job? = null
+    private val exhentaiHistoryLock = Any()
+    private val exhentaiHistoryWrites = HashSet<Job>()
+
+    private fun markExhentaiFileChanged() = synchronized(exhentaiHistoryLock) {
+        if (mutableExhentaiFileChange.value == null) {
+            mutableExhentaiFileChange.value = ExhentaiFileChange.CHANGED
+        }
+    }
+
+    /** Only the foreground Reader's selected archive is watched. Resume also verifies full bytes. */
+    internal suspend fun monitorExhentaiFileChanges() {
+        combine(mangaDetails, readingState, content) { details, state, displayed ->
+            details?.local?.exhentaiContentVersion?.takeIf { version ->
+                state?.chapterId == version.chapterId &&
+                    displayed.pages.any { it.chapterId == version.chapterId }
+            }
+        }.distinctUntilChanged().collectLatest { version ->
+            if (version == null) return@collectLatest
+            val file = File(version.path)
+            callbackFlow<Unit> {
+                val mask = FileObserver.CLOSE_WRITE or FileObserver.MOVED_TO or FileObserver.MOVED_FROM or
+                    FileObserver.DELETE or FileObserver.CREATE or FileObserver.ATTRIB or
+                    FileObserver.DELETE_SELF or FileObserver.MOVE_SELF
+                @Suppress("DEPRECATION")
+                val watcher = object : FileObserver(file.parentFile!!.path, mask) {
+                    override fun onEvent(event: Int, path: String?) {
+                        if (path == null || path == file.name) trySend(Unit)
+                    }
+                }
+                watcher.startWatching()
+                // Watch first, then hash, so a write during verification also queues a check.
+                trySend(Unit)
+                awaitClose { watcher.stopWatching() }
+            }.buffer(Channel.CONFLATED).collect {
+                if (mutableExhentaiFileChange.value == ExhentaiFileChange.RELOADING) return@collect
+                val current = detailsLoadUseCase.isExhentaiReaderVersionCurrent(favouriteSpace, version)
+                if (!current && mangaDetails.value?.local?.exhentaiContentVersion == version &&
+                    readingState.value?.chapterId == version.chapterId &&
+                    mutableExhentaiFileChange.value == null
+                ) markExhentaiFileChanged()
+            }
+        }
+    }
+
+    /** Explicit user action. Keep the old cursor/snapshot on any unavailable or corrupt replacement. */
+    @MainThread
+    internal fun reloadChangedExhentaiFile() {
+        if (mutableExhentaiFileChange.value == null || exhentaiReloadJob?.isActive == true) return
+        val oldDetails = mangaDetails.value ?: return
+        val previous = oldDetails.local?.exhentaiContentVersion ?: return
+        val oldState = readingState.value?.takeIf { it.chapterId == previous.chapterId } ?: return
+        mutableExhentaiFileChange.value = ExhentaiFileChange.RELOADING
+        exhentaiReloadJob = launchJob(Dispatchers.Default) {
+            var succeeded = false
+            try {
+                loadingJob?.cancelAndJoin()
+                stateChangeJob?.cancelAndJoin()
+                bookmarkJob?.cancelAndJoin()
+                deferredHistorySaveJob?.cancelAndJoin()
+                // No old asynchronous History write may overtake the new cursor.
+                val writes = synchronized(exhentaiHistoryLock) { exhentaiHistoryWrites.toList() }
+                // Tracker/scrobbler work can outlive the local transaction. Fail safely instead
+                // of indefinitely blocking this explicit reload on an unfinished old write.
+                if (withTimeoutOrNull(15000) { writes.joinAll(); true } != true) return@launchJob
+                val (local, selection) = detailsLoadUseCase.reloadExhentaiReaderVersion(
+                    oldDetails.sourceManga, favouriteSpace, previous,
+                ) ?: return@launchJob
+                val version = local.exhentaiContentVersion ?: return@launchJob
+                val next = oldDetails.copy(localManga = local)
+                pageLoader.invalidate(clearCache = false)
+                if (!chaptersLoader.reloadExhentaiVersion(next) {
+                    detailsLoadUseCase.isExhentaiReaderVersionCurrent(favouriteSpace, version)
+                }) return@launchJob
+                val state = if (version.chapterId == previous.chapterId) clampChapterPosition(oldState)
+                    else ReaderState(version.chapterId, 0, 0)
+                exhentaiSessionChoice = selection
+                mangaDetails.value = next
+                readingState.value = state
+                savedStateHandle[ReaderIntent.EXTRA_STATE] = state
+                visitAcknowledgement.reset()
+                notifyStateChanged()
+                content.value = ReaderContent(chaptersLoader.snapshot(), state)
+                succeeded = true
+                mutableExhentaiFileChange.value = null
+                saveLoadedStateAsync(next.toManga())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Do not expose file paths or fall back to a different archive or online chapter.
+            } finally {
+                if (!succeeded) mutableExhentaiFileChange.value = ExhentaiFileChange.UNAVAILABLE
+            }
+        }
+    }
+
+    private fun saveReaderHistory(manga: Manga, state: ReaderState, percent: Float) {
+        if (!hasPinnedExhentaiVersion) {
+            historyUpdateUseCase.invokeAsync(manga, state, percent, favouriteSpace)
+            return
+        }
+        synchronized(exhentaiHistoryLock) {
+            if (mutableExhentaiFileChange.value != null ||
+                content.value.pages.none { it.chapterId == state.chapterId }
+            ) return
+            val job = historyUpdateUseCase.invokeAsync(manga, state, percent, favouriteSpace)
+            exhentaiHistoryWrites.add(job)
+            job.invokeOnCompletion { synchronized(exhentaiHistoryLock) { exhentaiHistoryWrites.remove(job) } }
+        }
+    }
+
     private val pageMetadataRecoverySession = PageMetadataRecoverySession()
 
     private var loadingJob: Job? = null
@@ -211,6 +373,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun enqueueChapterProgress(state: ReaderState) {
+        if (mutableExhentaiFileChange.value != null) return
         if (isPeekMode.value || isIncognitoMode.value != false) return
         val manga = getMangaOrNull()?.takeUnless { it.isNovelContent } ?: return
         val chapter = chaptersLoader.peekChapter(state.chapterId) ?: return
@@ -388,6 +551,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     override fun reload() {
+        if (mutableExhentaiFileChange.value != null) return
         loadingJob?.cancel()
         loadImpl()
     }
@@ -427,6 +591,11 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveCurrentState(state: ReaderState? = null) {
+        if (mutableExhentaiFileChange.value != null) return
+        // Ignore a late Fragment callback from the version just replaced.
+        if (state != null && hasPinnedExhentaiVersion &&
+            content.value.pages.none { it.chapterId == state.chapterId }
+        ) return
         if (state != null) {
             readingState.value = state
             savedStateHandle[ReaderIntent.EXTRA_STATE] = state
@@ -435,12 +604,7 @@ class ReaderViewModel @Inject constructor(
             return
         }
         val readerState = state ?: readingState.value ?: return
-        historyUpdateUseCase.invokeAsync(
-            manga = getMangaOrNull() ?: return,
-            readerState = readerState,
-            percent = computePercent(readerState),
-            space = favouriteSpace,
-        )
+        saveReaderHistory(getMangaOrNull() ?: return, readerState, computePercent(readerState))
         enqueueChapterProgress(readerState)
     }
 
@@ -478,6 +642,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun switchChapter(id: Long, page: Int, scroll: Int = 0, resume: Boolean = false) {
+        if (mutableExhentaiFileChange.value != null) return
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
@@ -485,6 +650,7 @@ class ReaderViewModel @Inject constructor(
                 return@launchLoadingJob
             }
             val requested = if (resume) chapterResumeState(id) else ReaderState(id, page, scroll)
+            if (mutableExhentaiFileChange.value != null) return@launchLoadingJob
             val newState = clampChapterPosition(requested)
             // Opening a chapter explicitly starts a new visit, including reopening this chapter.
             visitAcknowledgement.reset()
@@ -494,6 +660,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun switchChapterBy(delta: Int) {
+        if (mutableExhentaiFileChange.value != null) return
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
@@ -513,6 +680,7 @@ class ReaderViewModel @Inject constructor(
                 return@launchLoadingJob
             }
             val newState = clampChapterPosition(if (delta == 0) prevState else chapterResumeState(newChapterId))
+            if (mutableExhentaiFileChange.value != null) return@launchLoadingJob
             if (delta != 0) visitAcknowledgement.reset()
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
@@ -521,12 +689,13 @@ class ReaderViewModel @Inject constructor(
 
     @MainThread
     fun onCurrentPageChanged(lowerPos: Int, upperPos: Int) {
+        if (mutableExhentaiFileChange.value != null) return
         val prevJob = stateChangeJob
         val pages = content.value.pages // capture immediately
         stateChangeJob = launchJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
             loadingJob?.join()
-            if (pages !== content.value.pages) {
+            if (mutableExhentaiFileChange.value != null || pages !== content.value.pages) {
                 return@launchJob // TODO
             }
             val centerPos = (lowerPos + upperPos) / 2
@@ -557,16 +726,23 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleBookmark() {
+        if (mutableExhentaiFileChange.value != null) return
         if (bookmarkJob?.isActive == true) {
             return
         }
         bookmarkJob = launchJob(Dispatchers.Default) {
             loadingJob?.join()
+            if (mutableExhentaiFileChange.value != null) return@launchJob
             val state = checkNotNull(getCurrentState())
             val manga = requireManga()
             val existingBookmark = currentBookmark(manga, state, readerBookmarks.value)
             if (existingBookmark != null) {
-                bookmarksRepository.removeBookmarks(setOf(existingBookmark.pageId))
+                if (mangaDetails.value?.local?.exhentaiContentVersion != null) {
+                    // A legacy page ID may also be present in the other ExHentai source.
+                    bookmarksRepository.removeBookmark(existingBookmark)
+                } else {
+                    bookmarksRepository.removeBookmarks(setOf(existingBookmark.pageId))
+                }
                 onShowToast.call(R.string.bookmark_removed)
             } else {
                 val isEpub = manga.isEpub
@@ -644,6 +820,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private suspend fun recoverPageMetadata(failedPage: ReaderPage) {
+        if (mutableExhentaiFileChange.value != null) return
         val stateBeforeRefresh = readingState.value
         val oldPageId = stateBeforeRefresh
             ?.takeIf { it.chapterId == failedPage.chapterId }
@@ -655,6 +832,7 @@ class ReaderViewModel @Inject constructor(
         if (!chaptersLoader.refreshChapterPages(failedPage.chapterId)) {
             return
         }
+        if (mutableExhentaiFileChange.value != null) return
         val freshPages = chaptersLoader.snapshot()
         val currentState = readingState.value
         val preservedState = if (
@@ -687,8 +865,20 @@ class ReaderViewModel @Inject constructor(
                     force = false,
                     favouriteSpace = favouriteSpace,
                     preferLocalBeforeInitialSnapshot = true,
+                    chooseExhentaiFile = ::chooseExhentaiFile,
                 ).collect { details ->
                         loadedDetails = details
+                        if (mutableExhentaiFileChange.value != null) return@collect
+                        val displayedVersion = mangaDetails.value?.local?.exhentaiContentVersion
+                        if (displayedVersion != null &&
+                            content.value.pages.any { it.chapterId == displayedVersion.chapterId } &&
+                            details.local?.exhentaiContentVersion != displayedVersion
+                        ) {
+                            if (readingState.value?.chapterId == displayedVersion.chapterId) {
+                                markExhentaiFileChanged()
+                            }
+                            return@collect
+                        }
                         if (mangaDetails.value == null) {
                             mangaDetails.value = details
                         }
@@ -696,7 +886,7 @@ class ReaderViewModel @Inject constructor(
                         val manga = details.toManga()
                         // obtain state
                         if (readingState.value == null) {
-                            val newState = getStateFromIntent(manga, details.isLoaded)
+                            val newState = getStateFromIntent(details)
                             if (newState == null) {
                                 return@collect // manga not loaded yet if cannot get state
                             }
@@ -768,11 +958,11 @@ class ReaderViewModel @Inject constructor(
      * resolved; Peek and Incognito continue to suppress history exactly as before.
      */
     private fun saveLoadedStateAsync(manga: Manga) {
-        if (isPeekMode.value) return
+        if (mutableExhentaiFileChange.value != null || isPeekMode.value) return
         val state = readingState.value ?: return
         when (isIncognitoMode.value) {
             false -> {
-                historyUpdateUseCase.invokeAsync(manga, state, computePercent(state), favouriteSpace)
+                saveReaderHistory(manga, state, computePercent(state))
                 enqueueChapterProgress(state)
             }
             true -> Unit
@@ -781,12 +971,7 @@ class ReaderViewModel @Inject constructor(
                 deferredHistorySaveJob = launchJob(Dispatchers.Default) {
                     if (!isIncognitoMode.firstNotNull() && !isPeekMode.value) {
                         val latestState = readingState.value ?: return@launchJob
-                        historyUpdateUseCase.invokeAsync(
-                            manga = getMangaOrNull() ?: manga,
-                            readerState = latestState,
-                            percent = computePercent(latestState),
-                            space = favouriteSpace,
-                        )
+                        saveReaderHistory(getMangaOrNull() ?: manga, latestState, computePercent(latestState))
                         enqueueChapterProgress(latestState)
                     }
                 }
@@ -796,10 +981,12 @@ class ReaderViewModel @Inject constructor(
 
     @AnyThread
     private fun loadPrevNextChapter(currentId: Long, isNext: Boolean) {
+        if (mutableExhentaiFileChange.value != null) return
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.join()
             chaptersLoader.loadPrevNextChapter(mangaDetails.requireValue(), currentId, isNext)
+            if (mutableExhentaiFileChange.value != null) return@launchLoadingJob
             content.value = ReaderContent(chaptersLoader.snapshot(), null)
         }
     }
@@ -959,7 +1146,17 @@ class ReaderViewModel @Inject constructor(
 
     private fun getPageProgress(state: ReaderState): Pair<Int, Int> {
         if (mangaDetails.value?.toManga()?.isEpub != true) {
-            return state.page to chaptersLoader.getPagesCount(state.chapterId)
+            val loadedCount = chaptersLoader.getPagesCount(state.chapterId)
+            // Fragment teardown may save the last displayed state after the Reader backing
+            // lease has been released. For the selected ExHentai CBZ version, the published
+            // page snapshot still describes that exact chapter. Do not turn a completed
+            // cursor into 0% merely because the loader has already cleared its pages.
+            val pageCount = if (loadedCount == 0 &&
+                mangaDetails.value?.local?.exhentaiContentVersion?.chapterId == state.chapterId
+            ) {
+                content.value.pages.count { it.chapterId == state.chapterId }
+            } else loadedCount
+            return state.page to pageCount
         }
         val progress = uiState.value?.takeIf { it.chapter.id == state.chapterId }
         if (progress != null) {
@@ -1013,7 +1210,9 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private suspend fun getStateFromIntent(manga: Manga, isLoaded: Boolean): ReaderState? {
+    private suspend fun getStateFromIntent(details: MangaDetails): ReaderState? {
+        val manga = details.toManga()
+        val isLoaded = details.isLoaded
         // check if we have at least some chapters loaded
         if (manga.chapters.isNullOrEmpty()) {
             return null
@@ -1026,6 +1225,27 @@ class ReaderViewModel @Inject constructor(
 
         // specific state is requested
         val requestedState: ReaderState? = savedStateHandle[ReaderIntent.EXTRA_STATE]
+        val selectedVersion = details.local?.exhentaiContentVersion
+        val selectedChapter = selectedVersion?.let { version -> manga.findChapterById(version.chapterId) }
+        if (selectedChapter != null && (
+            requestedState == null ||
+                savedStateHandle.get<Boolean>(ReaderIntent.EXTRA_HISTORY_RESUME) == true ||
+                (isLoaded && manga.findChapterById(requestedState.chapterId) == null)
+            )) {
+            // Resume the selected physical version, never a cursor from another version or source.
+            // An explicit valid chapter/page tap remains authoritative below.
+            val chapterId = selectedChapter.id
+            if (settings.getChapterReadOverrides(manga.id)[chapterId] == false ||
+                settings.getChapterPageResetStamp(manga.id, chapterId, favouriteSpace.dbValue) < 0
+            ) return ReaderState(chapterId, 0, 0)
+            val key = resolveChapterPersonalKey(selectedChapter, details.sourceManga.chapters.orEmpty())
+            val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key, chapterId)
+            if (saved != null) return ReaderState(chapterId, saved.page, saved.scroll)
+            val history = database.getHistoryDao().find(manga.id)
+            return if (history?.chapterId == chapterId && history.space == favouriteSpace.dbValue) {
+                ReaderState(chapterId, history.page, history.scroll.toInt())
+            } else ReaderState(chapterId, 0, 0)
+        }
         if (requestedState != null) {
             when {
                 manga.findChapterById(requestedState.chapterId) != null -> {

@@ -132,8 +132,13 @@ data class MangaDetails(
             localChapters.associateByTo(LinkedHashMap(localChapters.size)) { it.id }
         } else null
         val result = ArrayList<MangaChapter>(chapters.size)
+        val version = local?.exhentaiContentVersion
         for (chapter in chapters) {
-            val local = localMap?.remove(chapter.id)
+            // A new byte version of the standard chapter replaces its visible row; the old
+            // personal records remain under their original ID. A renamed chapter has a different
+            // logical ID and still appears as a separate row beside the original online chapter.
+            val localId = if (version?.logicalChapterId == chapter.id) version.chapterId else chapter.id
+            val local = localMap?.remove(localId)
             result += local ?: chapter
         }
         if (!localMap.isNullOrEmpty()) result.addAll(localMap.values)

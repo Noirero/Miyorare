@@ -88,6 +88,7 @@ import org.koitharu.kotatsu.settings.compose.rememberReadingIndicatorPref
 import org.koitharu.kotatsu.settings.compose.rememberStringPref
 import org.koitharu.kotatsu.settings.compose.rememberStringSetPref
 import org.koitharu.kotatsu.settings.nav.NavConfigFragment
+import org.koitharu.kotatsu.settings.nav.NavigationTransitionSettingsFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -157,6 +158,13 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
                     onOpenNavConfig = {
                         (activity as? SettingsActivity)?.openFragment(
                             NavConfigFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
+                    onOpenNavigationTransition = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            NavigationTransitionSettingsFragment::class.java,
                             null,
                             isFromRoot = false,
                         )
@@ -283,6 +291,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.settings
 private fun AppearanceScreen(
     onOpenDetailsAppearance: () -> Unit,
     onOpenNavConfig: () -> Unit,
+    onOpenNavigationTransition: () -> Unit,
     onOpenFeed: () -> Unit,
     onOpenAdvanced: () -> Unit,
     onOpenFonts: () -> Unit,
@@ -842,6 +851,15 @@ private fun AppearanceScreen(
                         icon = R.drawable.ic_drawer_menu,
                         shape = pos.shape,
                         onClick = onOpenNavConfig,
+                    )
+                }
+                item { pos ->
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.navigation_transition_title),
+                        subtitle = stringResource(R.string.navigation_transition_summary),
+                        icon = R.drawable.ic_drawer_menu,
+                        shape = pos.shape,
+                        onClick = onOpenNavigationTransition,
                     )
                 }
                 item { pos ->

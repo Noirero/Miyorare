@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.FreshChapterPagesRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -41,6 +42,7 @@ class ChaptersLoader @Inject constructor(
 		get() = chapters.size()
 
     private var initializedMangaId: Long? = null
+    private var exhentaiContentVersion: ExhentaiContentVersion? = null
 
 	suspend fun init(manga: MangaDetails) = mutex.withLock {
         val mangaId = manga.toManga().id
@@ -49,6 +51,11 @@ class ChaptersLoader @Inject constructor(
             chapterPages.clear()
             initializedMangaId = mangaId
         }
+        updateChapterMetadata(manga)
+	}
+
+    private fun updateChapterMetadata(manga: MangaDetails) {
+		exhentaiContentVersion = manga.local?.exhentaiContentVersion
 		chapters.clear()
 		sourceChapters.clear()
 		manga.allChapters.forEach {
@@ -104,6 +111,41 @@ class ChaptersLoader @Inject constructor(
             true
         } finally {
             if (owners[chapterId] !== token) releaseLease(token)
+        }
+    }
+
+    /**
+     * Stage the explicitly reloaded CBZ before replacing the visible chapter/leases.
+     * Unlike ordinary local-first loading, a missing/corrupt replacement must never fall back online.
+     */
+    suspend fun reloadExhentaiVersion(
+        manga: MangaDetails,
+        verify: suspend () -> Boolean,
+    ): Boolean = mutex.withLock {
+        val version = manga.local?.exhentaiContentVersion ?: return@withLock false
+        if (initializedMangaId != manga.id) return@withLock false
+        val chapter = manga.allChapters.singleOrNull { it.id == version.chapterId }
+            ?.takeIf { it.source == LocalMangaSource } ?: return@withLock false
+        val token = Any()
+        try {
+            val pages = withContext(ReaderBackingLeaseContext(token)) {
+                mangaRepositoryFactory.create(chapter.source).getPages(chapter).mapIndexed { index, page ->
+                    val id = version.pageId(chapter.id, page.id)
+                    ReaderPage(if (id == page.id) page else page.copy(id = id), index, chapter.id)
+                }
+            }
+            if (pages.isEmpty() || !verify()) return@withLock false
+            updateChapterMetadata(manga)
+            chapterPages.clear()
+            chapterPages.addLast(chapter.id, pages)
+            val oldOwners = owners.values.toList() + previewOwners.values.toList()
+            owners.clear()
+            previewOwners.clear()
+            owners[chapter.id] = token
+            oldOwners.forEach { releaseLease(it) }
+            true
+        } finally {
+            if (owners[chapter.id] !== token) releaseLease(token)
         }
     }
 
@@ -192,7 +234,10 @@ class ChaptersLoader @Inject constructor(
     private suspend fun loadChapter(chapterId: Long, token: Any): List<ReaderPage> =
         withContext(ReaderBackingLeaseContext(token)) {
             val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
-            loadPagesLocalFirst(chapter).mapIndexed { index, page -> ReaderPage(page, index, chapterId) }
+            loadPagesLocalFirst(chapter).mapIndexed { index, page ->
+                val versionedId = exhentaiContentVersion?.pageId(chapterId, page.id) ?: page.id
+                ReaderPage(if (versionedId == page.id) page else page.copy(id = versionedId), index, chapterId)
+            }
         }
 
     private suspend fun loadPagesLocalFirst(chapter: MangaChapter): List<MangaPage> {

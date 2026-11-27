@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 
 @JvmInline
 value class ReaderIntent private constructor(
@@ -24,6 +25,12 @@ value class ReaderIntent private constructor(
 			intent.putExtra(AppRouter.KEY_MANGA, ParcelableManga(manga))
 			intent.setData(AppRouter.shortMangaUrl(manga.id))
 		}
+
+		/** Do not put a preselected Local chapter from Details into a new ExHentai read session. */
+		fun mangaForRead(presentation: Manga, source: Manga) = manga(
+			if (source.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+				source.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI") source else presentation,
+		)
 
 		fun mangaId(mangaId: Long) = apply {
 			intent.putExtra(AppRouter.KEY_ID, mangaId)

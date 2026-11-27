@@ -71,6 +71,8 @@ fun SettingsItem(
 	// Specialized content shares the card surface, click behavior and Settings Search highlight.
 	contentOverride: @Composable (() -> Unit)? = null,
 	leading: @Composable (() -> Unit)? = null,
+	// Opt-in surface replacement; keep trailing as the last parameter for existing callers.
+	surfaceOverride: ((Modifier, Shape, Float) -> Modifier)? = null,
 	trailing: @Composable (() -> Unit)? = null,
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
@@ -107,7 +109,9 @@ fun SettingsItem(
 	val surfaceModifier = modifier
 		.onGloballyPositioned { rowWindowY.floatValue = it.positionInWindow().y }
 		.let {
-			if (modern) {
+			if (modern && surfaceOverride != null) {
+				surfaceOverride(it, shape, highlight.value)
+			} else if (modern) {
 				it.miyorareSurface(
 					palette = visualPalette,
 					shape = shape,
@@ -187,7 +191,7 @@ fun SettingsItem(
 					text = title,
 					style = MaterialTheme.typography.titleMedium,
 					color = accentColor?.copy(alpha = if (enabled) 1f else 0.56f) ?: textColor(enabled),
-					maxLines = if (largeFont) 4 else 2,
+					maxLines = if (modern && surfaceOverride != null) Int.MAX_VALUE else if (largeFont) 4 else 2,
 					overflow = TextOverflow.Ellipsis,
 				)
 				if (!subtitle.isNullOrBlank()) {
@@ -217,6 +221,7 @@ fun SwitchSettingsItem(
 	iconColors: CategoryIconColors? = null,
 	shape: Shape = MaterialTheme.shapes.medium,
 	enabled: Boolean = true,
+	surfaceOverride: ((Modifier, Shape, Float) -> Modifier)? = null,
 ) {
 	val haptic = rememberHapticEffect()
 	val onCheckedChangeHaptic: (Boolean) -> Unit = { value ->
@@ -229,6 +234,7 @@ fun SwitchSettingsItem(
 		subtitle = subtitle,
 		icon = icon,
 		iconColors = iconColors,
+		surfaceOverride = surfaceOverride,
 		shape = shape,
 		enabled = enabled,
 		hapticEffect = null,

@@ -75,6 +75,7 @@ import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
 import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
+import org.koitharu.kotatsu.local.domain.ExhentaiDeletionApproval
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaState
@@ -470,6 +471,9 @@ abstract class ChaptersPagesViewModel(
 		}
 		launchJob(Dispatchers.Default) {
 			interactor.exhentaiDownloads.collect { event ->
+				if (this@ChaptersPagesViewModel is ReaderViewModel &&
+					(this@ChaptersPagesViewModel.hasExhentaiSessionChoice ||
+						this@ChaptersPagesViewModel.hasPinnedExhentaiVersion)) return@collect
 				if (event.space != favouriteSpace || isSmartLocal || !event.local.file.exists()) return@collect
 				mangaDetails.update { current ->
 					if (current == null || current.id != event.mangaId || !current.isOfficialExhentai) {
@@ -729,7 +733,7 @@ abstract class ChaptersPagesViewModel(
                 )
                 val bookmark = Bookmark(
                     manga = manga,
-                    pageId = page.id,
+                    pageId = details.local?.exhentaiContentVersion?.pageId(chapter.id, page.id) ?: page.id,
                     chapterId = chapter.id,
                     page = pageIndex,
                     scroll = if (pageIndex == state.page) state.scroll else 0,
@@ -812,7 +816,22 @@ abstract class ChaptersPagesViewModel(
 		}
 	}
 
-	fun deleteLocal() {
+	/** Read-only target list; corrupt/manual files do not need a LocalManga mapping. */
+	suspend fun listExhentaiPhysicalDeletionTargets(): List<File> {
+		val details = mangaDetails.value ?: return emptyList()
+		if (this is ReaderViewModel) return listOfNotNull(details.local?.file)
+		val files = deleteLocalMangaUseCase.listExhentaiPhysicalDeletionTargets(details.sourceManga, favouriteSpace)
+		return (files + listOfNotNull(details.local?.file)).distinct()
+	}
+
+	suspend fun previewExhentaiPhysicalDeletion(file: File): ExhentaiDeletionApproval? {
+		val details = mangaDetails.value ?: return null
+		return deleteLocalMangaUseCase.previewExhentaiPhysicalDeletion(details.sourceManga, favouriteSpace, file)
+	}
+
+	fun deleteLocal() = deleteLocal(approvedExhentaiFile = null)
+
+	fun deleteLocal(approvedExhentaiFile: ExhentaiDeletionApproval?) {
 		if (isSmartLocal) {
 			val manga = requireManga()
 			launchLoadingJob(Dispatchers.IO) {
@@ -822,6 +841,26 @@ abstract class ChaptersPagesViewModel(
 			return
 		}
 		val details = mangaDetails.value
+		val remote = details?.sourceManga
+		if (approvedExhentaiFile != null) {
+			if (remote == null) {
+				errorEvent.call(FileNotFoundException())
+				return
+			}
+			launchLoadingJob(Dispatchers.IO) {
+				check(deleteLocalMangaUseCase.deleteConfirmedExhentaiPhysicalFile(
+					remote, favouriteSpace, approvedExhentaiFile,
+				)) { "Confirmed ExHentai file could not be removed" }
+				onMangaRemoved.call(remote)
+			}
+			return
+		}
+		// Scoped ExHentai UI deletes must never fall back to a generic unconfirmed removal.
+		if (remote != null && (remote.source.name == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+				remote.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) {
+			errorEvent.call(FileNotFoundException("Explicit CBZ confirmation is required"))
+			return
+		}
 		val local = details?.local
 		val m = local?.manga
 		if (m == null) {
@@ -921,10 +960,23 @@ abstract class ChaptersPagesViewModel(
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		if (isSmartLocal) return
+		// A versioned Reader owns its displayed CBZ until an explicit reload or close.
+		// Publication/removal signals must not silently replace that projection.
+		if (this is ReaderViewModel && hasPinnedExhentaiVersion) return
+		if (downloadedManga != null && this is ReaderViewModel && hasExhentaiSessionChoice) return
 		val current = mangaDetails.value ?: return
 		// Official ExHentai publications carry an explicit space; the generic signal is for Local.
 		if (downloadedManga != null && current.isOfficialExhentai) return
-		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
+		val sourceName = current.sourceManga.source.name
+		val activeExhentai = sourceName == EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+			sourceName == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI"
+		val expectedRoots = if (activeExhentai) {
+			downloadDestinationStore.activeExhentaiRoots(favouriteSpace)
+		} else downloadDestinationStore.readableRoots(favouriteSpace)
+		if (downloadedManga != null &&
+			activeExhentai &&
+			!downloadDestinationStore.isVisibleInActiveExhentaiDestination(favouriteSpace, downloadedManga.file)
+		) return
 		if (downloadedManga != null) {
 			val matchingRoot = expectedRoots.filter { downloadedManga.file.isInside(it) }
 				.maxByOrNull { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath).length } ?: return
@@ -942,7 +994,8 @@ abstract class ChaptersPagesViewModel(
 			// removals publish the updated LocalManga instead, so scanning every chapter file here adds
 			// O(N) filesystem stats without improving correctness. Root existence covers manga folders,
 			// single EPUB novels, and multi-EPUB novel directories uniformly.
-			if (local.file.exists()) {
+			if (local.file.exists() && (!activeExhentai ||
+					downloadDestinationStore.isVisibleInActiveExhentaiDestination(favouriteSpace, local.file))) {
 				return
 			}
 			// Removing a downloaded copy must not tear down an online Reader session. The active pages

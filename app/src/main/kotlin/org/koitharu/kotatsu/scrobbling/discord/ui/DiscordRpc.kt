@@ -72,6 +72,11 @@ class DiscordRpc @Inject constructor(
 	init {
 		lifecycle.addOnClearedListener(this)
 		coroutineScope.launch {
+			settings.observe(AppSettings.KEY_DISCORD_RPC).collect {
+				if (!settings.isDiscordRpcEnabled) clearRpc()
+			}
+		}
+		coroutineScope.launch {
 			merge(
 				favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
 				favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
@@ -186,7 +191,7 @@ class DiscordRpc @Inject constructor(
 			)
 			// Media-proxy conversion above can suspend too. One last classification immediately before
 			// updateRPC prevents a membership change during proxy I/O from publishing stale metadata.
-			if (isPrivateOnly(mangaId)) {
+			if (!settings.isDiscordRpcEnabled || isPrivateOnly(mangaId)) {
 				clearRpc()
 				return@launch
 			}

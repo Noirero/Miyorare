@@ -7,6 +7,7 @@ import android.util.TypedValue
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.Fragment
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.CollapsingToolbarLayout
@@ -253,9 +254,24 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		}
 	}
 
+	internal fun refreshSanctuaryHeader() {
+		val workspace = supportFragmentManager.findFragmentById(R.id.container) as? PrivateWorkspaceFragment
+		val shouldFade = workspace?.hasActivePrivateSettings() == true &&
+			entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			privateFavouritesVisualSpecFromPreferences() != null
+		val hasFade = (appBar.background as? MiyorarePrivateFavouritesHeaderDrawable)?.hasSanctuaryFade == true
+		if (shouldFade != hasFade) applyPrivateAppBarChrome()
+	}
+
 	internal fun applyPrivateAppBarChrome() {
 		if (!isPrivateMode) return
-		val palette = miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
+		val palette = miyorareViewPaletteFromPreferences(privateFavourites = true)
+		if (palette == null) {
+			// The baseline Classic path does not install Modern chrome; remove only our opt-in fade.
+			(appBar.background as? MiyorarePrivateFavouritesHeaderDrawable)?.clearSanctuaryFade()
+			return
+		}
+		val workspace = supportFragmentManager.findFragmentById(R.id.container) as? PrivateWorkspaceFragment
 		val privateSpec = privateFavouritesVisualSpecFromPreferences()
 		appBar.background = if (privateSpec != null) {
 			MiyorarePrivateFavouritesHeaderDrawable(
@@ -263,6 +279,8 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 				variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
 				spec = privateSpec,
 				density = resources.displayMetrics.density,
+				sanctuaryBottomColor = if (workspace?.hasActivePrivateSettings() == true)
+					ColorUtils.blendARGB(palette.background, palette.primary, 0.055f) else null,
 			)
 		} else {
 			MiyorareHeaderShapeDrawable(

@@ -4,10 +4,14 @@
 		<exclude domain="file" path="logs" />
 		<exclude domain="sharedpref" path="miyorare_discord_credentials.xml" />
 		<exclude domain="sharedpref" path="miyorare_discord_credentials.xml.bak" />
+		<!-- Private gallery-to-file selections must not be backed up or transferred. -->
+		<exclude domain="sharedpref" path="exhentai_read_choices.xml" />
 	</cloud-backup>
 	<device-transfer>
 		<exclude domain="file" path="logs" />
 		<exclude domain="sharedpref" path="miyorare_discord_credentials.xml" />
 		<exclude domain="sharedpref" path="miyorare_discord_credentials.xml.bak" />
+		<!-- Private gallery-to-file selections must not be backed up or transferred. -->
+		<exclude domain="sharedpref" path="exhentai_read_choices.xml" />
 	</device-transfer>
 </data-extraction-rules>

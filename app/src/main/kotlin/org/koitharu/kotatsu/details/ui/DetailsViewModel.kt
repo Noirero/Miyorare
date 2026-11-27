@@ -77,6 +77,8 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
@@ -126,7 +128,7 @@ class DetailsViewModel @Inject constructor(
 	bookmarksRepository: BookmarksRepository,
 	settings: AppSettings,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
-	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
+	@LocalStorageChanges private val localStorageChanges: SharedFlow<LocalManga?>,
 	downloadScheduler: DownloadWorker.Scheduler,
 	downloadDestinationStore: DownloadDestinationStore,
 	interactor: DetailsInteractor,
@@ -138,6 +140,7 @@ class DetailsViewModel @Inject constructor(
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val localMangaRepository: LocalMangaRepository,
 	private val downloadedMangaResolver: DownloadedMangaResolver,
+	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val syncProgressFromScrobblersUseCase: SyncProgressFromScrobblersUseCase,
 	private val readTrackerDetailsUseCase: ReadTrackerDetailsUseCase,
@@ -171,6 +174,36 @@ class DetailsViewModel @Inject constructor(
 	chapterProgressRepository = chapterProgressRepository,
     localContentReader = localContentReader,
 ) {
+
+	/**
+	 * Presence and readable local chapters are distinct. Keep the chapter mapping untouched:
+	 * even an unreadable manual CBZ must show Downloaded at manga level, not claim any
+	 * particular online chapter is readable.
+	 */
+	val exhentaiDownloadedPresence: StateFlow<Boolean> = combine(
+		mangaDetails.map { details ->
+			details?.sourceManga?.let { it.id to it.source.name }
+		}.distinctUntilChanged(),
+		localStorageChanges.onStart { emit(null) },
+	) { mangaIdentity, _ -> mangaIdentity }.mapLatest { identity ->
+		val (id, source) = identity ?: return@mapLatest false
+		if (source != EhentaiSourceFamily.OFFICIAL_SOURCE_NAME &&
+			source != "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI") return@mapLatest false
+		id in downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, listOf(id))
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
+
+	// Presence-only presentation: never select a CBZ or change the chapter mapping/ownership.
+	internal val exhentaiPresentChapter: StateFlow<Pair<Long, Long>?> = combine(
+		mangaDetails.map { it?.sourceManga?.let { manga -> Triple(manga.id, manga.source.name, manga.chapters?.singleOrNull()?.id) } }.distinctUntilChanged(),
+		localStorageChanges.onStart { emit(null) },
+	) { identity, _ -> identity }.mapLatest { identity ->
+		val (id, source, chapterId) = identity ?: return@mapLatest null
+		if (chapterId == null || !supportsExhentaiPresenceIndicator(source)) return@mapLatest null
+		val root = downloadDestinationStore.effectiveRoot(favouriteSpace)?.absoluteFile?.normalize()?.path
+			?: return@mapLatest null
+		val paths = database.getExhentaiPresenceDao().findPaths(favouriteSpace.dbValue, root, id)
+		if (paths.any(::isStandardExhentaiPresencePath)) id to chapterId else null
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	private val rangeExpansion = savedStateHandle.getStateFlow<HashMap<String, Boolean>>("chapter_range_expansion", hashMapOf())
 

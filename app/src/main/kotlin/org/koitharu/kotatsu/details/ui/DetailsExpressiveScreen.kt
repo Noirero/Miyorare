@@ -28,6 +28,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
@@ -53,6 +56,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -151,6 +155,8 @@ internal fun detailsPullRefreshAllowed(gallerySelected: Boolean, firstItem: Int,
 @Composable
 fun DetailsExpressiveScreen(
 	details: MangaDetails?,
+	isExhentaiDownloaded: Boolean = false,
+	exhentaiPresentChapterId: Long? = null,
 	note: String?,
 	tags: List<ChipsView.ChipModel>,
 	historyInfo: HistoryInfo,
@@ -367,6 +373,17 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
+					// Keep a manga-level fallback when no visible chapter can represent presence safely.
+					if (isExhentaiDownloaded && (!chaptersExpanded || chapters.none {
+						it.isDownloaded || it.chapter.id == exhentaiPresentChapterId
+					})) item(contentType = "exhentai-presence") {
+						Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+							contentAlignment = if (centered) Alignment.Center else Alignment.CenterStart) {
+							Icon(painterResource(R.drawable.ic_eye_check), stringResource(R.string.downloaded),
+								tint = accentColor, modifier = Modifier.size(24.dp))
+						}
+					}
+
 					if (managed) item(contentType = "on-device-capability") {
 						androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
 							indexedLocalBook?.let { book ->
@@ -484,6 +501,7 @@ fun DetailsExpressiveScreen(
 							) {
 								InlineChapterCard(
 									item = chapter,
+									hasExhentaiPresence = chapter.chapter.id == exhentaiPresentChapterId,
 									visualEffectLevel = visualEffectLevel,
 									accent = accentColor,
 									onClick = { onChapterTap(chapter) },
@@ -517,6 +535,7 @@ fun DetailsExpressiveScreen(
 					) {
 						InlineChapterCard(
 							item = chapter,
+							hasExhentaiPresence = chapter.chapter.id == exhentaiPresentChapterId,
 							visualEffectLevel = visualEffectLevel,
 							accent = accentColor,
 							onClick = { onChapterTap(chapter) },

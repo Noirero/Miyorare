@@ -130,6 +130,35 @@ internal object EhentaiLegacyDownloadResolver {
 		return matches.values.toList()
 	}
 
+	/** Fresh, read-only list of physical CBZs for the explicit reader picker.
+	 * Do not rely on directory mtime or the Details title cache for a user selection.
+	 */
+	fun findReadChoiceCandidates(root: File, remoteTitle: String): List<File> {
+		val active = root.canonicalFile
+		val matches = LinkedHashMap<String, File>()
+		for (contentRoot in linkedSetOf(File(active, "downloads"), active)) {
+			val sources = contentRoot.listFiles()?.filter {
+				it.isDirectory && !it.isHidden && (it.name.equals("ExHentai (OTHER)", ignoreCase = true) ||
+					isLegacySourceDirectoryName(it.name))
+			}.orEmpty()
+			for (source in sources) {
+				val sourcePath = source.canonicalFile.toPath()
+				for (entry in source.listFiles().orEmpty()) {
+					if (entry.isHidden || !titlesMatch(remoteTitle,
+							if (entry.isDirectory) entry.name else entry.nameWithoutExtension)) continue
+					val files = if (entry.isDirectory) entry.listFiles().orEmpty() else arrayOf(entry)
+					for (file in files) {
+						if (!file.isFile || file.isHidden || !file.extension.equals("cbz", ignoreCase = true)) continue
+						val canonical = file.canonicalFile
+						if (canonical != file.absoluteFile.normalize() || !canonical.toPath().startsWith(sourcePath)) continue
+						matches.putIfAbsent(canonical.path, canonical)
+					}
+				}
+			}
+		}
+		return matches.values.sortedBy { it.path }
+	}
+
 	/**
 	 * Weakest automatic reconnect evidence used only after exact id/public-url/canonical-gallery/url
 	 * checks have failed. The legacy source directory and a unique E-Hentai-normalized title must

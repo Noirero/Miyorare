@@ -72,11 +72,30 @@ class DetailsLoadUseCase @Inject constructor(
 
 	private val inFlightRefreshes = ConcurrentHashMap<RefreshKey, CompletableDeferred<Result<Manga>>>()
 
+	suspend fun approveExhentaiReadChoice(
+		manga: Manga,
+		space: FavouriteSpace,
+		choice: DownloadedMangaResolver.ExhentaiReadChoice,
+	) = downloadedMangaResolver.selectExhentaiReadChoice(manga, space, choice)
+
+	suspend fun isExhentaiReaderVersionCurrent(
+		space: FavouriteSpace,
+		version: org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion,
+	) = downloadedMangaResolver.isExhentaiReaderVersionCurrent(space, version)
+
+	suspend fun reloadExhentaiReaderVersion(
+		manga: Manga,
+		space: FavouriteSpace,
+		previous: org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion,
+	) = downloadedMangaResolver.reloadExhentaiReaderVersion(manga, space, previous)
+
 	operator fun invoke(
 		intent: MangaIntent,
 		force: Boolean,
 		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
 		preferLocalBeforeInitialSnapshot: Boolean = false,
+		chooseExhentaiFile: (suspend (Manga, FavouriteSpace, List<DownloadedMangaResolver.ExhentaiReadChoice>) ->
+			DownloadedMangaResolver.ExhentaiSessionChoice?)? = null,
 	): Flow<MangaDetails> = flow {
 		val trace = PerformanceDiagnostics.currentTrace
 		val resolvedIntentManga = requireNotNull(PerformanceDiagnostics.measure("repository", "details_resolve_intent", trace) { mangaDataRepository.resolveIntent(intent, withChapters = true) }) {
@@ -100,9 +119,37 @@ class DetailsLoadUseCase @Inject constructor(
 			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
 			// stale Local index rebuild. Only titles without any initialized persistent details snapshot keep
 			// local-first behaviour, so a valid zero-chapter snapshot is not mistaken for "never loaded".
-			suspend fun findLocal() = PerformanceDiagnostics.measure("repository", "details_download_local", trace) {
-				downloadedMangaResolver.findSavedManga(manga, favouriteSpace, forExhentaiDetails = true)
-			}
+			suspend fun findLocal(target: Manga = manga): LocalManga? =
+				PerformanceDiagnostics.measure("repository", "details_download_local", trace) {
+					if (chooseExhentaiFile != null && target.chapters?.size == 1 &&
+						(target.source.name == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+							target.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) {
+						val space = favouriteSpace ?: FavouriteSpace.NORMAL
+						val choices = downloadedMangaResolver.getExhentaiReadChoices(target, space)
+						val selected = chooseExhentaiFile(target, space, choices)
+						if (selected != null) {
+							return@measure downloadedMangaResolver.resolveExhentaiSessionChoice(target, space, selected)
+								?: throw java.io.IOException("Selected CBZ changed or is unreadable")
+						}
+						if (choices.isNotEmpty()) throw kotlinx.coroutines.CancellationException("CBZ choice cancelled")
+
+						val local = downloadedMangaResolver.findSavedManga(target, space, forExhentaiDetails = true)
+						// The first list and the fallback lookup are separate filesystem reads. If a
+						// duplicate appeared between them, do not mistake unresolved ambiguity for
+						// a missing download and publish an online chapter without asking.
+						if (local == null) {
+							val updatedChoices = downloadedMangaResolver.getExhentaiReadChoices(target, space)
+							if (updatedChoices.isNotEmpty()) {
+								val updatedSelection = chooseExhentaiFile(target, space, updatedChoices)
+									?: throw kotlinx.coroutines.CancellationException("CBZ choice cancelled")
+								return@measure downloadedMangaResolver.resolveExhentaiSessionChoice(target, space, updatedSelection)
+									?: throw java.io.IOException("Selected CBZ changed or is unreadable")
+							}
+						}
+						return@measure local
+					}
+					downloadedMangaResolver.findSavedManga(target, favouriteSpace, forExhentaiDetails = true)
+				}
 			fun detailsSnapshots(lookup: suspend () -> LocalManga?) = flow {
 				val savedManga = emitRemoteInitialSnapshot(
 					manga = manga,
@@ -124,6 +171,11 @@ class DetailsLoadUseCase @Inject constructor(
 					cachedIsFresh = cachedState.fresh,
 					trace = trace,
 					findSavedManga = lookup,
+					resolveFreshReaderLocal = if (chooseExhentaiFile != null &&
+						(manga.source.name == org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME ||
+							manga.source.name == "TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")) {
+						{ target: Manga -> findLocal(target) }
+					} else null,
 				)
 			}
 			if (!preferLocalBeforeInitialSnapshot && !cachedState.fresh &&
@@ -189,6 +241,7 @@ class DetailsLoadUseCase @Inject constructor(
 		cachedIsFresh: Boolean,
 		trace: DiagnosticsSession.Trace?,
 		findSavedManga: suspend () -> LocalManga?,
+		resolveFreshReaderLocal: (suspend (Manga) -> LocalManga?)?,
 	) = coroutineScope {
 		// Details must not wait for download/local enrichment before starting source work. Reader passes
 		// an already resolved local copy and keeps its local-first offline semantics.
@@ -322,11 +375,15 @@ class DetailsLoadUseCase @Inject constructor(
 			}
 		}
 		val remoteDetails = remoteResult.getOrThrow()
+		// A direct Reader launch may not have cached chapters. Resolve the picker before
+		// publishing the first chapter-complete snapshot, rather than loading remote pages.
+		val readerLocal = if (resolveFreshReaderLocal != null && initialSavedManga == null)
+			localLookup.await() ?: resolveFreshReaderLocal(remoteDetails) else initialSavedManga
 		val fastDescription = (remoteDetails.description ?: initialSavedManga?.manga?.description)
 			?.parseAsHtml(withImages = false)
 		var visibleDetails = MangaDetails(
 			manga = remoteDetails,
-			localManga = initialSavedManga,
+			localManga = readerLocal,
 			override = override,
 			description = fastDescription,
 			isLoaded = true,
@@ -335,8 +392,9 @@ class DetailsLoadUseCase @Inject constructor(
 		// parallel and must never sit in front of a healthy source response.
 		emit(visibleDetails)
 
-		val discoveredLocal = localLookup.await()
-			?: PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, forExhentaiDetails = true) }
+		val discoveredLocal = readerLocal ?: localLookup.await()
+			?: if (resolveFreshReaderLocal != null) null else
+				PerformanceDiagnostics.measure("repository", "details_download_local_retry", trace) { downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, forExhentaiDetails = true) }
 		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(
 				manga = remoteDetails,

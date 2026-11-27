@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.io.File
 import javax.inject.Inject
 
@@ -37,17 +38,18 @@ class DownloadedContentClassifier @Inject constructor(
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
 		val allowedRoots = getDownloadRoots(space)
 		if (allowedRoots.isEmpty()) return emptySet()
-
-		val result = db.getFavouriteDownloadIndexDao()
-			.findEntries(space.dbValue)
-			.asSequence()
-			.filter { File(it.path).isInsideAny(allowedRoots) }
-			.mapTo(HashSet()) { it.mangaId }
-
-		if (canInferSpaceFromPath()) {
-			findIndexedEntriesInRoots(allowedRoots).mapTo(result) { it.mangaId }
+		val legacyRoots = getActiveLegacyExhentaiIndexRoots(space)
+		val candidates = ArrayList<Pair<Long, File>>()
+		for (entry in db.getFavouriteDownloadIndexDao().findEntries(space.dbValue)) {
+			val path = File(entry.path)
+			if (path.isInsideAny(allowedRoots) || path.isInsideAny(legacyRoots)) candidates += entry.mangaId to path
 		}
-		return result
+		if (canInferSpaceFromPath()) {
+			findIndexedEntriesInRoots(allowedRoots).forEach { candidates += it.mangaId to File(it.path) }
+		}
+		val indexed = filterActiveExhentaiCandidates(space, candidates)
+		val root = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path ?: return indexed
+		return indexed + db.getExhentaiPresenceDao().findIds(space.dbValue, root)
 	}
 
 	/**
@@ -59,28 +61,31 @@ class DownloadedContentClassifier @Inject constructor(
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
-		val allowedRoots = getDownloadRoots(space)
-		if (allowedRoots.isEmpty()) return emptySet()
-
-		val ids = mangaIds.toSet()
-		val ownershipDao = db.getFavouriteDownloadIndexDao()
-		val result = HashSet<Long>(minOf(ids.size, 256))
-
-		for (chunk in ids.chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			ownershipDao.findEntries(space.dbValue, chunk)
-				.asSequence()
-				.filter { File(it.path).isInsideAny(allowedRoots) }
-				.mapTo(result) { it.mangaId }
+		val roots = getDownloadRoots(space)
+		if (roots.isEmpty()) return emptySet()
+		val legacyRoots = getActiveLegacyExhentaiIndexRoots(space)
+		val candidates = ArrayList<Pair<Long, File>>()
+		val requested = mangaIds.toSet()
+		for (chunk in requested.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			for (entry in db.getFavouriteDownloadIndexDao().findEntries(space.dbValue, chunk)) {
+				val path = File(entry.path)
+				if (path.isInsideAny(roots) || path.isInsideAny(legacyRoots)) candidates += entry.mangaId to path
+			}
 		}
-		if (result.size == ids.size || !canInferSpaceFromPath()) return result
-
-		val localDao = db.getLocalMangaIndexDao()
-		for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			localDao.findEntries(chunk)
-				.filterToDownloadRoots(allowedRoots)
-				.mapTo(result) { it.mangaId }
+		if (canInferSpaceFromPath()) {
+			for (chunk in requested.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+				db.getLocalMangaIndexDao().findEntries(chunk)
+					.filterToDownloadRoots(roots)
+					.forEach { candidates += it.mangaId to File(it.path) }
+			}
 		}
-		return result
+		val indexed = filterActiveExhentaiCandidates(space, candidates)
+		val root = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path ?: return indexed
+		val found = HashSet<Long>()
+		for (chunk in requested.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			found.addAll(db.getExhentaiPresenceDao().findIds(space.dbValue, root, chunk))
+		}
+		return indexed + found
 	}
 
 	/** Fast alias used by interactive counts/cards; always index-only and filesystem-free. */
@@ -94,35 +99,70 @@ class DownloadedContentClassifier @Inject constructor(
 	 * the two spaces have distinct roots; on a shared root its path carries no Normal/Private identity.
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
-		val rootPaths = getDownloadRoots(space)
-			.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }
-			.distinct()
+		val allRoots = getDownloadRoots(space)
+			.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }.distinct()
+		val defaultCondition = downloadConditionForRoots(space, mangaIdColumn, allRoots)
 
+		val activeRoot = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path
+		val activeDownloadRoots = listOfNotNull(activeRoot?.let {
+			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME).normalizedAbsolutePath()
+		}) + getActiveLegacyExhentaiIndexRoots(space).map { it.normalizedAbsolutePath() }
+		val otherSpace = if (space == FavouriteSpace.NORMAL) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
+		val otherRoot = downloadDestinationStore.effectiveRoot(otherSpace)?.absoluteFile?.normalize()?.path
+		val exclusions = if (otherRoot != null && activeRoot != null && otherRoot != activeRoot &&
+			otherRoot.startsWith(activeRoot.trimEnd(File.separatorChar) + File.separator)
+		) listOf(otherRoot) else emptyList()
+		val activeCondition = downloadConditionForRoots(
+			space, mangaIdColumn, activeDownloadRoots, exclusions,
+		)
+		val sourceColumn = "(SELECT ms.source FROM manga ms WHERE ms.manga_id = $mangaIdColumn)"
+		val mainSource = sqlEscapeString(
+			org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily.OFFICIAL_SOURCE_NAME,
+		)
+		val gekkoSource = sqlEscapeString("TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI")
+		val scopedSource = "$sourceColumn IN ($mainSource, $gekkoSource)"
+		val root = downloadDestinationStore.effectiveRoot(space)?.absoluteFile?.normalize()?.path
+		val detected = if (root == null) "0" else {
+			"EXISTS(SELECT 1 FROM exhentai_presence ep WHERE ep.mangaId = $mangaIdColumn " +
+				"AND ep.space = ${space.dbValue} AND ep.root = ${sqlEscapeString(root)})"
+		}
+		return "((($scopedSource) AND ($activeCondition OR $detected)) OR (NOT($scopedSource) AND $defaultCondition))"
+	}
+
+	private fun downloadConditionForRoots(
+		space: FavouriteSpace,
+		mangaIdColumn: String,
+		roots: List<String>,
+		excluded: List<String> = emptyList(),
+	): String {
 		val localCondition = if (canInferSpaceFromPath()) {
 			buildSqlPathExists(
 				table = "local_index",
 				idColumn = "local_index.manga_id",
 				pathColumn = "local_index.path",
 				mangaIdColumn = mangaIdColumn,
-				rootPaths = rootPaths,
+				rootPaths = roots,
+				excludedRoots = excluded,
 			)
-		} else {
-			"0"
+		} else "0"
+		val ownerPath = sqlPathPredicate("fdi.path", roots, excluded)
+		val ownerCondition = "EXISTS(SELECT 1 FROM favourite_download_index fdi " +
+			"WHERE fdi.space = ${space.dbValue} AND fdi.manga_id = $mangaIdColumn AND $ownerPath)"
+		return "($localCondition OR $ownerCondition)"
+	}
+
+	private fun sqlPathPredicate(pathColumn: String, roots: List<String>, excluded: List<String>): String {
+		if (roots.isEmpty()) return "0"
+		fun atOrBelow(rootPath: String): String {
+			val path = sqlEscapeString(rootPath)
+			val prefix = sqlEscapeString(rootPath.trimEnd(File.separatorChar) + File.separator)
+			return "($pathColumn = $path OR instr($pathColumn, $prefix) = 1)"
 		}
-		val ownershipPathCondition = if (rootPaths.isEmpty()) {
-			"0"
-		} else {
-			rootPaths.joinToString(separator = " OR ") { rootPath ->
-				val root = sqlEscapeString(rootPath)
-				val childPrefix = sqlEscapeString(rootPath + File.separator)
-				"(fdi.path = $root OR instr(fdi.path, $childPrefix) = 1)"
-			}
+		val allowed = roots.joinToString(" OR ") { atOrBelow(it) }
+		return if (excluded.isEmpty()) "($allowed)" else {
+			val denied = excluded.joinToString(" OR ") { atOrBelow(it) }
+			"(($allowed) AND NOT ($denied))"
 		}
-		val ownershipCondition =
-			"EXISTS(SELECT 1 FROM favourite_download_index fdi " +
-				"WHERE fdi.space = ${space.dbValue} AND fdi.manga_id = $mangaIdColumn " +
-				"AND ($ownershipPathCondition))"
-		return "($localCondition OR $ownershipCondition)"
 	}
 
 	private fun buildSqlPathExists(
@@ -131,14 +171,11 @@ class DownloadedContentClassifier @Inject constructor(
 		pathColumn: String,
 		mangaIdColumn: String,
 		rootPaths: List<String>,
+		excludedRoots: List<String> = emptyList(),
 	): String {
 		if (rootPaths.isEmpty()) return "0"
-		val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
-			val root = sqlEscapeString(rootPath)
-			val childPrefix = sqlEscapeString(rootPath + File.separator)
-			"($pathColumn = $root OR instr($pathColumn, $childPrefix) = 1)"
-		}
-		return "EXISTS(SELECT 1 FROM $table WHERE $idColumn = $mangaIdColumn AND ($pathCondition))"
+		return "EXISTS(SELECT 1 FROM $table WHERE $idColumn = $mangaIdColumn AND " +
+			sqlPathPredicate(pathColumn, rootPaths, excludedRoots) + ")"
 	}
 
 	/**
@@ -173,6 +210,36 @@ class DownloadedContentClassifier @Inject constructor(
 		return result
 	}
 
+	/**
+	 * Keep other sources' historical-root classification untouched. Main/Gekko are
+	 * active-destination-only even when an old ownership/index row remains in Room.
+	 * All work here is index-backed; never scan CBZ files while rendering Favorites.
+	 */
+	private suspend fun filterActiveExhentaiCandidates(
+		space: FavouriteSpace,
+		candidates: List<Pair<Long, File>>,
+	): Set<Long> {
+		if (candidates.isEmpty()) return emptySet()
+		val sourceById = HashMap<Long, String>()
+		for (chunk in candidates.map { it.first }.distinct().chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			db.getMangaDao().findSourceNamesByIds(chunk).forEach { sourceById[it.mangaId] = it.source }
+		}
+		val standardRoots = getDownloadRoots(space)
+		val legacyRoots = getActiveLegacyExhentaiIndexRoots(space)
+		return candidates.asSequence()
+			.filter { (id, file) ->
+				when (sourceById[id]) {
+					EhentaiSourceFamily.OFFICIAL_SOURCE_NAME,
+					"TSUKI:GEKKOUSHI:gekkoushi:EXHENTAI" ->
+						downloadDestinationStore.isVisibleInActiveExhentaiIndex(space, file) &&
+							(file.isInsideAny(standardRoots) || file.isInsideAny(legacyRoots))
+					// Do not let another source acquire Downloaded through a legacy ExHentai path.
+					else -> file.isInsideAny(standardRoots)
+				}
+			}
+			.mapTo(HashSet()) { it.first }
+	}
+
 	private fun File.isInsideAny(roots: Collection<File>): Boolean {
 		val path = normalizedAbsolutePath()
 		return roots.any { root ->
@@ -185,6 +252,13 @@ class DownloadedContentClassifier @Inject constructor(
 		downloadDestinationStore.readableRoots(space).map {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
 		}
+
+	/** Historical pre-downloads layout: <active root>/<recognized E-Hentai source>/<gallery>. */
+	private fun getActiveLegacyExhentaiIndexRoots(space: FavouriteSpace): List<File> {
+		val active = downloadDestinationStore.effectiveRoot(space) ?: return emptyList()
+		return (sequenceOf("ExHentai (OTHER)") + EhentaiSourceFamily.legacySourceDirectoryNames.asSequence())
+			.map { File(active, it) }.toList()
+	}
 
 	private fun canInferSpaceFromPath(): Boolean =
 		downloadDestinationStore.privateUsesOwnRoot() && !downloadDestinationStore.rootsOverlap()

@@ -1,8 +1,16 @@
 package org.koitharu.kotatsu.settings
 
 import android.content.Intent
+import android.view.WindowManager
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import androidx.test.core.app.ActivityScenario
@@ -16,6 +24,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -25,7 +34,11 @@ import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.local.data.LocalStorageManager
+import org.koitharu.kotatsu.settings.storage.MangaDirectorySelectDialog
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Provider
@@ -37,6 +50,8 @@ class DownloadDestinationSettingsTest {
 	@get:Rule(order = 1) val compose = createEmptyComposeRule()
 	@Inject lateinit var destinations: DownloadDestinationStore
 	@Inject lateinit var storage: LocalStorageManager
+	@Inject lateinit var security: PrivateFavouritesSecurityStore
+	@Inject lateinit var session: PrivateFavouritesSession
 	@Inject @BaseHttpClient lateinit var baseHttpClient: Provider<OkHttpClient>
 
 	@Before fun setUp() {
@@ -45,7 +60,9 @@ class DownloadDestinationSettingsTest {
 			val context = InstrumentationRegistry.getInstrumentation().targetContext
 			WorkManager.initialize(context, Configuration.Builder().build())
 		}
-		hilt.inject()
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			hilt.inject()
+		}
 		// Production warms the network singleton off-main; HiltTestApplication does not.
 		runBlocking { withContext(Dispatchers.IO) { baseHttpClient.get() } }
 	}
@@ -81,6 +98,90 @@ class DownloadDestinationSettingsTest {
 			}
 		} finally {
 			prefs.edit(commit = true) { if (previous == null) remove(key) else putString(key, previous) }
+			fixture.deleteRecursively()
+		}
+	}
+
+	@Test fun privateSettingsOpensPrivateDestinationAndRefreshesWhenFollowingNormal() {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val normalKey = AppSettings.KEY_LOCAL_STORAGE
+		val privateKey = DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT
+		val legacyKey = "private_download_legacy_roots"
+		val previous = listOf(normalKey, privateKey).associateWith { prefs.getString(it, null) }
+		val previousLegacy = prefs.getStringSet(legacyKey, null)?.toSet()
+		val previousProtection = security.protection
+		val previousScreenshots = security.allowPrivateScreenshots
+		val wasUnlocked = session.isUnlocked.value
+		val fixture = File(context.cacheDir, "private-download-settings-${System.nanoTime()}")
+		val normal = File(fixture, "normal")
+		val privateRoot = File(fixture, "unavailable-private")
+		val intent = Intent(context, SettingsActivity::class.java).setAction(AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS)
+		try {
+			check(normal.mkdirs())
+			security.protection = PrivateFavouritesProtection.BIOMETRIC
+			security.allowPrivateScreenshots = false
+			session.unlock()
+			prefs.edit(commit = true) {
+				putString(normalKey, normal.path)
+				putString(privateKey, privateRoot.path)
+			}
+			val privateSummary = context.getString(R.string.download_destination_summary_unavailable, privateRoot.path)
+			val normalSummary = runBlocking { storage.getDirectoryDisplayName(normal, isFullPath = true) }
+			ActivityScenario.launch<SettingsActivity>(intent).use { scenario ->
+				awaitSummary(privateSummary)
+				compose.onNodeWithText(context.getString(R.string.manga_save_location)).performScrollTo().performClick()
+				awaitSummary(context.getString(R.string.download_destination_preview, privateRoot.path))
+				scenario.onActivity {
+					val settings = it.supportFragmentManager.findFragmentById(R.id.container) as PrivateFavouritesSettingsFragment
+					val dialog = settings.childFragmentManager.fragments.filterIsInstance<MangaDirectorySelectDialog>().single()
+					val window = checkNotNull(dialog.dialog?.window)
+					assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+					// Exercise the real dialog under a compact viewport, not a mock layout.
+					val compactHeight = (480 * it.resources.displayMetrics.density).toInt()
+					val height = minOf(window.decorView.height, compactHeight)
+					check(height > 0)
+					window.setLayout(window.attributes.width, height)
+				}
+				compose.onNodeWithText(context.getString(R.string.download_destination_normal))
+					.performScrollTo().assertIsDisplayed().performTouchInput { click() }
+				awaitSummary(context.getString(R.string.download_destination_preview, normal.path))
+				assertEquals(privateRoot, destinations.effectiveRoot(FavouriteSpace.PRIVATE))
+				compose.onNodeWithText(context.getString(R.string.download_destination_private))
+					.performScrollTo().assertIsDisplayed().performTouchInput { click() }
+				awaitSummary(context.getString(R.string.download_destination_preview, privateRoot.path))
+				// Bottom actions must be reachable, even when the unavailable root and warnings
+				// make the content taller than the dialog window. Do not launch the OS picker.
+				compose.onNodeWithText(context.getString(R.string.pick_custom_directory))
+					.performScrollTo().assertIsDisplayed().assertHasClickAction()
+				compose.onNodeWithText(context.getString(android.R.string.cancel))
+					.performScrollTo().assertIsDisplayed().assertHasClickAction()
+				val followNormal = compose.onNodeWithText(context.getString(R.string.download_destination_private_use_normal))
+				followNormal.performScrollTo().assertIsDisplayed().assertHasClickAction()
+				val bounds = followNormal.fetchSemanticsNode().boundsInRoot
+				assertTrue("Follow Normal must have a nonzero hit area", bounds.width > 0f && bounds.height > 0f)
+				followNormal.performTouchInput { click() }
+				awaitSummary(context.getString(R.string.download_destination_private_follows_normal))
+				compose.onNodeWithText(context.getString(R.string.download_destination_private_follows_normal))
+					.performScrollTo().assertIsDisplayed()
+				assertEquals(null, destinations.configuredRoot(FavouriteSpace.PRIVATE))
+				assertEquals(normal, destinations.effectiveRoot(FavouriteSpace.PRIVATE))
+				compose.onNodeWithText(context.getString(android.R.string.cancel))
+					.performScrollTo().assertIsDisplayed().performTouchInput { click() }
+				awaitSummary(normalSummary)
+				compose.onNodeWithText(privateSummary).assertDoesNotExist()
+				assertEquals(normal, destinations.effectiveRoot(FavouriteSpace.NORMAL))
+				assertEquals(normal, destinations.effectiveRoot(FavouriteSpace.PRIVATE))
+				assertEquals(null, destinations.configuredRoot(FavouriteSpace.PRIVATE))
+			}
+		} finally {
+			prefs.edit(commit = true) {
+				previous.forEach { (key, value) -> if (value == null) remove(key) else putString(key, value) }
+				if (previousLegacy == null) remove(legacyKey) else putStringSet(legacyKey, previousLegacy)
+			}
+			security.protection = previousProtection
+			security.allowPrivateScreenshots = previousScreenshots
+			if (wasUnlocked) session.unlock() else session.lock()
 			fixture.deleteRecursively()
 		}
 	}

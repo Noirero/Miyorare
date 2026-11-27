@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core
 
 import android.app.Application
+import androidx.lifecycle.ProcessLifecycleOwner
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
@@ -18,6 +19,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.internal.platform.PlatformRegistry
 import org.acra.ACRA
 import org.acra.config.dialog
@@ -36,6 +38,8 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.LegacyFavouriteDownloadReconciler
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceDiscovery
+import org.koitharu.kotatsu.favourites.domain.ExhentaiPresenceLifecycleObserver
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -81,6 +85,9 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var legacyFavouriteDownloadReconcilerProvider: Provider<LegacyFavouriteDownloadReconciler>
+
+	@Inject
+	lateinit var exhentaiPresenceDiscoveryProvider: Provider<ExhentaiPresenceDiscovery>
 
 	@Inject
 	@LocalStorageChanges
@@ -140,6 +147,16 @@ open class BaseApp : Application(), Configuration.Provider {
 			runCatchingCancellable { legacyFavouriteDownloadReconcilerProvider.get().reconcileOnce() }
 				.onFailure(Throwable::printStackTraceDebug)
 		}
+		ProcessLifecycleOwner.get().lifecycle.addObserver(
+			ExhentaiPresenceLifecycleObserver(
+				scope = processLifecycleScope,
+				prefs = PreferenceManager.getDefaultSharedPreferences(this),
+				scan = { full ->
+					// Resolve the lazy scanner and Room dependencies off the main thread as before.
+					withContext(Dispatchers.IO) { exhentaiPresenceDiscoveryProvider.get().run(full) }
+				},
+			),
+		)
 		workScheduleManager.init()
 	}
 
