@@ -454,6 +454,8 @@ class DownloadedLocalStateTest {
 		favourite(active)
 		favourite(privateTitle, FavouriteSpace.PRIVATE)
 		favourite(remote(810_029L))
+		// Match the hydrated chapter snapshot used by the observation visibility guard.
+		data.storeManga(hidden, replaceExisting = true)
 		val hiddenCategory = repository.createCategory("Hidden", ListSortOrder.NEWEST, false, false, false)
 		repository.updateCategoryMemberships(listOf(hidden), mapOf(hiddenCategory.id to true), FavouriteSpace.NORMAL)
 		data.storeManga(neverFavourited, replaceExisting = true)
@@ -469,6 +471,7 @@ class DownloadedLocalStateTest {
 		assertTrue(copies.getValue(keptFile.id).file.exists())
 		assertTrue(repository.getCategoriesIds(keptFile.id).isEmpty())
 
+		assertEquals(hidden.chapters, data.findMangaById(hidden.id, withChapters = true)?.chapters)
 		assertTrue(liveObservations.scan(active, FavouriteSpace.NORMAL))
 		assertTrue(liveObservations.scan(hidden, FavouriteSpace.NORMAL))
 		val expected = owned.map { it.id }.toSet()
