@@ -105,30 +105,37 @@ internal class TsukiSourceConfig(
 		}
 	}
 
-	private fun isValidDomain(value: String): Boolean = runCatching {
-		require(value.isNotBlank())
-		val parts = value.split(':')
-		require(parts.size <= 2)
-		// Calling build() without a scheme rejects every otherwise-valid host. We only need the
-		// builder's host/port validation here, matching Miyorare's native SourceSettings behavior.
-		HttpUrl.Builder().apply {
-			host(parts.first())
-			if (parts.size == 2) port(parts[1].toInt())
-		}
-	}.isSuccess
+	companion object {
+		private const val KEY_AUTO_MIRROR = "miyorare_global_auto_mirror"
+		private const val KEY_REQUEST_PROFILE = "miyorare_global_request_profile"
+		private const val KEY_DIAGNOSTIC_DOMAIN = "miyorare_global_diagnostic_domain"
+		private const val KEY_DIAGNOSTIC_STATUS = "miyorare_global_diagnostic_status"
+		private const val KEY_DIAGNOSTIC_STAGE = "miyorare_global_diagnostic_stage"
+		private const val KEY_DIAGNOSTIC_HTTP_STATUS = "miyorare_global_diagnostic_http_status"
+		private const val KEY_DIAGNOSTIC_TESTED_AT = "miyorare_global_diagnostic_tested_at"
+		private const val NO_HTTP_STATUS = -1
 
-	private companion object {
-		const val KEY_AUTO_MIRROR = "miyorare_global_auto_mirror"
-		const val KEY_REQUEST_PROFILE = "miyorare_global_request_profile"
-		const val KEY_DIAGNOSTIC_DOMAIN = "miyorare_global_diagnostic_domain"
-		const val KEY_DIAGNOSTIC_STATUS = "miyorare_global_diagnostic_status"
-		const val KEY_DIAGNOSTIC_STAGE = "miyorare_global_diagnostic_stage"
-		const val KEY_DIAGNOSTIC_HTTP_STATUS = "miyorare_global_diagnostic_http_status"
-		const val KEY_DIAGNOSTIC_TESTED_AT = "miyorare_global_diagnostic_tested_at"
-		const val NO_HTTP_STATUS = -1
+		private fun isValidDomain(value: String): Boolean = runCatching {
+			require(value.isNotBlank())
+			val parts = value.split(':')
+			require(parts.size <= 2)
+			// Calling build() without a scheme rejects every otherwise-valid host. We only need the
+			// builder's host/port validation here, matching Miyorare's native SourceSettings behavior.
+			HttpUrl.Builder().apply {
+				host(parts.first())
+				if (parts.size == 2) port(parts[1].toInt())
+			}
+		}.isSuccess
 
-		fun sanitize(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "_")
-		fun storageName(pluginStorageKey: String, sourceName: String): String =
+		/** Read the native Domain preference without creating a parser or changing preferences. */
+		internal fun readStoredDomainOverride(context: Context, pluginStorageKey: String, sourceName: String): String? =
+			context.getSharedPreferences(storageName(pluginStorageKey, sourceName), Context.MODE_PRIVATE)
+				.getString("domain", null)
+				?.trim()
+				?.takeIf(::isValidDomain)
+
+		private fun sanitize(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "_")
+		private fun storageName(pluginStorageKey: String, sourceName: String): String =
 			"tsuki_${sanitize(pluginStorageKey)}_${sanitize(sourceName)}"
 	}
 }
