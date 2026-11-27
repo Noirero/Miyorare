@@ -2,11 +2,14 @@ package org.koitharu.kotatsu.main.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Parcelable
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.IdRes
 import androidx.core.view.isEmpty
@@ -20,6 +23,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.navigation.NavigationBarView
 import com.google.android.material.navigationrail.NavigationRailView
 import kotlinx.coroutines.channels.awaitClose
@@ -77,7 +81,7 @@ class MainNavigationDelegate(
 	private val listeners = LinkedList<OnFragmentChangedListener>()
 	private val interactiveSlide = InteractiveTabSlidePresentation()
 	private var previewFavourites: FavouritesContainerFragment? = null
-	private var previewHeader: Pair<View, Int>? = null
+	private var previewHeader: PreviewHeader? = null
 	private var committingTabDrag = false
 	private var dragPreviewMatched = false
 	private val transitionPreferences = NavigationTransitionPreferences(navBar.context)
@@ -335,8 +339,63 @@ class MainNavigationDelegate(
 	}
 
 	private fun restorePreviewHeader() {
-		previewHeader?.let { (view, visibility) -> view.visibility = visibility }
+		val preview = previewHeader ?: return
 		previewHeader = null
+		preview.restore()
+	}
+
+	/** Move the existing page-specific header into its own page for the duration of a preview.
+	 * The shared AppBar must measure only shared chrome, while Favorites keeps its list anchor.
+	 */
+	private fun movePreviewHeader(currentView: View) {
+		if (previewHeader != null) return
+		val content = currentView as? LinearLayout ?: return
+		val appBar = (navBar.context.findActivity() as? AppBarOwner)?.appBar ?: return
+		val header = appBar.findViewById<View>(R.id.layout_category_header) ?: return
+		if (header.parent !== appBar) return
+		val parent = appBar.parent as? CoordinatorLayout ?: return
+		val behavior = (appBar.layoutParams as? CoordinatorLayout.LayoutParams)?.behavior
+			as? AppBarLayout.Behavior ?: return
+		val params = header.layoutParams as AppBarLayout.LayoutParams
+		val index = appBar.indexOfChild(header)
+		val scrollState = behavior.onSaveInstanceState(parent, appBar)
+		val hiddenHeight = (-appBar.top - header.top).coerceIn(0, header.height)
+		// Keep a zero-height child at the original index: Material AppBar restores its
+		// saved scroll state by child index during layout. The slot contributes no height.
+		val slot = View(appBar.context).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+		val slotParams = AppBarLayout.LayoutParams(params.width, 0).apply { scrollFlags = params.scrollFlags }
+		appBar.removeView(header)
+		appBar.addView(slot, index, slotParams)
+		content.addView(header, 0, LinearLayout.LayoutParams(params.width, params.height).apply {
+			topMargin = params.topMargin - hiddenHeight
+			bottomMargin = params.bottomMargin
+			marginStart = params.marginStart
+			marginEnd = params.marginEnd
+		})
+		previewHeader = PreviewHeader(appBar, parent, behavior, scrollState, slot, content, header, params)
+	}
+
+	private class PreviewHeader(
+		private val appBar: AppBarLayout,
+		private val parent: CoordinatorLayout,
+		private val behavior: AppBarLayout.Behavior,
+		private val scrollState: Parcelable?,
+		private val slot: View,
+		private val content: LinearLayout,
+		private val header: View,
+		private val params: AppBarLayout.LayoutParams,
+	) {
+		fun restore() {
+			val index = appBar.indexOfChild(slot)
+			if (index < 0) return
+			appBar.removeView(slot)
+			// Do not steal a header that has already been moved by its lifecycle owner.
+			if (header.parent !== content) return
+			content.removeView(header)
+			appBar.addView(header, index.coerceAtMost(appBar.childCount), params)
+			scrollState?.let { behavior.onRestoreInstanceState(parent, appBar, it) }
+			appBar.requestLayout()
+		}
 	}
 
 	private fun previewTab(@IdRes itemId: Int?): Boolean {
@@ -371,14 +430,9 @@ class MainNavigationDelegate(
 			previewFavourites = favourites
 			favourites?.setTabPreviewVisible(true)
 		}
-		// The external header remains activity-owned. Never reparent it during a gesture.
+		// Only transfer at the gesture boundary, not on every pointer frame.
 		if (current is FavouritesContainerFragment && frame.hasOtherThan(currentId)) {
-			if (previewHeader == null) {
-				val header = (navBar.context.findActivity() as? AppBarOwner)?.appBar
-					?.findViewById<View>(R.id.layout_category_header)
-				previewHeader = header?.let { it to it.visibility }
-				header?.visibility = View.INVISIBLE
-			}
+			movePreviewHeader(currentView)
 		} else restorePreviewHeader()
 	}
 

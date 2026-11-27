@@ -324,6 +324,229 @@ class DiscoveryNavigationRuntimeTest {
 			compose.onNodeWithTag("catalog_section_NOVEL_TOP_RATED").assertIsDisplayed(); assertEquals(1, calls.get())
 		}
 	}
+	@Test fun fullLocalPreviewUsesSameVerticalViewportAsCommittedLocal() {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
+			.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+			.putString("favourites_header_scroll_mode", "SCROLL_AWAY").commit())
+		launch().use { scenario ->
+			fun selectExpanded(id: Int) {
+				scenario.onActivity { activity ->
+					activity.bottomNav!!.selectedItemId = id
+					activity.supportFragmentManager.executePendingTransactions()
+					activity.appBar.setExpanded(true, false)
+				}
+				compose.waitForIdle()
+			}
+			fun windowY(view: View): Int = IntArray(2).also { view.getLocationInWindow(it) }[1]
+			fun geometry(stage: String): Int {
+				var gap = Int.MIN_VALUE
+				scenario.onActivity { activity ->
+					val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+					val root = local.requireView()
+					val search = activity.findViewById<View>(R.id.layout_search)
+					val header = activity.appBar.findViewById<View>(R.id.layout_category_header)
+					assertEquals("$stage local root must be visible", View.VISIBLE, root.visibility)
+					assertTrue("$stage local root must be laid out", root.isLaidOut && root.height > 0)
+					gap = windowY(root) - (windowY(search) + search.height)
+					Log.i("MiyorareNavGeometry", "$stage gap=$gap rootY=${windowY(root)} " +
+						"rootHeight=${root.height} appBarBottom=${activity.appBar.bottom} " +
+						"scrollRange=${activity.appBar.totalScrollRange} headerHeight=${header?.height} " +
+						"headerVisibility=${header?.visibility} selected=${activity.bottomNav!!.selectedItemId}")
+				}
+				return gap
+			}
+			selectExpanded(R.id.nav_local)
+			val reference = geometry("committed-reference")
+			selectExpanded(R.id.nav_favorites)
+			scenario.onActivity { activity ->
+				val header = checkNotNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+				assertTrue("Fixture requires expanded Favourites header", header.isShown && header.height > 0)
+			}
+			val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			var down = SystemClock.uptimeMillis()
+			fun send(action: Int, position: Offset, elapsed: Long) = scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(down, down + elapsed, action,
+					position.x - origin[0], position.y - origin[1], 0)
+				try { bar.dispatchTouchEvent(event) } finally { event.recycle() }
+			}
+			fun preview(): Int {
+				down = SystemClock.uptimeMillis()
+				send(MotionEvent.ACTION_DOWN, from, 0)
+				send(MotionEvent.ACTION_MOVE, to, 32)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+					assertTrue("Preview must not commit navigation", local.isHidden)
+					assertEquals(Lifecycle.State.STARTED, local.lifecycle.currentState)
+					assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+					assertEquals("At target center Local must fill the horizontal viewport",
+						0f, local.requireView().translationX, 2f)
+				}
+				return geometry("full-local-preview")
+			}
+			val cancelledPreview = try {
+				preview()
+			} finally {
+				send(MotionEvent.ACTION_CANCEL, to, 64)
+			}
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				val header = checkNotNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+				assertTrue("Cancel must restore Favourites header", header.isShown)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(View.GONE, local.requireView().visibility)
+			}
+			var released = false
+			val committedPreview = try {
+				val gap = preview()
+				send(MotionEvent.ACTION_UP, to, 64)
+				released = true
+				gap
+			} finally {
+				if (!released) send(MotionEvent.ACTION_CANCEL, to, 64)
+			}
+			compose.waitForIdle()
+			scenario.onActivity { activity ->
+				assertEquals(R.id.nav_local, activity.bottomNav!!.selectedItemId)
+				val local = activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+				assertEquals(Lifecycle.State.RESUMED, local.lifecycle.currentState)
+			}
+			val committed = geometry("committed-after-drag")
+			assertTrue("Local committed viewport changed: before=$reference after=$committed",
+				kotlin.math.abs(reference - committed) <= 2)
+			assertTrue("Unexpected vertical gap during full Local preview: reference=$reference " +
+				"cancelledPreview=$cancelledPreview committedPreview=$committedPreview committed=$committed",
+				kotlin.math.abs(reference - cancelledPreview) <= 2 &&
+					kotlin.math.abs(reference - committedPreview) <= 2)
+		}
+	}
+
+	@Test fun expandedFavouritesPreviewKeepsHeaderWithPageAndRestoresOnReverse() =
+		assertFavouritesPreviewHeaderRestored(collapsed = false, pinned = false)
+
+	@Test fun collapsedFavouritesPreviewRestoresAppBarScrollOnCancel() =
+		assertFavouritesPreviewHeaderRestored(collapsed = true, pinned = false)
+
+	@Test fun pinnedFavouritesPreviewRestoresHeaderAndScrollRange() =
+		assertFavouritesPreviewHeaderRestored(collapsed = false, pinned = true)
+
+	// CI disables system animations by default. A fractional two-page frame requires
+	// animations enabled, unlike the full-slot preview covered by the original regression.
+	private fun withFractionalTabPreview(block: () -> Unit) {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		try {
+			shell("settings put global animator_duration_scale 1")
+			assertEquals(1f, android.provider.Settings.Global.getFloat(app.contentResolver,
+				android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f), 0.01f)
+			block()
+		} finally {
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
+	private fun assertFavouritesPreviewHeaderRestored(collapsed: Boolean, pinned: Boolean) = withFractionalTabPreview {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		assertTrue(PreferenceManager.getDefaultSharedPreferences(app).edit()
+			.putBoolean(AppSettings.KEY_NAV_LEGACY, false)
+			.putBoolean(AppSettings.KEY_NAV_PINNED, false)
+			.putString("favourites_header_scroll_mode", if (pinned) "PINNED" else "SCROLL_AWAY").commit())
+		launch().use { scenario ->
+			compose.waitForIdle()
+			scenario.onActivity { it.appBar.setExpanded(!collapsed, false) }
+			compose.waitForIdle()
+			var initialTop = 0
+			var initialRange = 0
+			var initialPagerY = 0
+			lateinit var header: View
+			fun y(view: View) = IntArray(2).also { view.getLocationInWindow(it) }[1]
+			scenario.onActivity { activity ->
+				val favourites = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				header = checkNotNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+				initialTop = activity.appBar.top
+				initialRange = activity.appBar.totalScrollRange
+				initialPagerY = y(favourites.requireView().findViewById<View>(R.id.pager))
+				if (collapsed) assertTrue("Fixture must be collapsed", initialTop < 0)
+				Log.i("MiyorareNavGeometry", "initial-header collapsed=$collapsed pinned=$pinned " +
+					"appBarTop=$initialTop scrollRange=$initialRange pagerY=$initialPagerY")
+				if (pinned) assertEquals("Pinned Favorites header must remain pinned with unpinned bottom bar", 0, initialRange)
+			}
+			val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+				.fetchSemanticsNode().boundsInWindow.center
+			val midpoint = Offset(from.x + (to.x - from.x) * 0.6f, from.y)
+			var down = SystemClock.uptimeMillis()
+			fun send(action: Int, point: Offset, elapsed: Long) = scenario.onActivity { activity ->
+				val bar = checkNotNull(activity.bottomNav)
+				val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+				val event = MotionEvent.obtain(down, down + elapsed, action, point.x - origin[0], point.y - origin[1], 0)
+				try { bar.dispatchTouchEvent(event) } finally { event.recycle() }
+			}
+			fun assertRestored() = scenario.onActivity { activity ->
+				assertSame(header, activity.appBar.findViewById<View>(R.id.layout_category_header))
+				assertSame(activity.appBar, header.parent)
+				assertEquals(View.VISIBLE, header.visibility)
+				assertEquals(initialTop, activity.appBar.top)
+				assertEquals(initialRange, activity.appBar.totalScrollRange)
+				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+			}
+			try {
+				send(MotionEvent.ACTION_DOWN, from, 0)
+				send(MotionEvent.ACTION_MOVE, midpoint, 32)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val favourites = activity.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+					val local = checkNotNull(activity.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().singleOrNull()) {
+						"Fractional preview must instantiate the Local page"
+					}
+					val favouritesRoot = favourites.requireView()
+					val localRoot = local.requireView()
+					assertEquals(View.VISIBLE, favouritesRoot.visibility)
+					assertEquals(View.VISIBLE, localRoot.visibility)
+					assertTrue("Fixture must render two fractional page offsets",
+						kotlin.math.abs(favouritesRoot.translationX) > 0f &&
+							kotlin.math.abs(favouritesRoot.translationX) < favouritesRoot.width &&
+							kotlin.math.abs(localRoot.translationX) > 0f &&
+							kotlin.math.abs(localRoot.translationX) < localRoot.width)
+					Log.i("MiyorareNavGeometry", "fractional-preview collapsed=$collapsed pinned=$pinned " +
+						"initialAppBarTop=$initialTop appBarTop=${activity.appBar.top} " +
+						"initialPagerY=$initialPagerY pagerY=${y(favouritesRoot.findViewById<View>(R.id.pager))} " +
+						"favouritesX=${favouritesRoot.translationX} localX=${localRoot.translationX}")
+					assertSame(favouritesRoot, header.parent)
+					assertEquals(View.VISIBLE, header.visibility)
+					assertNull(activity.appBar.findViewById<View>(R.id.layout_category_header))
+					assertEquals(Lifecycle.State.RESUMED, favourites.lifecycle.currentState)
+					assertEquals(Lifecycle.State.STARTED, local.lifecycle.currentState)
+					assertTrue("Favorites pager anchor shifted during preview",
+						kotlin.math.abs(initialPagerY - y(favourites.requireView().findViewById<View>(R.id.pager))) <= 2)
+				}
+				send(MotionEvent.ACTION_MOVE, from, 64)
+				compose.waitForIdle()
+				assertRestored()
+				send(MotionEvent.ACTION_MOVE, to, 96)
+				compose.waitForIdle()
+			} finally {
+				send(MotionEvent.ACTION_CANCEL, to, 128)
+			}
+			compose.waitForIdle()
+			assertRestored()
+		}
+	}
+
 	@Test fun floatingDragPreviewsCustomTabAndHomeBeforeRelease() {
 		assertTabDragPreviewsCustomTabAndHome(legacy = false)
 	}
