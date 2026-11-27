@@ -2602,7 +2602,7 @@ class DownloadedLocalStateTest {
 	/** Early T14 probe: comparable sequential vs batched observation work, 1,024 real Room titles.
 	 * No arbitrary speed threshold; physical first-render/scroll still needs owner evidence.
 	 */
-	@Test fun normalCoordinatorLargeLibraryWorkProbe() = runBlocking {
+	@Test fun normalCoordinatorLargeLibraryWorkProbe() = runBlocking<Unit> {
 		val titles = (0 until 1024).map { remote(820_000L + it) }
 		val category = repository.createCategory("Normal scanner performance fixture", ListSortOrder.NEWEST, false, false, true, FavouriteSpace.NORMAL)
 		for (chunk in titles.chunked(128)) {
