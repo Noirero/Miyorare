@@ -794,6 +794,118 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	@Test fun motionPreferenceChangeCancelsOwnedDragAndRejectsStaleRelease() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		fun shell(command: String) = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+			instrumentation.uiAutomation.executeShellCommand(command),
+		).bufferedReader().use { it.readText().trim() }
+		val previousScale = shell("settings get global animator_duration_scale")
+		val prefs = NavigationTransitionPreferences(app)
+		try {
+			shell("settings put global animator_duration_scale 1")
+			assertEquals(1f, android.provider.Settings.Global.getFloat(app.contentResolver,
+				android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f), 0.01f)
+			settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+			settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+			PreferenceManager.getDefaultSharedPreferences(app).edit()
+				.putBoolean(AppSettings.KEY_NAV_LEGACY, false).putBoolean(AppSettings.KEY_NAV_LABELS, true).commit()
+			prefs.setMotion(NavigationMotion.CLASSIC_GLIDE)
+			launch().use { scenario ->
+				compose.waitForIdle()
+				fun select(id: Int) = scenario.onActivity {
+					checkNotNull(it.bottomNav as? FloatingBottomNavigationView).selectFromUser(id)
+				}
+				select(R.id.nav_local)
+				assertLocalContentReady(scenario)
+				select(R.id.nav_favorites)
+				compose.waitForIdle()
+				lateinit var originalLocal: LocalListFragment
+				lateinit var originalFavorites: FavouritesContainerFragment
+				scenario.onActivity {
+					originalLocal = it.supportFragmentManager.fragments.filterIsInstance<LocalListFragment>().single()
+					originalFavorites = it.supportFragmentManager.fragments.filterIsInstance<FavouritesContainerFragment>().single()
+				}
+				fun settled(id: Int) {
+					compose.waitUntil(10000) {
+						var ready = false
+						scenario.onActivity { activity ->
+							val fm = activity.supportFragmentManager
+							val active = fm.fragments.filter { it.id == R.id.container && it.isAdded && !it.isHidden }
+							ready = activity.bottomNav!!.selectedItemId == id &&
+								active.singleOrNull() === (if (id == R.id.nav_local) originalLocal else originalFavorites) &&
+								active.singleOrNull()?.lifecycle?.currentState == Lifecycle.State.RESUMED &&
+								listOf(originalLocal, originalFavorites).all { fragment ->
+									val selected = fragment === active.singleOrNull()
+									val view = fragment.requireView()
+									kotlin.math.abs(view.translationX) < 0.1f &&
+										view.visibility == (if (selected) View.VISIBLE else View.GONE)
+								} && fm.backStackEntryCount == 0
+						}
+						ready
+					}
+				}
+				settled(R.id.nav_favorites)
+				for (next in listOf(NavigationMotion.ELASTIC_GLIDE, NavigationMotion.FLUID_LENS, NavigationMotion.CLASSIC_GLIDE)) {
+					val from = compose.onNodeWithContentDescription(app.getString(NavItem.FAVORITES.navTitle))
+						.fetchSemanticsNode().boundsInWindow.center
+					val to = compose.onNodeWithContentDescription(app.getString(NavItem.LOCAL.navTitle))
+						.fetchSemanticsNode().boundsInWindow.center
+					fun send(down: Long, action: Int, fraction: Float, elapsed: Long) = scenario.onActivity { activity ->
+						val bar = checkNotNull(activity.bottomNav)
+						val origin = IntArray(2).also { bar.getLocationInWindow(it) }
+						val point = from + (to - from) * fraction
+						val event = MotionEvent.obtain(down, down + elapsed, action, point.x - origin[0], point.y - origin[1], 0)
+						try { bar.dispatchTouchEvent(event) } finally { event.recycle() }
+					}
+					val oldDown = SystemClock.uptimeMillis()
+					send(oldDown, MotionEvent.ACTION_DOWN, 0f, 0)
+					try {
+						send(oldDown, MotionEvent.ACTION_MOVE, 0.65f, 32)
+						scenario.onActivity {
+							assertTrue(originalLocal.isHidden)
+							assertEquals(Lifecycle.State.STARTED, originalLocal.lifecycle.currentState)
+							assertEquals(View.VISIBLE, originalLocal.requireView().visibility)
+							assertTrue(kotlin.math.abs(originalLocal.requireView().translationX) > 1f)
+							assertEquals(R.id.nav_favorites, it.bottomNav!!.selectedItemId)
+							prefs.setMotion(next)
+						}
+						// Wait for the production preference observer to restore the committed view.
+						settled(R.id.nav_favorites)
+						assertEquals(next, prefs.motion)
+						send(oldDown, MotionEvent.ACTION_MOVE, 1f, 64)
+						send(oldDown, MotionEvent.ACTION_UP, 1f, 96)
+					} finally {
+						send(oldDown, MotionEvent.ACTION_CANCEL, 1f, 128)
+					}
+					compose.waitForIdle()
+					settled(R.id.nav_favorites)
+					// Fresh input must still be able to commit after the stale stream is discarded.
+					val newDown = SystemClock.uptimeMillis()
+					send(newDown, MotionEvent.ACTION_DOWN, 0f, 0)
+					try {
+						send(newDown, MotionEvent.ACTION_MOVE, 0.75f, 32)
+						scenario.onActivity {
+							assertTrue(originalLocal.isHidden)
+							assertEquals(View.VISIBLE, originalLocal.requireView().visibility)
+							assertEquals(R.id.nav_favorites, it.bottomNav!!.selectedItemId)
+						}
+						send(newDown, MotionEvent.ACTION_UP, 1f, 64)
+					} finally {
+						send(newDown, MotionEvent.ACTION_CANCEL, 1f, 96)
+					}
+					settled(R.id.nav_local)
+					assertLocalContentReady(scenario)
+					assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, prefs.transition)
+					select(R.id.nav_favorites)
+					settled(R.id.nav_favorites)
+				}
+			}
+		} finally {
+			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
+			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
 	private fun captureNavigationGesture(motion: NavigationMotion, night: Int) {
 		launch().use { scenario ->
 			compose.waitForIdle()
