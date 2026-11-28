@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "version": "1.2.0",
+  "contentId": "debug-fixture-1",
+  "fixture": true,
+  "summary": {
+    "en": "Sample highlights for testing the update experience.",
+    "id": "Contoh sorotan untuk menguji pengalaman setelah update."
+  },
+  "entries": [
+    {
+      "id": "transitions",
+      "category": "NEW",
+      "title": {
+        "en": "Screen transitions",
+        "id": "Transisi layar"
+      },
+      "description": {
+        "en": "Choose an animation for switching main tabs.",
+        "id": "Pilih animasi perpindahan tab utama."
+      },
+      "destination": "SCREEN_TRANSITIONS"
+    },
+    {
+      "id": "journey",
+      "category": "NEW",
+      "title": {
+        "en": "Reader Journey",
+        "id": "Perjalanan membaca"
+      },
+      "description": {
+        "en": "Open your reading journey.",
+        "id": "Buka perjalanan membacamu."
+      },
+      "destination": "READER_JOURNEY"
+    },
+    {
+      "id": "sources",
+      "category": "IMPROVED",
+      "title": {
+        "en": "Source management",
+        "id": "Pengelolaan sumber"
+      },
+      "description": {
+        "en": "Browse installed reading sources.",
+        "id": "Jelajahi sumber bacaan terpasang."
+      },
+      "destination": "SOURCES_EXTENSIONS"
+    },
+    {
+      "id": "fixture-fix",
+      "category": "FIXED",
+      "title": {
+        "en": "Example stability improvement",
+        "id": "Contoh peningkatan stabilitas"
+      },
+      "description": {
+        "en": "This sample is not an official release note.",
+        "id": "Contoh ini bukan catatan release resmi."
+      }
+    }
+  ]
+}

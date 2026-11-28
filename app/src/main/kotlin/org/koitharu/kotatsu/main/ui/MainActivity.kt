@@ -61,6 +61,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.settings.about.whatsnew.WhatsNewCoordinator
+import org.koitharu.kotatsu.settings.about.whatsnew.traceWhatsNew
+import org.koitharu.kotatsu.main.ui.protect.AppProtectHelper
 import org.koitharu.kotatsu.browser.AdListUpdateService
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.router
@@ -117,6 +120,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 	@Inject
 	lateinit var settings: AppSettings
+
+	@Inject lateinit var whatsNewCoordinator: WhatsNewCoordinator
+	@Inject lateinit var appProtectHelper: AppProtectHelper
 
 	private val viewModel by viewModels<MainViewModel>()
 	private val searchSuggestionViewModel by viewModels<SearchSuggestionViewModel>()
@@ -268,11 +274,59 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		super.onNewIntent(intent)
 		setIntent(intent)
 		openNormalFavouritesIfRequested(intent)
+		deliverDiscoveryRequest()
 	}
 
 	override fun onResumeFragments() {
 		super.onResumeFragments()
 		deliverPendingNormalFavouritesNavigation()
+		deliverDiscoveryRequest()
+		requestWhatsNew()
+	}
+
+	override fun onWindowFocusChanged(hasFocus: Boolean) {
+		super.onWindowFocusChanged(hasFocus)
+		traceWhatsNew("host focus host=${System.identityHashCode(this)} focused=$hasFocus lifecycle=${lifecycle.currentState}")
+		if (hasFocus) {
+			deliverDiscoveryRequest()
+			requestWhatsNew()
+		}
+	}
+
+	internal fun whatsNewPresentationBlocker(): String? = when {
+		!::navigationDelegate.isInitialized -> "navigation_uninitialized"
+		!settings.isOnboardingCompleted -> "onboarding"
+		!appProtectHelper.isUnlockedFlow.value -> "locked"
+		isFinishing || isDestroyed -> "host_gone"
+		!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) -> "not_resumed"
+		supportFragmentManager.isStateSaved -> "state_saved"
+		!hasWindowFocus() -> "no_window_focus"
+		window.decorView.visibility != View.VISIBLE -> "not_visible"
+		else -> null
+	}
+
+	internal fun canPresentWhatsNew(): Boolean = whatsNewPresentationBlocker() == null
+
+	internal fun requestWhatsNew() {
+		val reason = whatsNewPresentationBlocker()
+		if (reason == null) {
+			whatsNewCoordinator.request(this)
+		} else {
+			traceWhatsNew("host request blocked host=${System.identityHashCode(this)} reason=$reason")
+		}
+	}
+
+	internal fun openWhatsNewDiscovery(): Boolean {
+		if (!::navigationDelegate.isInitialized || supportFragmentManager.isStateSaved ||
+			!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !appProtectHelper.isUnlockedFlow.value ||
+			isFinishing || isDestroyed) return false
+		return navigationDelegate.showDiscoveryHub()
+	}
+
+	private fun deliverDiscoveryRequest() {
+		if (intent.getBooleanExtra(EXTRA_OPEN_WHATS_NEW_DISCOVERY, false) && openWhatsNewDiscovery()) {
+			intent.removeExtra(EXTRA_OPEN_WHATS_NEW_DISCOVERY)
+		}
 	}
 
 	private fun openNormalFavouritesIfRequested(intent: Intent?) {
@@ -1044,6 +1098,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 	companion object {
 		const val EXTRA_OPEN_NORMAL_FAVOURITES = "open_normal_favourites"
+		internal const val EXTRA_OPEN_WHATS_NEW_DISCOVERY = "open_whats_new_discovery"
 
 		private const val FAB_SHRINK_DELAY_MS = 1500L
 		private const val ACTION_MODE_TOP_BAR_FADE_DURATION_MS = 150L

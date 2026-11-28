@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="whats_new_version_label">Miyorare v%1$s</string>
+    <string name="whats_new_fixed_label">Fixed</string>
+    <string name="whats_new_open_feature">Open feature</string>
+    <string name="whats_new_view_all">View all highlights</string>
+    <string name="whats_new_continue">Start reading</string>
+    <string name="whats_new_fixture_notice">TEST FIXTURE (not official release notes)</string>
+    <string name="whats_new_no_content">Release highlights are not available for this build.</string>
+</resources>

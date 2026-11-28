@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="whats_new_version_label">Miyorare v%1$s</string>
+    <string name="whats_new_fixed_label">Diperbaiki</string>
+    <string name="whats_new_open_feature">Buka fitur</string>
+    <string name="whats_new_view_all">Lihat semua sorotan</string>
+    <string name="whats_new_continue">Mulai membaca</string>
+    <string name="whats_new_fixture_notice">CONTOH UJI (bukan catatan release resmi)</string>
+    <string name="whats_new_no_content">Sorotan release belum tersedia untuk build ini.</string>
+</resources>

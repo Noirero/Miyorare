@@ -215,6 +215,18 @@ class MainNavigationDelegate(
 		}
 	}
 
+	/** Open the feature without changing the configured navigation shortcuts. */
+	internal fun showDiscoveryHub(): Boolean {
+		if (fragmentManager.isStateSaved) return false
+		if (primaryFragment is DiscoveryHubFragment) return true
+		val item = navBar.menu.findItem(R.id.nav_discovery_hub)
+		if (item?.isVisible == true && item.isEnabled) {
+			navBar.selectedItemId = item.itemId
+			return true
+		}
+		return setPrimaryFragment(DiscoveryHubFragment::class.java)
+	}
+
 	fun syncSelectedItem() {
 		val fragment = primaryFragment ?: return
 		onFragmentChanged(fragment, fromUser = false)
