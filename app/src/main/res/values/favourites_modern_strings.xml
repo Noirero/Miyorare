@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="favourites_modern_subtitle">Your manga &amp; novel collection</string>
+	<string name="favourites_heading_hide">Hide Favourites heading</string>
+	<string name="favourites_heading_show">Show Favourites heading</string>
+	<string name="favourites_heading_reveal_control">Reveal heading control</string>
 </resources>

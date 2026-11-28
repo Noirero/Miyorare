@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.StateListDrawable
 import android.util.AttributeSet
@@ -52,6 +53,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	defStyleAttr: Int = 0,
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
+	private val headingControls = FavouritesHeadingControls(this)
 	private var applyingModernBackground = false
 	private var modernPresentationPosted = false
 	private var decoratedAppBar: AppBarLayout? = null
@@ -119,17 +121,29 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
+		updateModernOnlyCopyVisibility()
 		scheduleModernPresentation()
 	}
 
 	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
 		super.onWindowFocusChanged(hasWindowFocus)
 		if (hasWindowFocus && isShown) {
+			updateModernOnlyCopyVisibility()
 			scheduleModernPresentation()
+		} else {
+			headingControls.pause()
 		}
 	}
 
+	override fun onWindowVisibilityChanged(visibility: Int) {
+		super.onWindowVisibilityChanged(visibility)
+		if (!isAttachedToWindow) return
+		if (visibility == View.VISIBLE) updateModernOnlyCopyVisibility()
+		else headingControls.pause()
+	}
+
 	override fun onDetachedFromWindow() {
+		headingControls.detach()
 		restoreGlobalAppBarChrome()
 		super.onDetachedFromWindow()
 	}
@@ -138,8 +152,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		super.onVisibilityChanged(changedView, visibility)
 		if (!isAttachedToWindow) return
 		if (visibility == View.VISIBLE && isShown) {
+			updateModernOnlyCopyVisibility()
 			scheduleModernPresentation()
 		} else {
+			headingControls.pause()
 			restoreGlobalAppBarChrome()
 		}
 	}
@@ -166,6 +182,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val showInlineHeading = modern && !usesLandscapeToolbarHeading()
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.isVisible = showInlineHeading
 		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.isVisible = showInlineHeading
+		headingControls.sync(modern, isPrivateFavouritesHost(), usesLandscapeToolbarHeading())
 	}
 
 	private fun applyModernPresentation() {
@@ -298,12 +315,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, 126))
 				}
 			} else {
-				createNormalGlassSurface(
-					glass = glass!!,
-					radius = surfaceRadius,
-					density = density,
-					selected = false,
-				)
+				// The wrapper owns the one glass surface, including the independent reveal target.
+				this@MiyorareFavouritesHeaderLayout.findViewById<View>(R.id.favourites_content_controls)
+					?.let { it.background = createNormalGlassSurface(glass!!, surfaceRadius, density, selected = false) }
+				null
 			}
 			val states = arrayOf(
 				intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
@@ -420,6 +435,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			foreground = null
 			elevation = 0f
 		}
+		headingControls.sync(true, privateFavourites, showToolbarHeading)
 	}
 
 	private fun applyNormalHeaderGeometry(
@@ -450,18 +466,46 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				layoutParams = params
 			}
 		}
-		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
-			val toggleInset = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_INSET_DP)
-			setPadding(toggleInset, toggleInset, toggleInset, toggleInset)
+		findViewById<LinearLayout>(R.id.favourites_content_controls)?.apply {
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.width = ViewGroup.LayoutParams.MATCH_PARENT
-				params.height = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HEIGHT_DP)
 				params.marginStart = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HORIZONTAL_MARGIN_DP)
 				params.marginEnd = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HORIZONTAL_MARGIN_DP)
 				params.topMargin = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_TOP_GAP_DP)
 				params.bottomMargin = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_BOTTOM_GAP_DP)
 				layoutParams = params
 			}
+		}
+		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
+			val toggleInset = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_INSET_DP)
+			setPadding(toggleInset, toggleInset, toggleInset, toggleInset)
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.width = 0
+				params.weight = 1f
+				params.height = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HEIGHT_DP)
+				params.setMargins(0, 0, 0, 0)
+				params.marginStart = 0
+				params.marginEnd = 0
+				layoutParams = params
+			}
+		}
+		val headingButtons = listOfNotNull(
+			findViewById<ImageButton>(R.id.button_favourites_heading_hide),
+			findViewById<ImageButton>(R.id.button_favourites_heading_show),
+			if (parent is AppBarLayout && usesLandscapeToolbarHeading()) {
+				rootView.findViewById<ImageButton>(R.id.button_landscape_favourites_heading_hide)
+			} else null,
+		)
+		for (button in headingButtons) {
+			button.imageTintList = ColorStateList.valueOf(glass.content)
+			val fill = GradientDrawable().apply {
+				shape = GradientDrawable.OVAL
+				setColor(glass.surfaceStrong)
+			}
+			button.background = RippleDrawable(
+				ColorStateList.valueOf(glass.glow),
+				InsetDrawable(fill, dp(9f)),
+				null,
+			)
 		}
 		for (buttonId in intArrayOf(R.id.button_content_manga, R.id.button_content_novel)) {
 			findViewById<MaterialButton>(buttonId)?.apply {

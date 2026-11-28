@@ -286,6 +286,9 @@ add_full_suite() {
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/explore/ui/SourceOverviewSkeletonTest.kt ]]; then
     add_class org.koitharu.kotatsu.explore.ui.SourceOverviewSkeletonTest
   fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/ui/FavouritesTitleNavigationTest.kt ]]; then
+    add_class org.koitharu.kotatsu.favourites.ui.FavouritesTitleNavigationTest
+  fi
   add_verbose_diagnostics_suite
   add_exhentai_presence_migration_test
 
@@ -706,6 +709,9 @@ self_test() {
   fi
   if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/explore/ui/SourceOverviewSkeletonTest.kt ]]; then
     [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.explore.ui.SourceOverviewSkeletonTest')" == 1 ]]
+  fi
+  if [[ -f app/src/androidTest/kotlin/org/koitharu/kotatsu/favourites/ui/FavouritesTitleNavigationTest.kt ]]; then
+    [[ "$(sed -n 's/^classes=//p' <<<"$out" | tr ',' '\n' | grep -cx 'org.koitharu.kotatsu.favourites.ui.FavouritesTitleNavigationTest')" == 1 ]]
   fi
   grep -q '^run_runtime_isolation=true$' <<<"$out"
   grep -q '^run_migration_persistence=true$' <<<"$out"

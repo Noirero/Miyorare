@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="favourites_modern_subtitle">Koleksi manga &amp; novel kamu</string>
+	<string name="favourites_heading_hide">Sembunyikan judul Favorit</string>
+	<string name="favourites_heading_show">Tampilkan judul Favorit</string>
+	<string name="favourites_heading_reveal_control">Munculkan kontrol judul</string>
 </resources>
