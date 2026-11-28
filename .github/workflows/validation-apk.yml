@@ -36,7 +36,7 @@ jobs:
   activation-contract:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -55,6 +55,55 @@ jobs:
           workflow = Path(".github/workflows/validation-apk.yml").read_text()
           actions = re.findall(r"(?m)^\s*- uses:\s+(\S+)", workflow)
           assert actions and all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", a) for a in actions), actions
+          PY
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify certificate output compatibility using a disposable APK
+        run: |
+          set -euo pipefail
+          umask 077
+          tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$tools/aapt2" && test -x "$tools/apksigner" && test -x "$tools/zipalign"
+          "$tools/apksigner" version
+          cat "$tools/source.properties"
+          tmp="$(mktemp -d "$RUNNER_TEMP/validation-probe.XXXXXX")"
+          trap 'rm -rf "$tmp"' EXIT
+          export PROBE_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+          keytool -genkeypair -alias probe -keyalg RSA -keysize 3072 -validity 1 -dname "CN=Validation CI Probe" \
+            -storetype PKCS12 -keystore "$tmp/probe.p12" -storepass:env PROBE_PASSWORD -keypass:env PROBE_PASSWORD
+          keytool -exportcert -alias probe -keystore "$tmp/probe.p12" -storepass:env PROBE_PASSWORD > "$tmp/cert.der"
+          expected="$(sha256sum "$tmp/cert.der" | cut -d' ' -f1)"
+          cat > "$tmp/AndroidManifest.xml" <<'XML'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.noirero.validation.probe" android:versionCode="1" android:versionName="1.0">
+            <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/>
+            <application android:hasCode="false" android:label="Validation Probe"/>
+          </manifest>
+          XML
+          "$tools/aapt2" link -I "$ANDROID_HOME/platforms/android-35/android.jar" --manifest "$tmp/AndroidManifest.xml" -o "$tmp/unsigned.apk"
+          "$tools/zipalign" -f -P 16 4 "$tmp/unsigned.apk" "$tmp/aligned.apk"
+          "$tools/apksigner" sign --ks "$tmp/probe.p12" --ks-key-alias probe --ks-pass env:PROBE_PASSWORD --key-pass env:PROBE_PASSWORD --out "$tmp/signed.apk" "$tmp/aligned.apk"
+          unset PROBE_PASSWORD
+          "$tools/zipalign" -c -P 16 4 "$tmp/signed.apk"
+          "$tools/apksigner" verify --verbose --print-certs "$tmp/signed.apk" | tee "$tmp/verify.txt"
+          python3 - "$tmp/verify.txt" "$expected" <<'PY'
+          import runpy
+          import sys
+          from pathlib import Path
+          verify = runpy.run_path(".github/scripts/validation-apk.py")["verify_signing_certificate"]
+          output = Path(sys.argv[1]).read_text()
+          expected = sys.argv[2]
+          print("Temporary certificate SHA-256:", expected)
+          assert verify(output, expected) == expected
+          wrong = "0" * 64 if expected != "0" * 64 else "1" * 64
+          try:
+              verify(output, wrong)
+          except ValueError:
+              print("Wrong certificate correctly rejected")
+          else:
+              raise AssertionError("Wrong certificate accepted")
+          print("PASS: actual apksigner signature and certificate output accepted by production verifier")
           PY
   contract:
     if: github.event_name == 'pull_request' && github.base_ref == 'Amain2'
