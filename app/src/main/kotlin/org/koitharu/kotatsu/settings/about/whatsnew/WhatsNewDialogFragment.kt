@@ -19,6 +19,7 @@ class WhatsNewDialogFragment : ComposeAlertDialogFragment() {
         super.onCreate(savedInstanceState)
         // Re-evaluate startup/security after recreation instead of restoring the old window.
         restored = savedInstanceState != null
+        traceWhatsNew("dialog created restored=$restored host=${activity?.let { System.identityHashCode(it) }}")
         if (restored) setShowsDialog(false)
     }
 
@@ -29,6 +30,7 @@ class WhatsNewDialogFragment : ComposeAlertDialogFragment() {
 
     override fun onResume() {
         super.onResume()
+        traceWhatsNew("dialog resumed restored=$restored")
         if (restored) {
             val host = activity as? MainActivity
             dismiss()
@@ -40,6 +42,7 @@ class WhatsNewDialogFragment : ComposeAlertDialogFragment() {
         super.onStop()
         // An interrupted, unacknowledged showcase is ephemeral UI. Remove its window
         // so resume, rotation or protection rechecks cannot restore it above another prompt.
+        traceWhatsNew("dialog stopped consumed=$consumed restored=$restored removing=$isRemoving")
         if (!consumed && !restored && !isRemoving) dismissAllowingStateLoss()
     }
 
@@ -53,18 +56,35 @@ class WhatsNewDialogFragment : ComposeAlertDialogFragment() {
     }
 
     private fun complete(destination: FeatureDestination?) {
-        val host = activity as? MainActivity ?: return
-        if (consumed || host.isFinishing || host.isDestroyed || parentFragmentManager.isStateSaved ||
-            !host.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
-            !host.appProtectHelper.isUnlockedFlow.value || coordinator.preparedCatalog() == null) return
+        val host = activity as? MainActivity ?: run {
+            traceWhatsNew("dialog action blocked reason=no_host")
+            return
+        }
+        val reason = when {
+            consumed -> "consumed"
+            host.isFinishing || host.isDestroyed -> "host_gone"
+            parentFragmentManager.isStateSaved -> "state_saved"
+            !host.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) -> "host_not_resumed"
+            !host.appProtectHelper.isUnlockedFlow.value -> "locked"
+            coordinator.preparedCatalog() == null -> "catalog_missing"
+            else -> null
+        }
+        if (reason != null) {
+            traceWhatsNew("dialog action blocked reason=$reason destination=$destination")
+            return
+        }
+        traceWhatsNew("dialog action accepted destination=$destination")
         consumed = true
         dismiss()
         if (destination == null || WhatsNewDestinationRouter.open(host, destination)) {
             coordinator.acknowledge()
+        } else {
+            traceWhatsNew("dialog destination rejected destination=$destination")
         }
     }
 
     override fun onCancel(dialog: DialogInterface) {
+        traceWhatsNew("dialog cancel restored=$restored consumed=$consumed")
         if (!restored && !consumed && coordinator.preparedCatalog() != null &&
             (activity as? MainActivity)?.appProtectHelper?.isUnlockedFlow?.value == true) {
             consumed = true

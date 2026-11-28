@@ -37,6 +37,7 @@ class WhatsNewRuntimeTest {
     @get:Rule(order = 1) val compose = createEmptyComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     @Inject lateinit var settings: AppSettings
+    @Inject lateinit var store: WhatsNewStateStore
 
     @Inject @BaseHttpClient lateinit var baseHttpClient: Provider<OkHttpClient>
 
@@ -54,31 +55,37 @@ class WhatsNewRuntimeTest {
 
     @Test fun earlierInstallationShowsOnePopupAndAcknowledgementSurvivesRecreation() {
         val stateFile = AtomicFile(File(context.noBackupFilesDir, "whats-new-state.json"))
-        val original = runCatching { stateFile.readFully() }.getOrNull()
-        val store = WhatsNewStateStore(context)
+        // The coordinator and test must use the same AtomicFile owner/monitor.
+        val original = synchronized(store) { runCatching { stateFile.readFully() }.getOrNull() }
         val onboarding = settings.isOnboardingCompleted
         val protection = settings.isAppProtectionEnabled
         val current = ReleaseIdentity(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong())
         val previous = ReleaseIdentity("0.0.1", current.code - 1)
         try {
-            stateFile.delete()
-            assertTrue(store.write(previous))
+            synchronized(store) {
+                stateFile.delete()
+                assertTrue(store.write(previous))
+            }
             settings.isOnboardingCompleted = true
             settings.isAppProtectionEnabled = false
             ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
-                fun awaitPopup() {
+                fun awaitPopup(stage: String) {
+                    traceWhatsNew("test waiting popup stage=$stage")
                     compose.waitUntil(10_000) {
                         compose.onAllNodesWithTag("whats_new_close").fetchSemanticsNodes().isNotEmpty()
                     }
                     compose.onAllNodesWithTag("whats_new_close").assertCountEquals(1)
+                    traceWhatsNew("test observed popup stage=$stage")
                 }
-                awaitPopup()
+                awaitPopup("initial")
                 assertEquals(previous, store.read())
                 scenario.recreate()
-                awaitPopup()
+                awaitPopup("recreated")
                 assertEquals(previous, store.read())
+                traceWhatsNew("test clicking close")
                 compose.onNodeWithTag("whats_new_close").performScrollTo().performClick()
                 compose.waitUntil(10_000) { store.read() == current }
+                traceWhatsNew("test verified persisted identity")
                 scenario.moveToState(Lifecycle.State.CREATED)
                 scenario.moveToState(Lifecycle.State.RESUMED)
                 scenario.recreate()
@@ -92,11 +99,13 @@ class WhatsNewRuntimeTest {
         } finally {
             settings.isOnboardingCompleted = onboarding
             settings.isAppProtectionEnabled = protection
-            stateFile.delete()
-            if (original != null) {
-                val stream = stateFile.startWrite()
-                stream.write(original)
-                stateFile.finishWrite(stream)
+            synchronized(store) {
+                stateFile.delete()
+                if (original != null) {
+                    val stream = stateFile.startWrite()
+                    stream.write(original)
+                    stateFile.finishWrite(stream)
+                }
             }
         }
     }

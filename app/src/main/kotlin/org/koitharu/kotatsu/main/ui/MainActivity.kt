@@ -62,6 +62,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.settings.about.whatsnew.WhatsNewCoordinator
+import org.koitharu.kotatsu.settings.about.whatsnew.traceWhatsNew
 import org.koitharu.kotatsu.main.ui.protect.AppProtectHelper
 import org.koitharu.kotatsu.browser.AdListUpdateService
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
@@ -285,21 +286,34 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 	override fun onWindowFocusChanged(hasFocus: Boolean) {
 		super.onWindowFocusChanged(hasFocus)
+		traceWhatsNew("host focus host=${System.identityHashCode(this)} focused=$hasFocus lifecycle=${lifecycle.currentState}")
 		if (hasFocus) {
 			deliverDiscoveryRequest()
 			requestWhatsNew()
 		}
 	}
 
-	internal fun canPresentWhatsNew(): Boolean =
-		::navigationDelegate.isInitialized && settings.isOnboardingCompleted &&
-			appProtectHelper.isUnlockedFlow.value && !isFinishing && !isDestroyed &&
-			lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-			!supportFragmentManager.isStateSaved && hasWindowFocus() &&
-			window.decorView.visibility == View.VISIBLE
+	internal fun whatsNewPresentationBlocker(): String? = when {
+		!::navigationDelegate.isInitialized -> "navigation_uninitialized"
+		!settings.isOnboardingCompleted -> "onboarding"
+		!appProtectHelper.isUnlockedFlow.value -> "locked"
+		isFinishing || isDestroyed -> "host_gone"
+		!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) -> "not_resumed"
+		supportFragmentManager.isStateSaved -> "state_saved"
+		!hasWindowFocus() -> "no_window_focus"
+		window.decorView.visibility != View.VISIBLE -> "not_visible"
+		else -> null
+	}
+
+	internal fun canPresentWhatsNew(): Boolean = whatsNewPresentationBlocker() == null
 
 	internal fun requestWhatsNew() {
-		if (canPresentWhatsNew()) whatsNewCoordinator.request(this)
+		val reason = whatsNewPresentationBlocker()
+		if (reason == null) {
+			whatsNewCoordinator.request(this)
+		} else {
+			traceWhatsNew("host request blocked host=${System.identityHashCode(this)} reason=$reason")
+		}
 	}
 
 	internal fun openWhatsNewDiscovery(): Boolean {
