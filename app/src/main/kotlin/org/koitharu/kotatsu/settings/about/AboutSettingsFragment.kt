@@ -129,10 +129,6 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
-		if (requireActivity().intent.getBooleanExtra(WhatsNewFragment.EXTRA_OPEN_WHATS_NEW, false)) {
-			requireActivity().intent.removeExtra(WhatsNewFragment.EXTRA_OPEN_WHATS_NEW)
-			view.post(::openWhatsNew)
-		}
 		viewModel.onUpdateAvailable.observeEvent(viewLifecycleOwner, ::onUpdateAvailable)
 		viewModel.onError.observeEvent(viewLifecycleOwner) { error ->
 			Snackbar.make(view, error.getDisplayMessage(resources), Snackbar.LENGTH_SHORT).show()

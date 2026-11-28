@@ -4,254 +4,72 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.annotation.StringRes
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
-import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.settings.SettingsActivity
+import org.koitharu.kotatsu.settings.about.changelog.ChangelogFragment
+import org.koitharu.kotatsu.settings.about.whatsnew.ReleaseHighlights
+import org.koitharu.kotatsu.settings.about.whatsnew.ReleaseHighlightsContent
+import org.koitharu.kotatsu.settings.about.whatsnew.WhatsNewCoordinator
+import org.koitharu.kotatsu.settings.about.whatsnew.WhatsNewDestinationRouter
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareSettingsTheme
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
+    @Inject lateinit var coordinator: WhatsNewCoordinator
+    private var navigationInFlight = false
 
-	override fun onCreateView(
-		inflater: LayoutInflater,
-		container: ViewGroup?,
-		savedInstanceState: Bundle?,
-	): View = ComposeView(requireContext()).apply {
-		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-		setContent {
-			MiyorareSettingsTheme("about") {
-				WhatsNewScreen(appVersion = BuildConfig.VERSION_NAME)
-			}
-		}
-	}
+    override fun onResume() {
+        super.onResume()
+        navigationInFlight = false
+    }
 
-	companion object {
-		const val EXTRA_OPEN_WHATS_NEW = "miyorare_open_whats_new"
-		const val CONTENT_ID = "miyorare_v1_3_0"
-	}
-}
-
-private data class WhatsNewFeature(
-	@StringRes val badge: Int,
-	@StringRes val title: Int,
-	@StringRes val tagline: Int,
-	@StringRes val description: Int,
-	@StringRes val location: Int,
-	@StringRes val usage: Int,
-)
-
-private val FEATURES = listOf(
-	WhatsNewFeature(
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_v13_restore_title,
-		tagline = R.string.whats_new_v13_restore_tagline,
-		description = R.string.whats_new_v13_restore_description,
-		location = R.string.whats_new_v13_restore_location,
-		usage = R.string.whats_new_v13_restore_usage,
-	),
-	WhatsNewFeature(
-		badge = R.string.whats_new_badge_improved,
-		title = R.string.whats_new_v13_private_title,
-		tagline = R.string.whats_new_v13_private_tagline,
-		description = R.string.whats_new_v13_private_description,
-		location = R.string.whats_new_v13_private_location,
-		usage = R.string.whats_new_v13_private_usage,
-	),
-	WhatsNewFeature(
-		badge = R.string.whats_new_badge_improved,
-		title = R.string.whats_new_v13_source_packs_title,
-		tagline = R.string.whats_new_v13_source_packs_tagline,
-		description = R.string.whats_new_v13_source_packs_description,
-		location = R.string.whats_new_v13_source_packs_location,
-		usage = R.string.whats_new_v13_source_packs_usage,
-	),
-	WhatsNewFeature(
-		badge = R.string.whats_new_badge_improved,
-		title = R.string.whats_new_v13_search_title,
-		tagline = R.string.whats_new_v13_search_tagline,
-		description = R.string.whats_new_v13_search_description,
-		location = R.string.whats_new_v13_search_location,
-		usage = R.string.whats_new_v13_search_usage,
-	),
-)
-
-@Composable
-private fun WhatsNewScreen(appVersion: String) {
-	Column(
-		modifier = Modifier
-			.fillMaxWidth()
-			.verticalScroll(rememberScrollState())
-			.padding(horizontal = 16.dp, vertical = 12.dp),
-		verticalArrangement = Arrangement.spacedBy(14.dp),
-	) {
-		WhatsNewHero()
-		FEATURES.forEach { feature ->
-			FeatureCard(feature = feature, appVersion = appVersion)
-		}
-		MoreImprovementsCard()
-		Spacer(Modifier.height(16.dp))
-	}
-}
-
-@Composable
-private fun WhatsNewHero() {
-	val colors = MaterialTheme.colorScheme
-	Surface(
-		modifier = Modifier.fillMaxWidth(),
-		shape = RoundedCornerShape(28.dp),
-		color = colors.primaryContainer,
-	) {
-		Column(
-			modifier = Modifier.padding(horizontal = 24.dp, vertical = 26.dp),
-			horizontalAlignment = Alignment.CenterHorizontally,
-			verticalArrangement = Arrangement.spacedBy(8.dp),
-		) {
-			Text(
-				text = stringResource(R.string.whats_new_v13_hero_title),
-				style = MaterialTheme.typography.headlineSmall,
-				fontWeight = FontWeight.Bold,
-				color = colors.onPrimaryContainer,
-				textAlign = TextAlign.Center,
-			)
-			Text(
-				text = stringResource(R.string.whats_new_v13_hero_subtitle),
-				style = MaterialTheme.typography.bodyLarge,
-				color = colors.onPrimaryContainer.copy(alpha = 0.82f),
-				textAlign = TextAlign.Center,
-			)
-		}
-	}
-}
-
-@Composable
-private fun FeatureCard(feature: WhatsNewFeature, appVersion: String) {
-	val colors = MaterialTheme.colorScheme
-	Card(
-		modifier = Modifier.fillMaxWidth(),
-		shape = RoundedCornerShape(24.dp),
-		colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer),
-	) {
-		Column(
-			modifier = Modifier.padding(18.dp),
-			verticalArrangement = Arrangement.spacedBy(10.dp),
-		) {
-			Surface(
-				shape = RoundedCornerShape(50),
-				color = colors.secondaryContainer,
-			) {
-				Text(
-					text = stringResource(feature.badge),
-					modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-					style = MaterialTheme.typography.labelMedium,
-					fontWeight = FontWeight.Bold,
-					color = colors.onSecondaryContainer,
-				)
-			}
-			Text(
-				text = stringResource(feature.title),
-				style = MaterialTheme.typography.titleLarge,
-				fontWeight = FontWeight.Bold,
-			)
-			Text(
-				text = stringResource(feature.tagline),
-				style = MaterialTheme.typography.titleSmall,
-				fontWeight = FontWeight.SemiBold,
-				color = colors.primary,
-			)
-			Text(
-				text = stringResource(feature.description),
-				style = MaterialTheme.typography.bodyMedium,
-				color = colors.onSurfaceVariant,
-			)
-			FeatureMeta(
-				label = stringResource(R.string.whats_new_location_label),
-				value = stringResource(feature.location),
-			)
-			FeatureMeta(
-				label = stringResource(R.string.whats_new_usage_label),
-				value = stringResource(feature.usage),
-			)
-			Text(
-				text = stringResource(R.string.whats_new_introduced_version, appVersion),
-				style = MaterialTheme.typography.labelMedium,
-				color = colors.onSurfaceVariant,
-			)
-		}
-	}
-}
-
-@Composable
-private fun FeatureMeta(label: String, value: String) {
-	Column(
-		modifier = Modifier.fillMaxWidth(),
-		verticalArrangement = Arrangement.spacedBy(2.dp),
-	) {
-		Text(
-			text = label,
-			style = MaterialTheme.typography.labelLarge,
-			fontWeight = FontWeight.Bold,
-		)
-		Text(
-			text = value,
-			style = MaterialTheme.typography.bodyMedium,
-			color = MaterialTheme.colorScheme.onSurfaceVariant,
-		)
-	}
-}
-
-@Composable
-private fun MoreImprovementsCard() {
-	val colors = MaterialTheme.colorScheme
-	Card(
-		modifier = Modifier.fillMaxWidth(),
-		shape = RoundedCornerShape(24.dp),
-		colors = CardDefaults.cardColors(containerColor = colors.tertiaryContainer),
-	) {
-		Column(
-			modifier = Modifier.padding(20.dp),
-			verticalArrangement = Arrangement.spacedBy(10.dp),
-		) {
-			Text(
-				text = stringResource(R.string.whats_new_v13_more_title),
-				style = MaterialTheme.typography.titleLarge,
-				fontWeight = FontWeight.Bold,
-				color = colors.onTertiaryContainer,
-			)
-			Text(
-				text = stringResource(R.string.whats_new_v13_more_collection),
-				style = MaterialTheme.typography.bodyMedium,
-				color = colors.onTertiaryContainer,
-			)
-			Text(
-				text = stringResource(R.string.whats_new_v13_more_stability),
-				style = MaterialTheme.typography.bodyMedium,
-				color = colors.onTertiaryContainer,
-			)
-		}
-	}
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                MiyorareSettingsTheme("about") {
+                    val content by produceState<Pair<Boolean, ReleaseHighlights?>>(false to null) {
+                        value = true to coordinator.load()
+                    }
+                    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                        val highlights = content.second
+                        when {
+                            !content.first -> CircularProgressIndicator()
+                            highlights == null -> Text(stringResource(R.string.whats_new_no_content))
+                            else -> ReleaseHighlightsContent(highlights, onDestination = { destination ->
+                                val host = activity as? SettingsActivity
+                                if (!navigationInFlight && host != null) {
+                                    navigationInFlight = WhatsNewDestinationRouter.open(host, destination)
+                                }
+                            })
+                        }
+                        TextButton(onClick = {
+                            val host = activity as? SettingsActivity
+                            if (!navigationInFlight && host != null && !host.supportFragmentManager.isStateSaved) {
+                                navigationInFlight = true
+                                host.openFragment(ChangelogFragment::class.java, null, isFromRoot = false)
+                            }
+                        }) { Text(stringResource(R.string.changelog)) }
+                    }
+                }
+            }
+        }
 }
