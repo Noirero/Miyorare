@@ -155,6 +155,17 @@ class GitHubClient:
         )
         return list(payload.get("jobs", []))
 
+    def jobs_for_attempt(self, run_id: int, attempt: int) -> list[dict[str, Any]]:
+        path = f"/repos/{self.repository}/actions/runs/{run_id}/attempts/{attempt}/jobs"
+        jobs = []
+        for page in range(1, 11):
+            payload = self.get(f"{path}?per_page=100&page={page}")
+            batch = payload.get("jobs", [])
+            jobs.extend(batch)
+            if len(batch) < 100:
+                return jobs
+        raise ValueError("workflow attempt job list exceeded pagination safety limit")
+
     def artifacts_for_run(self, run_id: int) -> list[dict[str, Any]]:
         payload = self.get(
             f"/repos/{self.repository}/actions/runs/{run_id}/artifacts?per_page=100"
@@ -306,22 +317,27 @@ def failure_details(client: GitHubClient, run: dict[str, Any]) -> list[str]:
 
     details: list[str] = []
     try:
-        jobs = client.jobs_for_run(int(run["id"]))
-    except Exception as exc:
-        return [f"failure details unavailable ({type(exc).__name__})"]
+        attempt = int(run.get("run_attempt") or 0)
+        if attempt < 1:
+            return ["run attempt unavailable; cause unknown"]
+        jobs = client.jobs_for_attempt(int(run["id"]), attempt)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return [f"failure details unavailable ({type(exc).__name__}); cause unknown"]
 
     for job in jobs:
         if job.get("conclusion") not in FAILURE_CONCLUSIONS:
             continue
-        job_name = str(job.get("name") or "unnamed job")
+        job_name = failure_label(job.get("name"), "unnamed job")
         failed_steps = [
-            str(step.get("name") or "unnamed step")
+            failure_label(step.get("name"), "unnamed step")
             for step in job.get("steps", [])
             if step.get("conclusion") in FAILURE_CONCLUSIONS
         ]
         if failed_steps:
             for step_name in failed_steps[:2]:
-                area = classify_failure_area(job_name, step_name)
+                area = classify_failure_area("", step_name)
+                if area == "workflow step":
+                    area = classify_failure_area(job_name, "")
                 details.append(f"**{area}** · `{job_name}` → `{step_name}`")
         else:
             area = classify_failure_area(job_name, "")
@@ -329,7 +345,12 @@ def failure_details(client: GitHubClient, run: dict[str, Any]) -> list[str]:
         if len(details) >= 4:
             break
 
-    return details[:4] or ["failed before a failing job/step could be identified"]
+    return details[:4] or ["no failed job/step found in this attempt; cause unknown"]
+
+
+def failure_label(value: Any, fallback: str) -> str:
+    # Keep dynamic job and step names inside a single Markdown code span.
+    return " ".join(str(value or fallback).split()).replace("`", "'")[:180] or fallback
 
 
 def technical_readiness(
@@ -660,9 +681,14 @@ def render_card(
             )
         elif conclusion in FAILURE_CONCLUSIONS:
             details = failure_details(client, state.run)
+            next_step = (
+                "Check the first error in the failed step's log."
+                if details[0].startswith("**") and " → " in details[0]
+                else "Open the run summary and check the failed job or startup error."
+            )
             attention.append(
                 f"- **{state.name}:** validation failed: {'; '.join(details)}. "
-                f"[Open run]({state.run_url})"
+                f"**Next:** {next_step} [Open run]({state.run_url})"
             )
 
     for item in analysis["drift"]:
