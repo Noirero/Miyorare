@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
 import android.graphics.Rect
+import android.os.Looper
 import android.os.SystemClock
 import android.view.View
 import android.widget.TextView
@@ -13,6 +14,7 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,6 +23,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.NavItem
@@ -38,6 +41,8 @@ class FavouritesTitleNavigationTest {
 
 	@get:Rule val hilt = HiltAndroidRule(this)
 	@Inject lateinit var settings: AppSettings
+	// Resolve the real singleton off-main before MainActivity creates its ViewModel.
+	@Inject @BaseHttpClient lateinit var prewarmedBaseHttpClient: OkHttpClient
 	@Inject lateinit var privateSessionProvider: Provider<PrivateFavouritesSession>
 
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -47,7 +52,11 @@ class FavouritesTitleNavigationTest {
 	private val headingPrefs get() = PreferenceManager.getDefaultSharedPreferences(context)
 
 	@Before fun setUp() {
+		check(Looper.myLooper() != Looper.getMainLooper()) {
+			"HTTP client test setup must run off the UI thread"
+		}
 		hilt.inject()
+		check(::prewarmedBaseHttpClient.isInitialized)
 		originalHeadingCollapsed = if (headingPrefs.contains(FavouriteHeadingPreferences.KEY_COLLAPSED)) {
 			headingPrefs.getBoolean(FavouriteHeadingPreferences.KEY_COLLAPSED, false)
 		} else null
