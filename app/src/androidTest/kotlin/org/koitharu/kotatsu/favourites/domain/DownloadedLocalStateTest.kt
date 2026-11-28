@@ -180,6 +180,7 @@ import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryReconciler
 import org.koitharu.kotatsu.local.data.NormalDownloadDirectoryDiscovery
 import org.koitharu.kotatsu.local.data.NormalDownloadPriorIdentityReader
 import org.koitharu.kotatsu.local.data.NormalScannerParentListing
+import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -225,6 +226,7 @@ class DownloadedLocalStateTest {
 	@Inject lateinit var local: LocalMangaRepository
 	@Inject lateinit var resolver: DownloadedMangaResolver
 	@Inject lateinit var normalDownloadScope: NormalDownloadScope
+	@Inject lateinit var scannerProfileSourceAliases: SourceAliasRegistry
 	@Inject lateinit var readerRepositoryFactory: MangaRepository.Factory
 	@Inject lateinit var readerContent: LocalContentReader
 	@Inject internal lateinit var normalDirectoryDiscovery: NormalDownloadDirectoryDiscovery
@@ -3107,6 +3109,18 @@ class DownloadedLocalStateTest {
 		} finally {
 			cancellationScope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
 		}
+	}
+
+	// Bounded sampled-batch profiling uses the real library size in a separate Room database.
+	// Keep these in the selected runtime class so successful metrics reach the mandatory artifact.
+	@Test fun normalScannerProfile1024() = runBlocking<Unit> { profileNormalScanner(1_024) }
+
+	@Test fun normalScannerProfile4096() = runBlocking<Unit> { profileNormalScanner(4_096) }
+
+	@Test fun normalScannerProfile14526() = runBlocking<Unit> { profileNormalScanner(14_526) }
+
+	private suspend fun profileNormalScanner(titles: Int) = withTimeout(480_000L) {
+		NormalScannerScaleProfiler(context, settings, destinations, scannerProfileSourceAliases, index, root).run(titles)
 	}
 
 	/** Early T14 probe: comparable sequential vs batched observation work, 1,024 real Room titles.
