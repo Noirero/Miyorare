@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -215,7 +217,8 @@ class OnboardingAppearanceIntegrationTest {
             }
         }
         val next = compose.onNodeWithText(context.getString(R.string._continue))
-        val back = compose.onNodeWithText(context.getString(R.string.modern_onboarding_back))
+        // The pager may retain an offscreen, disabled Back node from another page.
+        val back = compose.onNode(hasText(context.getString(R.string.modern_onboarding_back)) and isEnabled())
         val done = compose.onNodeWithText(context.getString(R.string.done))
         fun assertPage(title: Int) {
             compose.waitForIdle()
