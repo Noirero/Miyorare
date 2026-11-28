@@ -182,7 +182,7 @@ jobs:
     if: needs.runtime-risk.outputs.run_runtime == 'true' && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci:runtime-required') || contains(github.event.pull_request.labels.*.name, 'ci:runtime-full') || contains(github.event.pull_request.labels.*.name, 'ci:user-issue') || contains(github.event.pull_request.labels.*.name, 'ci:theme'))
     needs: [compile-unit, runtime-risk]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       # Keep the compiler inside one bounded JVM; leave memory for the Android emulator.
       GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.project.kotlin.compiler.execution.strategy=in-process

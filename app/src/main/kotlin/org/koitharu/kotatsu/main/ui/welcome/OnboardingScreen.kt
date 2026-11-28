@@ -5,9 +5,9 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,10 +46,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +76,7 @@ import org.koitharu.kotatsu.settings.compose.MiyorarePalettePickerRow
 import org.koitharu.kotatsu.settings.compose.MiyorareVisualThemePickerRow
 
 private const val PAGE_COUNT = 4
+private const val PAGE_SLIDE_DURATION_MS = 320
 private val SCREEN_PADDING = 18.dp
 private val HERO_SHAPE = RoundedCornerShape(30.dp)
 private val CARD_SHAPE = RoundedCornerShape(24.dp)
@@ -125,12 +127,42 @@ fun OnboardingScreen(
 ) {
     val pagerState = rememberPagerState(pageCount = { PAGE_COUNT })
     val scope = rememberCoroutineScope()
-    val isLastPage by remember { derivedStateOf { pagerState.currentPage == PAGE_COUNT - 1 } }
-    val backEnabled by remember { derivedStateOf { pagerState.currentPage > 0 } }
+    var navigating by remember { mutableStateOf(false) }
+    val settledPage = pagerState.settledPage
+    val navigationEnabled = !navigating && !pagerState.isScrollInProgress
     val colors = MaterialTheme.colorScheme
 
-    BackHandler(enabled = backEnabled) {
-        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+    fun canNavigate(fromPage: Int): Boolean =
+        !navigating && !pagerState.isScrollInProgress && pagerState.settledPage == fromPage
+
+    fun navigateBy(fromPage: Int, delta: Int) {
+        if (!canNavigate(fromPage)) return
+        val targetPage = fromPage + delta
+        if (targetPage !in 0 until PAGE_COUNT) return
+        // Claim navigation before launching so rapid taps cannot queue competing scrolls.
+        navigating = true
+        scope.launch {
+            try {
+                pagerState.animateScrollToPage(
+                    page = targetPage,
+                    animationSpec = tween(
+                        durationMillis = PAGE_SLIDE_DURATION_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            } finally {
+                navigating = false
+            }
+        }
+    }
+
+    fun finishWhenIdle(fromPage: Int) {
+        if (canNavigate(fromPage)) actions.onFinish()
+    }
+
+    // Consume back during a slide instead of exiting from a transient first page.
+    BackHandler(enabled = settledPage > 0 || !navigationEnabled) {
+        navigateBy(pagerState.settledPage, -1)
     }
 
     Box(
@@ -166,12 +198,9 @@ fun OnboardingScreen(
             ) {
                 OnboardingTopBar(
                     pageIndex = pageIndex,
-                    onBack = {
-                        scope.launch {
-                            pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
-                        }
-                    },
-                    onSkip = actions.onFinish,
+                    navigationEnabled = navigationEnabled && pageIndex == settledPage,
+                    onBack = { navigateBy(pageIndex, -1) },
+                    onSkip = { finishWhenIdle(pageIndex) },
                 )
                 Spacer(Modifier.height(8.dp))
 
@@ -197,19 +226,18 @@ fun OnboardingScreen(
                         selectedThemePreset = selectedThemePreset,
                         selectedPaletteSource = selectedPaletteSource,
                         storageSummary = storageSummary,
-                        actions = actions,
+                        actions = actions.copy(onFinish = { finishWhenIdle(pageIndex) }),
                     )
                 }
             }
         }
 
         OnboardingBottomBar(
-            pageIndex = pagerState.currentPage,
-            isLastPage = isLastPage,
-            onNext = {
-                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-            },
-            onFinish = actions.onFinish,
+            pageIndex = settledPage,
+            isLastPage = settledPage == PAGE_COUNT - 1,
+            navigationEnabled = navigationEnabled,
+            onNext = { navigateBy(settledPage, 1) },
+            onFinish = { finishWhenIdle(settledPage) },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
@@ -218,6 +246,7 @@ fun OnboardingScreen(
 @Composable
 private fun OnboardingTopBar(
     pageIndex: Int,
+    navigationEnabled: Boolean,
     onBack: () -> Unit,
     onSkip: () -> Unit,
 ) {
@@ -242,7 +271,7 @@ private fun OnboardingTopBar(
                     .height(40.dp)
                     .clip(CircleShape)
                     .background(colors.surfaceContainerHigh)
-                    .clickable(onClick = onBack)
+                    .clickable(enabled = navigationEnabled, onClick = onBack)
                     .padding(start = 10.dp, end = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -263,7 +292,7 @@ private fun OnboardingTopBar(
         }
 
         if (pageIndex < PAGE_COUNT - 1) {
-            TextButton(onClick = onSkip) {
+            TextButton(onClick = onSkip, enabled = navigationEnabled) {
                 Text(
                     text = stringResource(R.string.modern_onboarding_skip),
                     color = colors.onBackground,
@@ -280,6 +309,7 @@ private fun OnboardingTopBar(
 private fun OnboardingBottomBar(
     pageIndex: Int,
     isLastPage: Boolean,
+    navigationEnabled: Boolean,
     onNext: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
@@ -309,7 +339,7 @@ private fun OnboardingBottomBar(
                     val selected = index == pageIndex
                     val dotWidth by animateDpAsState(
                         targetValue = if (selected) 24.dp else 7.dp,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
                         label = "onboarding_dot_$index",
                     )
                     Box(
@@ -327,6 +357,7 @@ private fun OnboardingBottomBar(
             GradientActionButton(
                 labelRes = if (isLastPage) R.string.done else R.string._continue,
                 iconRes = if (isLastPage) R.drawable.ic_check else R.drawable.ic_arrow_forward,
+                enabled = navigationEnabled,
                 onClick = if (isLastPage) onFinish else onNext,
             )
         }
@@ -337,6 +368,7 @@ private fun OnboardingBottomBar(
 private fun GradientActionButton(
     @StringRes labelRes: Int,
     @DrawableRes iconRes: Int,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -345,7 +377,7 @@ private fun GradientActionButton(
             .height(50.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Brush.horizontalGradient(listOf(colors.primary, colors.tertiary)))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
