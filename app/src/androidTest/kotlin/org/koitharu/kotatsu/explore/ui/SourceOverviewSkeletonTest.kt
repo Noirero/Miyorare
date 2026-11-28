@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -19,7 +20,10 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.PixelMap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
@@ -311,12 +315,21 @@ class SourceOverviewSkeletonTest {
             SideEffect { hostView = view }
             val scheme = if (light.value) lightColorScheme() else darkColorScheme()
             MaterialTheme(colorScheme = scheme) {
+                // The window capture previously compared clipped content against an implicit
+                // Activity backing surface. Keep the contrast and all antialiased corners
+                // inside a single controlled raster target, with a guard band around them.
                 Box(
-                    Modifier.size(104.dp, 156.dp).clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .overviewSkeletonShimmer(tracedPhase, effect.value, MaterialTheme.colorScheme.onSurface)
-                        .testTag("shimmer_fixture"),
-                )
+                    Modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .background(if (light.value) Color.Black else Color.White)
+                        .testTag("shimmer_fixture")
+                        .padding(8.dp),
+                ) {
+                    Box(
+                        Modifier.size(104.dp, 156.dp).clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .overviewSkeletonShimmer(tracedPhase, effect.value, MaterialTheme.colorScheme.onSurface),
+                    )
+                }
             }
         }
         val node = compose.onNodeWithTag("shimmer_fixture")
@@ -327,6 +340,9 @@ class SourceOverviewSkeletonTest {
             val x = baseline.width / 2
             val y = baseline.height / 2
             val baseCenter = baseline[x, y]
+            val backing = if (isLight) Color.Black else Color.White
+            assertEquals("Fixture has explicit contrast backing (light=$isLight)", backing, baseline[0, 0])
+            assertTrue("Fixture center differs from backing (light=$isLight)", baseCenter != backing)
             compose.runOnIdle { phase.value = 0.5f; effect.value = OverviewSkeletonEffect.SOFT }
             val soft = node.captureToImage().toPixelMap()
             assertTrue("Soft shimmer changes the face", soft[x, y] != baseCenter)
@@ -391,6 +407,15 @@ class SourceOverviewSkeletonTest {
                     logShimmerComparison(id, "later", baseline, later)
                     logShimmerComparison(id, "hybrid", baseline, hybrid)
                 }.onFailure { Log.w("OverviewShimmerDiag", "$id later evidence failed", it) }
+                // A second phase-0 sample distinguishes reference drift from endpoint-specific
+                // differences. It is evidence only; the original first phase-1 capture still gates.
+                runCatching {
+                    compose.runOnIdle { phase.value = 0f }
+                    val zeroAgain = node.captureToImage().toPixelMap()
+                    Log.i("OverviewShimmerDiag", "$id zeroAgainRead=${lastRead.get()} captureNanos=${SystemClock.elapsedRealtimeNanos()}")
+                    logShimmerComparison(id, "zero_again", baseline, zeroAgain)
+                    logShimmerComparison(id, "zero_again_vs_stopped", stopped, zeroAgain)
+                }.onFailure { Log.w("OverviewShimmerDiag", "$id phase-zero control failed", it) }
             }
             assertEquals("Stopped shimmer equals the static skeleton (light=$isLight, " +
                 "center baseline=$baseCenter stopped=${stopped[x, y]})", 0, mismatch)
