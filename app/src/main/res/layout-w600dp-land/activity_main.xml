@@ -86,27 +86,59 @@
 					android:id="@+id/landscape_favourites_heading"
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
-					android:orientation="vertical"
+					android:orientation="horizontal"
+					android:gravity="center_vertical"
 					android:visibility="gone">
 
-					<TextView
-						android:id="@+id/text_landscape_favourites_title"
+					<LinearLayout
+						android:id="@+id/landscape_favourites_copy"
 						android:layout_width="wrap_content"
 						android:layout_height="wrap_content"
-						android:paddingStart="@dimen/screen_padding"
-						android:text="@string/favourites"
-						android:textAppearance="?attr/textAppearanceHeadlineSmall"
-						android:textStyle="bold"
-						android:includeFontPadding="false" />
+						android:orientation="horizontal"
+						android:gravity="center_vertical"
+						android:visibility="gone">
 
-					<TextView
-						android:id="@+id/text_landscape_favourites_subtitle"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:paddingStart="@dimen/screen_padding"
-						android:text="@string/favourites_modern_subtitle"
-						android:textAppearance="?attr/textAppearanceBodyMedium"
-						android:includeFontPadding="false" />
+						<LinearLayout
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:orientation="vertical">
+
+
+							<TextView
+								android:id="@+id/text_landscape_favourites_title"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:paddingStart="@dimen/screen_padding"
+								android:text="@string/favourites"
+								android:textAppearance="?attr/textAppearanceHeadlineSmall"
+								android:textStyle="bold"
+								android:includeFontPadding="false" />
+
+							<TextView
+								android:id="@+id/text_landscape_favourites_subtitle"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:paddingStart="@dimen/screen_padding"
+								android:text="@string/favourites_modern_subtitle"
+								android:textAppearance="?attr/textAppearanceBodyMedium"
+								android:includeFontPadding="false" />
+						</LinearLayout>
+
+						<ImageButton
+							android:id="@+id/button_landscape_favourites_heading_hide"
+							android:layout_width="48dp"
+							android:layout_height="48dp"
+							android:layout_gravity="center_vertical"
+							android:background="?attr/selectableItemBackground"
+							android:contentDescription="@string/favourites_heading_reveal_control"
+							android:focusable="true"
+							android:padding="12dp"
+							android:rotation="180"
+							android:scaleType="centerInside"
+							android:src="@drawable/ic_expand_more"
+							android:visibility="gone" />
+
+					</LinearLayout>
 
 				</LinearLayout>
 
