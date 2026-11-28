@@ -1,0 +1,327 @@
+name: Validation APK
+run-name: "Validation APK · ${{ github.event_name }} · ${{ github.event.pull_request.number || inputs.pr_number }}"
+
+# Manual signing is main-only; PR contracts never receive signing secrets.
+on:
+  pull_request:
+    branches: [Amain2, main]
+    paths:
+      - '.github/workflows/validation-apk.yml'
+      - '.github/scripts/validation-apk.py'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open same-repository PR targeting Amain2
+        required: true
+        type: string
+      expected_sha:
+        description: Exact current 40-character PR HEAD SHA
+        required: true
+        type: string
+      baseline_version:
+        description: Optional older version name for a paired upgrade (PR merge-base source)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# run_number allocates two slots per invocation. Reruns retain the same version codes.
+concurrency:
+  group: miyorare-validation-apk-${{ github.event_name == 'workflow_dispatch' && 'manual' || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  activation-contract:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify the exact-head activation contract without signing secrets
+        env:
+          EXPECTED: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED"
+          python3 .github/scripts/validation-apk.py self-test
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          workflow = Path(".github/workflows/validation-apk.yml").read_text()
+          actions = re.findall(r"(?m)^\s*- uses:\s+(\S+)", workflow)
+          assert actions and all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", a) for a in actions), actions
+          PY
+  contract:
+    if: github.event_name == 'pull_request' && github.base_ref == 'Amain2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-read-only: true
+      - name: Test and build the unsigned overlay (no signing secrets)
+        env:
+          EXPECTED: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          script="$GITHUB_WORKSPACE/.github/scripts/validation-apk.py"
+          out="$RUNNER_TEMP/validation-contract"
+          python3 "$script" self-test
+          common=(--sha "$EXPECTED" --workflow-sha "$WORKFLOW_SHA" --pr "$PR" --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --run-attempt "$GITHUB_RUN_ATTEMPT" --slot 1)
+          python3 "$script" prepare "${common[@]}" --root "$GITHUB_WORKSPACE" --out "$out"
+          git diff --check HEAD --
+          bash gradlew :app:assembleDebug -PMIYORARE_VALIDATION=true --max-workers=4 --no-daemon --stacktrace
+          mapfile -t apks < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk')
+          test "${#apks[@]}" = 1
+          cp "${apks[0]}" "$out/unsigned.apk"
+          python3 "$script" verify "${common[@]}" --directory "$out" --apk unsigned.apk --record-unsigned \
+            --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+      - name: Upload contract evidence (not an installable APK)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validation-overlay-contract
+          path: |
+            ${{ runner.temp }}/validation-contract/build.json
+            ${{ runner.temp }}/validation-contract/overlay.patch
+          if-no-files-found: error
+          retention-days: 3
+
+  build:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      baseline_sha: ${{ steps.preflight.outputs.baseline_sha }}
+      paired: ${{ steps.preflight.outputs.paired }}
+    env:
+      PR: ${{ inputs.pr_number }}
+      EXPECTED: ${{ inputs.expected_sha }}
+      BASELINE_VERSION: ${{ inputs.baseline_version }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+      - name: Verify candidate and resolve optional baseline
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$PR" =~ ^[1-9][0-9]*$ && "$EXPECTED" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C trusted rev-parse HEAD)" = "$WORKFLOW_SHA"
+          data="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR")"
+          jq -e --arg repo "$GITHUB_REPOSITORY" --arg sha "$EXPECTED" \
+            '.state == "open" and .head.sha == $sha and .head.repo.full_name == $repo and .base.repo.full_name == $repo and .base.ref == "Amain2"' <<< "$data" >/dev/null
+          if [[ -n "$BASELINE_VERSION" ]]; then
+            [[ "$BASELINE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]]
+            base="$(jq -r .base.sha <<< "$data")"
+            baseline="$(gh api "repos/$GITHUB_REPOSITORY/compare/$base...$EXPECTED" --jq .merge_base_commit.sha)"
+            [[ "$baseline" =~ ^[0-9a-f]{40}$ && "$baseline" != "$EXPECTED" ]]
+            echo "baseline_sha=$baseline" >> "$GITHUB_OUTPUT"
+            echo "paired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "paired=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        if: steps.preflight.outputs.paired == 'true'
+        with:
+          ref: ${{ steps.preflight.outputs.baseline_sha }}
+          path: baseline
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-read-only: true
+      - name: Test trusted overlay contract
+        run: python3 trusted/.github/scripts/validation-apk.py self-test
+      - name: Build unsigned Validation APKs without secrets
+        env:
+          PAIRED: ${{ steps.preflight.outputs.paired }}
+          BASELINE_SHA: ${{ steps.preflight.outputs.baseline_sha }}
+        run: |
+          set -euo pipefail
+          script="$GITHUB_WORKSPACE/trusted/.github/scripts/validation-apk.py"
+          analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test -x "$analyzer"
+          mkdir -p "$GITHUB_WORKSPACE/unsigned"
+          build_one() {
+            local checkout="$1" sha="$2" slot="$3"
+            shift 3
+            local out="$GITHUB_WORKSPACE/unsigned/$slot"
+            local common=(--sha "$sha" --workflow-sha "$WORKFLOW_SHA" --pr "$PR" --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --run-attempt "$GITHUB_RUN_ATTEMPT" --slot "$slot")
+            python3 "$script" prepare "${common[@]}" --root "$checkout" --out "$out" "$@"
+            (cd "$checkout" && bash gradlew :app:assembleDebug -PMIYORARE_VALIDATION=true --max-workers=4 --no-daemon --stacktrace)
+            mapfile -t apks < <(find "$checkout/app/build/outputs/apk/debug" -maxdepth 1 -type f -name '*.apk')
+            test "${#apks[@]}" = 1
+            cp "${apks[0]}" "$out/unsigned.apk"
+            python3 "$script" verify "${common[@]}" --directory "$out" --apk unsigned.apk --apkanalyzer "$analyzer" --record-unsigned
+          }
+          build_one candidate "$EXPECTED" 1
+          if [[ "$PAIRED" == true ]]; then
+            build_one baseline "$BASELINE_SHA" 0 --version-name "$BASELINE_VERSION"
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a, b = [json.loads(Path(f"unsigned/{i}/build.json").read_text()) for i in (0, 1)]
+          assert a["versionName"] != b["versionName"], "Upgrade must change version name"
+          assert a["versionCode"] < b["versionCode"], "Upgrade must increase version code"
+          PY
+          fi
+      - name: Upload unsigned handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validation-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: unsigned/
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Configure required reviewers and main-only deployment rules before enabling.
+    environment: validation-signing
+    env:
+      PR: ${{ inputs.pr_number }}
+      EXPECTED: ${{ inputs.expected_sha }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+      PAIRED: ${{ needs.build.outputs.paired }}
+      BASELINE_SHA: ${{ needs.build.outputs.baseline_sha }}
+      CERTIFICATE: ${{ vars.VALIDATION_CERTIFICATE_SHA256 }}
+      BASELINE_VERSION: ${{ inputs.baseline_version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: validation-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: unsigned
+      - name: Verify current candidate and unsigned APK identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C trusted rev-parse HEAD)" = "$WORKFLOW_SHA"
+          [[ "$PR" =~ ^[1-9][0-9]*$ && "$EXPECTED" =~ ^[0-9a-f]{40}$ ]]
+          data="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR")"
+          jq -e --arg repo "$GITHUB_REPOSITORY" --arg sha "$EXPECTED" \
+            '.state == "open" and .head.sha == $sha and .head.repo.full_name == $repo and .base.repo.full_name == $repo and .base.ref == "Amain2"' <<< "$data" >/dev/null
+          if [[ -n "$BASELINE_VERSION" ]]; then
+            test "$PAIRED" = true
+            base="$(jq -r .base.sha <<< "$data")"
+            test "$(gh api "repos/$GITHUB_REPOSITORY/compare/$base...$EXPECTED" --jq .merge_base_commit.sha)" = "$BASELINE_SHA"
+          else
+            test "$PAIRED" = false
+          fi
+          [[ "$CERTIFICATE" =~ ^[0-9a-fA-F]{64}$ ]]
+          # Read version metadata as data from the exact candidate; never execute candidate code.
+          candidate_version="$(gh api "repos/$GITHUB_REPOSITORY/contents/app/build.gradle?ref=$EXPECTED" --jq .content | base64 --decode | python3 -c "import re,sys; v=re.findall(r\"(?m)^\\s*versionName = '([^']+)'$\", sys.stdin.read()); assert len(v)==1; print(v[0])")"
+          if [[ "$PAIRED" == true ]]; then test "$BASELINE_VERSION" != "$candidate_version"; fi
+          script="$GITHUB_WORKSPACE/trusted/.github/scripts/validation-apk.py"
+          analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          python3 "$script" self-test
+          verify_slot() {
+            local slot="$1" sha="$2" version="$3"
+            python3 "$script" verify --sha "$sha" --workflow-sha "$WORKFLOW_SHA" --pr "$PR" \
+              --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+              --slot "$slot" --directory "unsigned/$slot" --apk unsigned.apk --apkanalyzer "$analyzer" --expected-version "$version"
+          }
+          verify_slot 1 "$EXPECTED" "$candidate_version"
+          if [[ "$PAIRED" == true ]]; then verify_slot 0 "$BASELINE_SHA" "$BASELINE_VERSION"; fi
+      - name: Sign only verified APKs with the dedicated Validation key
+        env:
+          VALIDATION_KEYSTORE_BASE64: ${{ secrets.VALIDATION_KEYSTORE_BASE64 }}
+          VALIDATION_STORE_PASSWORD: ${{ secrets.VALIDATION_STORE_PASSWORD }}
+          VALIDATION_KEY_ALIAS: ${{ secrets.VALIDATION_KEY_ALIAS }}
+          VALIDATION_KEY_PASSWORD: ${{ secrets.VALIDATION_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in VALIDATION_KEYSTORE_BASE64 VALIDATION_STORE_PASSWORD VALIDATION_KEY_ALIAS VALIDATION_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "::error::Missing Validation signing configuration: $name"; exit 1; }
+          done
+          keydir="$(mktemp -d "$RUNNER_TEMP/validation-key.XXXXXX")"
+          trap 'rm -rf "$keydir"' EXIT
+          printf '%s' "$VALIDATION_KEYSTORE_BASE64" | base64 --decode > "$keydir/validation.keystore"
+          actual="$(keytool -exportcert -keystore "$keydir/validation.keystore" -alias "$VALIDATION_KEY_ALIAS" \
+            -storepass:env VALIDATION_STORE_PASSWORD | sha256sum | cut -d' ' -f1)"
+          test "$actual" = "${CERTIFICATE,,}"
+          tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$tools/apksigner" && test -x "$tools/zipalign"
+          sign_slot() {
+            local slot="$1" sha="$2" label="$3" out="signed/$1"
+            mkdir -p "$out"
+            cp "unsigned/$slot/build.json" "unsigned/$slot/overlay.patch" "$out/"
+            "$tools/zipalign" -f -P 16 4 "unsigned/$slot/unsigned.apk" "$keydir/aligned.apk"
+            local apk="Miyorare-Validation-$label-$PR-${sha:0:12}.apk"
+            "$tools/apksigner" sign --ks "$keydir/validation.keystore" --ks-key-alias "$VALIDATION_KEY_ALIAS" \
+              --ks-pass env:VALIDATION_STORE_PASSWORD --key-pass env:VALIDATION_KEY_PASSWORD \
+              --out "$out/$apk" "$keydir/aligned.apk"
+          }
+          sign_slot 1 "$EXPECTED" candidate
+          if [[ "$PAIRED" == true ]]; then sign_slot 0 "$BASELINE_SHA" baseline; fi
+      - name: Verify final signed APKs without secrets
+        run: |
+          set -euo pipefail
+          tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          script="$GITHUB_WORKSPACE/trusted/.github/scripts/validation-apk.py"
+          verify_signed() {
+            local slot="$1" sha="$2" label="$3" out="signed/$1"
+            local apk="Miyorare-Validation-$label-$PR-${sha:0:12}.apk"
+            "$tools/zipalign" -c -P 16 4 "$out/$apk"
+            python3 "$script" verify --sha "$sha" --workflow-sha "$WORKFLOW_SHA" --pr "$PR" \
+              --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+              --slot "$slot" --directory "$out" --apk "$apk" --apkanalyzer "$analyzer" \
+              --apksigner "$tools/apksigner" --certificate "$CERTIFICATE"
+          }
+          verify_signed 1 "$EXPECTED" candidate
+          if [[ "$PAIRED" == true ]]; then verify_signed 0 "$BASELINE_SHA" baseline; fi
+      - name: Reject stale candidate before artifact upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" | jq -e --arg sha "$EXPECTED" \
+            '.state == "open" and .head.sha == $sha and .base.ref == "Amain2"' >/dev/null
+          echo "Validation APK for PR #$PR at $EXPECTED (not a release)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Miyorare-Validation-PR-${{ inputs.pr_number }}-${{ github.run_number }}-${{ github.run_attempt }}
+          path: signed/
+          if-no-files-found: error
+          retention-days: 3
