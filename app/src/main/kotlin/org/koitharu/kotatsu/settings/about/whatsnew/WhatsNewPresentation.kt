@@ -37,9 +37,11 @@ internal fun ReleaseHighlightsContent(
         Text(stringResource(R.string.whats_new_version_label, highlights.version),
             style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
         if (highlights.fixture) {
-            Text(stringResource(R.string.whats_new_fixture_notice), style = MaterialTheme.typography.labelMedium)
+            Text(stringResource(R.string.whats_new_fixture_notice), style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface)
         }
-        Text(highlights.summary.forLanguage(language), style = MaterialTheme.typography.bodyMedium)
+        Text(highlights.summary.forLanguage(language), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         for (category in ReleaseCategory.entries) {
             val entries = highlights.entries.filter { it.category == category }
             if (entries.isEmpty()) continue

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
@@ -53,7 +54,10 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
                         val highlights = content.second
                         when {
                             !content.first -> CircularProgressIndicator()
-                            highlights == null -> Text(stringResource(R.string.whats_new_no_content))
+                            highlights == null -> Text(
+                                stringResource(R.string.whats_new_no_content),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
                             else -> ReleaseHighlightsContent(highlights, onDestination = { destination ->
                                 val host = activity as? SettingsActivity
                                 if (!navigationInFlight && host != null) {
