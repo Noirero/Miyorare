@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -46,6 +47,59 @@ class SourceOverviewSkeletonTest {
 
     private fun state(vararg shelves: SourceOverviewViewModel.Shelf) =
         SourceOverviewViewModel.State(manga.source, shelves.toList(), loading = false)
+
+    @Test
+    fun keyboardSearchSubmitsTrimmedQueryOnce() {
+        val submitted = mutableListOf<String>()
+        compose.setContent {
+            MaterialTheme {
+                SourceOverview("Fixture", state(), {}, { submitted.add(it) }, {}, {}, {}, {}, {})
+            }
+        }
+        val search = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.search)
+        compose.onNodeWithContentDescription(search).performClick()
+        val input = compose.onNode(hasSetTextAction())
+        input.assert(hasImeAction(ImeAction.Search))
+        input.performClick().performTextInput("  girl  ")
+        compose.runOnIdle { assertTrue(submitted.isEmpty()) }
+        input.performImeAction()
+        compose.runOnIdle { assertEquals(listOf("girl"), submitted) }
+    }
+
+    @Test
+    fun iconSearchStillSubmitsTrimmedQueryOnce() {
+        val submitted = mutableListOf<String>()
+        compose.setContent {
+            MaterialTheme {
+                SourceOverview("Fixture", state(), {}, { submitted.add(it) }, {}, {}, {}, {}, {})
+            }
+        }
+        val search = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.search)
+        val icon = compose.onNodeWithContentDescription(search)
+        icon.performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("  girl  ")
+        compose.runOnIdle { assertTrue(submitted.isEmpty()) }
+        icon.performClick()
+        compose.runOnIdle { assertEquals(listOf("girl"), submitted) }
+    }
+
+    @Test
+    fun whitespaceOnlyQueryCannotBeSubmittedByIconOrKeyboard() {
+        val submitted = mutableListOf<String>()
+        compose.setContent {
+            MaterialTheme {
+                SourceOverview("Fixture", state(), {}, { submitted.add(it) }, {}, {}, {}, {}, {})
+            }
+        }
+        val search = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.search)
+        val icon = compose.onNodeWithContentDescription(search)
+        icon.performClick()
+        val input = compose.onNode(hasSetTextAction())
+        input.performClick().performTextInput("   ")
+        icon.assertIsNotEnabled()
+        input.performImeAction()
+        compose.runOnIdle { assertTrue(submitted.isEmpty()) }
+    }
 
     @Test
     fun metadataReplacesOnlyItsOwnSkeletonAndRestoresRealClickAction() {
