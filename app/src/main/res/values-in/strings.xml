@@ -122,6 +122,7 @@
     <string name="scale_mode">Mode skala</string>
     <string name="create_backup">Buat cadangan data</string>
     <string name="data_restored_success">Semua data dipulihkan</string>
+    <string name="restore_report_app_settings">Pengaturan aplikasi: %1$d dipulihkan, %2$d dilewati.</string>
     <string name="data_restored_with_errors">Data berhasil dipulihkan, tapi ada kesalahan</string>
     <string name="just_now">Baru saja</string>
     <string name="long_ago">Lawas</string>

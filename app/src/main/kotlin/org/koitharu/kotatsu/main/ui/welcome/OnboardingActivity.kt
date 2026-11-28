@@ -100,7 +100,13 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
             val text = if (result.error != null) {
                 result.error.getDisplayMessage(resources)
             } else {
-                getString(R.string.data_restored_success)
+                val report = result.report
+                if (report != null && (report.restoredSettingsCount > 0 || report.skippedSettingsCount > 0)) {
+                    getString(R.string.data_restored_success) + "\n" +
+                        getString(R.string.restore_report_app_settings, report.restoredSettingsCount, report.skippedSettingsCount)
+                } else {
+                    getString(R.string.data_restored_success)
+                }
             }
             Toast.makeText(this, text, Toast.LENGTH_LONG).show()
             result.report?.missingSources?.let { showExtensionInstallPromptDialog(it) }

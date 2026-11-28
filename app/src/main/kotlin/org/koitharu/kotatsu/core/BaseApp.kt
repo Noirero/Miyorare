@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.core.logs.AppLogger
 import org.koitharu.kotatsu.core.os.AppValidator
 import org.koitharu.kotatsu.core.os.RomCompat
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.RestoredPreferencePolicy
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
@@ -165,6 +166,10 @@ open class BaseApp : Application(), Configuration.Provider {
 		initializeMiyorareDesignStyleDefault(base)
 		if (ACRA.isACRASenderServiceProcess()) {
 			return
+		}
+		// Repair the known type collision before Hilt, providers, or worker scheduling read settings.
+		if (!RestoredPreferencePolicy.repairAutoUpdateExtensions(PreferenceManager.getDefaultSharedPreferences(base))) {
+			android.util.Log.w("BaseApp", "Could not persist restored preference repair; will retry on next startup")
 		}
 		initAcra {
 			buildConfigClass = BuildConfig::class.java

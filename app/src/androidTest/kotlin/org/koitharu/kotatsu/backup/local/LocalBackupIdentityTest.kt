@@ -1,11 +1,33 @@
 package org.koitharu.kotatsu.backup.local
 
+import android.content.Context
+import android.content.SharedPreferences
+import android.net.Uri
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.protobuf.ProtoBuf
+import org.koitharu.kotatsu.backup.MihonBackupManager
+import org.koitharu.kotatsu.backup.MihonRestoreTarget
+import org.koitharu.kotatsu.backup.model.MihonBackup
+import org.koitharu.kotatsu.backup.model.MihonBackupPreference
+import org.koitharu.kotatsu.backup.model.MihonBackupManga
+import org.koitharu.kotatsu.backup.model.MihonBackupCategory
+import org.koitharu.kotatsu.backup.model.MihonBackupSourcePreferences
+import org.koitharu.kotatsu.backup.model.MihonBooleanPreferenceValue
+import org.koitharu.kotatsu.backup.model.MihonIntPreferenceValue
+import org.koitharu.kotatsu.backup.model.MihonStringPreferenceValue
+import org.koitharu.kotatsu.core.prefs.RestoredPreferencePolicy
+import org.koitharu.kotatsu.core.prefs.SourceSettings
+import org.koitharu.kotatsu.core.util.ext.putAll
+import org.koitharu.kotatsu.mihon.model.mihonMangaId
+import java.util.zip.GZIPOutputStream
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Provider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -47,6 +69,9 @@ class LocalBackupIdentityTest {
 	lateinit var repository: LocalBackupRepository
 
 	@Inject
+	lateinit var mihonBackupManagerProvider: Provider<MihonBackupManager>
+
+	@Inject
 	lateinit var database: MangaDatabase
 
 	@Inject
@@ -57,6 +82,169 @@ class LocalBackupIdentityTest {
 		hiltRule.inject()
 		database.clearAllTables()
 		privateSecurity.includePrivateInBackup = false
+	}
+
+	@Test
+	fun rawIntegerCollisionAndTargetedRepairUseRealSharedPreferences() {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		val prefs = instrumentation.targetContext.getSharedPreferences("restore_type_collision_fixture", Context.MODE_PRIVATE)
+		val key = AppSettings.KEY_AUTO_UPDATE_EXTENSIONS
+		val captured = AtomicReference<Throwable?>()
+		val listener = SharedPreferences.OnSharedPreferenceChangeListener { store, changed ->
+			if (changed == key) captured.set(runCatching { store.getBoolean(key, false) }.exceptionOrNull())
+		}
+		try {
+			prefs.edit().remove(key).putString("unrelated", "keep").commit()
+			prefs.registerOnSharedPreferenceChangeListener(listener)
+			// Negative control: the old importer stored the incoming Integer unchanged.
+			instrumentation.runOnMainSync { prefs.edit().putInt(key, 2).commit() }
+			assertTrue(captured.get() is ClassCastException)
+			prefs.unregisterOnSharedPreferenceChangeListener(listener)
+			for (invalid in listOf(0, 1, 2, 1L, 1f, "true", setOf("true"))) {
+				assertTrue(prefs.edit().apply { putAll(mapOf(key to invalid)) }.commit())
+				assertTrue(RestoredPreferencePolicy.repairAutoUpdateExtensions(prefs))
+				assertEquals(false, prefs.all[key])
+				assertTrue(RestoredPreferencePolicy.repairAutoUpdateExtensions(prefs))
+				assertEquals("keep", prefs.getString("unrelated", null))
+			}
+			for (value in listOf(true, false)) {
+				prefs.edit().putBoolean(key, value).commit()
+				assertTrue(RestoredPreferencePolicy.repairAutoUpdateExtensions(prefs))
+				assertEquals(value, prefs.all[key])
+			}
+			prefs.edit().remove(key).commit()
+			assertTrue(RestoredPreferencePolicy.repairAutoUpdateExtensions(prefs))
+			assertFalse(prefs.contains(key))
+		} finally {
+			prefs.unregisterOnSharedPreferenceChangeListener(listener)
+			prefs.edit().remove(key).remove("unrelated").commit()
+		}
+	}
+
+	@Test
+	fun externalWireRestoreRejectsCollisionAndPreservesNormalPrivateAndDynamicSettings() = runTest {
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		val context = instrumentation.targetContext
+		val backupManager = mihonBackupManagerProvider.get()
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val key = AppSettings.KEY_AUTO_UPDATE_EXTENSIONS
+		val full = AppSettings.KEY_READER_FULLSCREEN
+		val screen = AppSettings.KEY_READER_SCREEN_ON
+		val volume = AppSettings.KEY_READER_VOLUME_BUTTONS
+		val protectedKey = AppSettings.KEY_ONBOARDING_INSTALL_ID
+		val foreignKeys = setOf("fullscreen", "pref_keep_screen_on_key", "reader_volume_keys", "automatic_ext_updates", "fixture_unknown")
+		val keys = foreignKeys + setOf(key, full, screen, volume, protectedKey)
+		val previous = prefs.all.filterKeys { it in keys }
+		val sourceId = 93286123L
+		val sourcePrefs = context.getSharedPreferences(SourceSettings.getStorageName("MIHON_$sourceId"), Context.MODE_PRIVATE)
+		val dynamicKey = "fixture_extension_setting"
+		val previousSource = sourcePrefs.all.filterKeys { it == dynamicKey }
+		val readError = AtomicReference<Throwable?>()
+		val callbackCount = AtomicInteger()
+		val listener = SharedPreferences.OnSharedPreferenceChangeListener { store, changed ->
+			if (changed == key || changed == full) {
+				callbackCount.incrementAndGet()
+				runCatching { store.getBoolean(key, false) }.exceptionOrNull()?.let { readError.set(it) }
+			}
+		}
+		val file = File.createTempFile("restore_preference_collision", ".tachibk", context.cacheDir)
+		try {
+			val fixture = MihonBackup(
+				backupManga = listOf(MihonBackupManga(source = sourceId, url = "https://fixture.example/manga/1", title = "Preference fixture", favorite = true, categories = listOf(1))),
+				backupCategories = listOf(MihonBackupCategory(name = "Preference fixture", id = 1, order = 0)),
+				backupPreferences = listOf(
+					MihonBackupPreference(key, MihonIntPreferenceValue(2)),
+					MihonBackupPreference("fullscreen", MihonBooleanPreferenceValue(false)),
+					MihonBackupPreference("pref_keep_screen_on_key", MihonBooleanPreferenceValue(false)),
+					MihonBackupPreference("reader_volume_keys", MihonBooleanPreferenceValue(true)),
+					MihonBackupPreference(protectedKey, MihonStringPreferenceValue("foreign-install-id")),
+					MihonBackupPreference("automatic_ext_updates", MihonBooleanPreferenceValue(true)),
+					MihonBackupPreference("fixture_unknown", MihonStringPreferenceValue("foreign")),
+				),
+				backupSourcePreferences = listOf(MihonBackupSourcePreferences("source_$sourceId", listOf(MihonBackupPreference(dynamicKey, MihonStringPreferenceValue("portable"))))),
+			)
+			GZIPOutputStream(file.outputStream()).use { it.write(ProtoBuf.encodeToByteArray(MihonBackup.serializer(), fixture)) }
+			val uri = Uri.fromFile(file)
+			val mangaId = mihonMangaId("MIHON_$sourceId", "https://fixture.example/manga/1")
+			for (target in listOf(MihonRestoreTarget.NORMAL, MihonRestoreTarget.PRIVATE)) {
+				database.clearAllTables()
+				prefs.edit().apply {
+					foreignKeys.forEach { remove(it) }
+					putBoolean(key, true).putBoolean(full, true).putBoolean(screen, true).putBoolean(volume, false)
+					putString(protectedKey, "local-install-id")
+				}.commit()
+				instrumentation.waitForIdleSync()
+				callbackCount.set(0)
+				readError.set(null)
+				prefs.registerOnSharedPreferenceChangeListener(listener)
+				try {
+					val report = backupManager.restoreBackup(uri, MihonBackupManager.Options(extensionRepoSettings = false), target)
+					instrumentation.waitForIdleSync()
+					assertNull(readError.get())
+					assertTrue(callbackCount.get() > 0)
+					assertEquals(true, prefs.all[key])
+					assertEquals(false, prefs.all[full])
+					assertEquals(false, prefs.all[screen])
+					assertEquals(true, prefs.all[volume])
+					assertEquals("local-install-id", prefs.getString(protectedKey, null))
+					assertTrue(foreignKeys.none { prefs.contains(it) })
+					assertEquals("portable", sourcePrefs.getString(dynamicKey, null))
+					assertEquals(3, report.restoredSettingsCount)
+					assertEquals(4, report.skippedSettingsCount)
+					assertEquals(1, report.restoredMangaCount)
+					if (target == MihonRestoreTarget.NORMAL) {
+						assertTrue(database.getFavouritesDao().findCategoriesIds(mangaId).isNotEmpty())
+						assertTrue(database.getPrivateFavouritesDao().findCategoriesIds(mangaId).isEmpty())
+					} else {
+						assertTrue(database.getPrivateFavouritesDao().findCategoriesIds(mangaId).isNotEmpty())
+						assertTrue(database.getFavouritesDao().findCategoriesIds(mangaId).isEmpty())
+					}
+				} finally {
+					prefs.unregisterOnSharedPreferenceChangeListener(listener)
+				}
+			}
+			prefs.edit().putBoolean(full, true).commit()
+			val report = backupManager.restoreBackup(uri, MihonBackupManager.Options(libraryEntries = false, appSettings = false, sourceSettings = false, extensionRepoSettings = false))
+			assertEquals(true, prefs.all[full])
+			assertEquals(0, report.restoredSettingsCount)
+			assertEquals(0, report.skippedSettingsCount)
+		} finally {
+			prefs.unregisterOnSharedPreferenceChangeListener(listener)
+			prefs.edit().apply { keys.forEach { remove(it) }; putAll(previous) }.commit()
+			sourcePrefs.edit().apply { remove(dynamicKey); putAll(previousSource) }.commit()
+			file.delete()
+		}
+	}
+
+	@Test
+	fun nativeZipAndSharedSyncBoundaryCannotReintroduceIntegerCollision() = runTest {
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val settings = AppSettings(context)
+		val key = AppSettings.KEY_AUTO_UPDATE_EXTENSIONS
+		val other = AppSettings.KEY_READER_FULLSCREEN
+		val previous = prefs.all.filterKeys { it == key || it == other }
+		try {
+			prefs.edit().putBoolean(key, true).putBoolean(other, true).commit()
+			val backup = ByteArrayOutputStream()
+			ZipOutputStream(backup).use { output ->
+				output.putNextEntry(ZipEntry(BackupSection.SETTINGS.entryName))
+				output.write("""{"$key":{"_t":"int","v":2},"$other":{"_t":"bool","v":false}}""".toByteArray())
+				output.closeEntry()
+			}
+			ZipInputStream(backup.toByteArray().inputStream()).use { input ->
+				assertTrue(repository.restoreBackup(input, setOf(BackupSection.SETTINGS), null).isAllSuccess)
+			}
+			assertTrue(settings.isAutoUpdateExtensionsEnabled)
+			assertFalse(settings.isReaderFullscreenEnabled)
+			settings.upsertAll(mapOf(key to 2, other to true))
+			assertTrue(settings.isAutoUpdateExtensionsEnabled)
+			assertTrue(settings.isReaderFullscreenEnabled)
+			settings.upsertAll(mapOf(key to false))
+			assertFalse(settings.isAutoUpdateExtensionsEnabled)
+		} finally {
+			prefs.edit().apply { remove(key); remove(other); putAll(previous) }.commit()
+		}
 	}
 
 	@Test
