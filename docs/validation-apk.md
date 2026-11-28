@@ -9,8 +9,10 @@ is intentionally independent of required CI and never publishes a release.
 The workflow must first reach the trusted default branch (main) through a
 separately approved infrastructure-only PR. Do not dispatch from candidate
 branches. The activation PR runs exact-head Python contract tests and checks
-that all action references are immutable full commit SHAs; it does not build
-an APK from the older main application tree. Preserve the pinned versions in
+that all action references are immutable full commit SHAs. The separate fresh-install
+contract builds the pinned historical PR #1065 baseline and candidate, applies
+the trusted overlay, and runs Android 16 onboarding using disposable signing keys.
+It does not build an APK from the older main application tree. Preserve the pinned versions in
 future infrastructure reconciliation to Amain2 before a product promotion. Configure a protected GitHub environment named
 validation-signing with required reviewers and main-only deployment rules.
 Create and back up a dedicated long-lived testing keystore offline; never reuse
@@ -49,6 +51,10 @@ private data. The overlay removes broad storage and package installer/delete
 permissions, disables automatic backup and legacy external storage, disables
 Shizuku, removes shared activity deep links/callback filters, and restricts
 configured Normal/Private/legacy manga roots to app-owned canonical paths.
+The overlay treats system installer capability as unavailable, hides the installer
+permission row in onboarding, rejects external extension install/uninstall routes,
+and prevents broad-storage permission requests from the manga directory picker.
+App-owned default storage and private extension paths remain available.
 SELF_UPDATE_SUPPORTED remains false in debug. This is not complete filesystem
 or network isolation: explicit document grants, manual imports, third-party
 extensions, network accounts and cloud actions need separate test data.
@@ -85,7 +91,13 @@ from seeded emulator instrumentation.
 Infrastructure changes trigger a separate, unsigned contract job that runs the
 Python self-tests, applies the overlay to the exact PR head, builds the debug
 APK and checks its merged manifest. It never accesses signing secrets or
-uploads an installable APK. Manual builds verify identity before and after signing. Required compile/JVM/runtime/identity CI remains separate;
+uploads an installable APK. The main activation runtime matrix and every manual
+build test actual fresh installation, onboarding through the storage/permissions
+page, completion and restart on a disposable Android 16 emulator. Only temporary
+copies are signed for this test; no permanent credentials are available, and the
+unsigned APK digest must remain unchanged. Manual builds must pass this gate
+before uploading the unsigned handoff. The signing job remains isolated and
+verifies identity before and after signing. Required compile/JVM/runtime/identity CI remains separate;
 physical acceptance is tied to the source SHA plus overlay and signed artifact.
 No secret creation, production signing, workflow dispatch, release, or branch
 promotion is part of infrastructure implementation. Signed-pair emulator

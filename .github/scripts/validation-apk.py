@@ -173,6 +173,66 @@ internal object ValidationStoragePolicy {
     return [prefs, store, helper]
 
 
+def runtime_compatibility(root):
+    """Keep permission-dependent UI and package operations compatible with Validation isolation."""
+    edits = [
+        ("main/ui/welcome/OnboardingActivity.kt",
+         "OnboardingPermissions(false, false, false)",
+         "OnboardingPermissions(null, false, false)"),
+        ("main/ui/welcome/OnboardingActivity.kt",
+         "private fun hasInstallPermission(): Boolean {\n        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true\n        return packageManager.canRequestPackageInstalls()\n    }",
+         "private fun hasInstallPermission(): Boolean? = null // System installer unavailable in Validation."),
+        ("main/ui/welcome/OnboardingActivity.kt",
+         "private fun requestInstallPermission() {\n        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return\n        runCatching {\n            installPermissionLauncher.launch(\n                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse(\"package:$packageName\")),\n            )\n        }.onFailure {\n            Toast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()\n        }\n    }",
+         "private fun requestInstallPermission() = Unit // No system installer capability in Validation."),
+        ("main/ui/welcome/OnboardingScreen.kt",
+         "val hasInstall: Boolean,",
+         "val hasInstall: Boolean?, // null means this capability is unavailable"),
+        ("main/ui/welcome/OnboardingScreen.kt",
+         "        PermissionRow(\n            iconRes = R.drawable.ic_plug_large,\n            titleRes = R.string.modern_onboarding_permission_install,\n            badgeRes = R.string.modern_onboarding_badge_important,\n            isGranted = permissions.hasInstall,\n            onClick = actions.onPermissionInstall,\n        )\n        GlassDivider()",
+         "        permissions.hasInstall?.let { granted ->\n            PermissionRow(\n                iconRes = R.drawable.ic_plug_large,\n                titleRes = R.string.modern_onboarding_permission_install,\n                badgeRes = R.string.modern_onboarding_badge_important,\n                isGranted = granted,\n                onClick = actions.onPermissionInstall,\n            )\n            GlassDivider()\n        }"),
+        ("settings/sources/catalog/SourcesCatalogActivity.kt",
+         "private fun canInstallPackages(): Boolean {\n\t\tif (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true\n\t\treturn packageManager.canRequestPackageInstalls()\n\t}",
+         "private fun canInstallPackages(): Boolean = false // Validation cannot install system packages."),
+        ("settings/sources/catalog/SourcesCatalogActivity.kt",
+         "private fun requestInstallPackagesPermission() {\n\t\tif (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return\n\t\tval intent = Intent(\n\t\t\tSettings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,\n\t\t\tUri.parse(\"package:$packageName\"),\n\t\t)\n\t\tinstallPermissionLauncher.launch(intent)\n\t}",
+         "private fun requestInstallPackagesPermission() {\n\t\tcancelPendingInstalls(recordAsFailed = true)\n\t\tToast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()\n\t}"),
+        ("settings/sources/catalog/SourcesCatalogActivity.kt",
+         "private fun enqueueInstall(request: SourcesCatalogViewModel.InstallRequest) {\n",
+         "private fun enqueueInstall(request: SourcesCatalogViewModel.InstallRequest) {\n\t\tif (!request.isNovelPlugin && request.mode == ExtensionInstallMode.SYSTEM &&\n\t\t\tinstallerPreferences.method != ExtensionInstallerMethod.PRIVATE) {\n\t\t\trejectInstallRequest(request)\n\t\t\tToast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()\n\t\t\treturn\n\t\t}\n"),
+        ("settings/sources/catalog/SourcesCatalogActivity.kt",
+         "\t\t\tval uri = Uri.fromParts(\"package\", pkg, null)\n\t\t\tval action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {\n\t\t\t\tIntent.ACTION_DELETE\n\t\t\t} else {\n\t\t\t\t@Suppress(\"DEPRECATION\")\n\t\t\t\tIntent.ACTION_UNINSTALL_PACKAGE\n\t\t\t}\n\t\t\ttry {\n\t\t\t\tpendingUninstallPackage = pkg\n\t\t\t\tviewModel.setExtensionInProgress(pkg, true)\n\t\t\t\tuninstallLauncher.launch(Intent(action, uri))\n\t\t\t} catch (_: ActivityNotFoundException) {\n\t\t\t\tpendingUninstallPackage = null\n\t\t\t\tviewModel.clearExtensionInProgress(pkg)\n\t\t\t\tToast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()\n\t\t\t}",
+         "\t\t\t// Validation permits private extension removal only.\n\t\t\tviewModel.clearExtensionInProgress(pkg)\n\t\t\tToast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()"),
+        ("settings/sources/catalog/SourcesCatalogActivity.kt",
+         "\t\tif (\n\t\t\tpendingDownload.isProviderReplacement &&\n",
+         "\t\t// Reject system/Shizuku routes before external package removal or installation.\n\t\tif (method != ExtensionInstallerMethod.PRIVATE) {\n\t\t\tviewModel.clearExtensionInProgress(expectedPackage)\n\t\t\tremoveDownloadedApk(pendingDownload.fileName)\n\t\t\trecordBatchResult(expectedPackage, false)\n\t\t\tToast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()\n\t\t\treturn\n\t\t}\n\t\tif (\n\t\t\tpendingDownload.isProviderReplacement &&\n"),
+        ("settings/sources/SourceSettingsFragment.kt",
+         "private fun uninstallExtension(packageName: String) {\n\t\tval uri = Uri.fromParts(\"package\", packageName, null)\n\t\tval action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {\n\t\t\tIntent.ACTION_DELETE\n\t\t} else {\n\t\t\t@Suppress(\"DEPRECATION\")\n\t\t\tIntent.ACTION_UNINSTALL_PACKAGE\n\t\t}\n\t\tstartActivity(Intent(action, uri))\n\t}",
+         "private fun uninstallExtension(packageName: String) {\n\t\tandroid.widget.Toast.makeText(requireContext(), R.string.operation_not_supported, android.widget.Toast.LENGTH_SHORT).show()\n\t}"),
+        ("extensions/install/ExtensionUpdateWorker.kt",
+         "\t\tval method = installerPreferences.method\n\t\tval autoUpdate = settings.isAutoUpdateExtensionsEnabled",
+         "\t\tval method = installerPreferences.method\n\t\tif (method == ExtensionInstallerMethod.SHIZUKU) return Result.success()\n\t\tval autoUpdate = settings.isAutoUpdateExtensionsEnabled"),
+        ("settings/storage/RequestStorageManagerPermissionContract.kt",
+         "return if (Environment.isExternalStorageManager()) {\n\t\t\tSynchronousResult(true)\n\t\t} else {\n\t\t\tnull\n\t\t}",
+         "return SynchronousResult(false) // Validation cannot request all-files access."),
+        ("settings/storage/MangaDirectorySelectDialog.kt",
+         "private fun pickCustomDirectory() {\n\t\tif (!permissionRequestLauncher.tryLaunch(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {\n\t\t\tToast.makeText(context ?: return, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()\n\t\t}\n\t}",
+         "private fun pickCustomDirectory() {\n\t\tToast.makeText(context ?: return, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()\n\t}"),
+        ("settings/storage/directories/MangaDirectoriesActivity.kt",
+         "override fun onClick(v: View?) {\n\t\tif (!permissionRequestLauncher.tryLaunch(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {\n\t\t\tSnackbar.make(\n\t\t\t\tviewBinding.recyclerView, R.string.operation_not_supported, Snackbar.LENGTH_SHORT,\n\t\t\t).show()\n\t\t}\n\t}",
+         "override fun onClick(v: View?) {\n\t\tSnackbar.make(viewBinding.recyclerView, R.string.operation_not_supported, Snackbar.LENGTH_SHORT).show()\n\t}"),
+    ]
+    paths = {}
+    for relative, old, new in edits:
+        path = root / KOTLIN / relative
+        if path not in paths:
+            paths[path] = path.read_text()
+        paths[path] = once(paths[path], old, new)
+    for path, content in paths.items():
+        path.write_text(content)
+    return list(paths)
+
+
 def prepare(args):
     root = args.root.resolve()
     out = args.out.resolve()
@@ -198,6 +258,7 @@ def prepare(args):
     label.write_text(once(label.read_text(), ">Miyorare Debug</string>", ">Miyorare Validation</string>"))
     paths.append(label)
     paths.extend(own_storage(root))
+    paths.extend(runtime_compatibility(root))
     # Explicitly record the generated helper in the patch without committing.
     git(root, "add", "-N", "--", *(str(p.relative_to(root)) for p in paths))
     out.mkdir(parents=True, exist_ok=False)
