@@ -6,6 +6,7 @@ import android.animation.ValueAnimator
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.ScreenTransition
 import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 
 /** Candidate motion constants; physical reference calibration is still required. */
@@ -34,6 +35,11 @@ internal class DirectionalSlidePresentation {
 		val toX: Float,
 		val outgoingAfter: Int,
 		val distance: Float,
+		val effect: ScreenTransition = ScreenTransition.DIRECTIONAL_SLIDE,
+		val outgoingRoot: ScreenTransitionRoot? = null,
+		val incomingRoot: ScreenTransitionRoot? = null,
+		var fromOffset: Float = 0f,
+		var toOffset: Float = 0f,
 	)
 
 	internal data class Handoff(
@@ -42,12 +48,16 @@ internal class DirectionalSlidePresentation {
 		val outgoingOffset: Float,
 		val incomingOffset: Float,
 		val distance: Float,
+		val effect: ScreenTransition = ScreenTransition.DIRECTIONAL_SLIDE,
 	)
 
 	private var state: PairState? = null
 	private var animator: ValueAnimator? = null
 
-	fun start(outgoing: View, incoming: View, direction: Int, outgoingAfter: Int) {
+	val hasCustomTransition: Boolean get() = state?.effect?.let { it != ScreenTransition.DIRECTIONAL_SLIDE } == true
+
+	fun start(outgoing: View, incoming: View, direction: Int, outgoingAfter: Int,
+		effect: ScreenTransition = ScreenTransition.DIRECTIONAL_SLIDE) {
 		finish()
 		if (outgoing === incoming) { incoming.visibility = View.VISIBLE; return }
 		incoming.visibility = View.VISIBLE
@@ -57,14 +67,13 @@ internal class DirectionalSlidePresentation {
 			return
 		}
 		val distance = direction * width.toFloat()
-		val pair = PairState(outgoing, incoming, outgoing.translationX, incoming.translationX, outgoingAfter, distance)
+		val pair = pairState(outgoing, incoming, outgoingAfter, distance, effect)
 		animate(pair, 0f, distance, outgoing.resources.getInteger(R.integer.navigation_slide_duration).toLong())
 	}
 
 	/** Snapshot visual offsets before the delegate restores views and commits a valid target. */
 	fun captureHandoff(incoming: View): Handoff? = state?.takeIf { it.incoming === incoming }?.let {
-		Handoff(it.outgoing, it.incoming, it.outgoing.translationX - it.fromX,
-			it.incoming.translationX - it.toX, it.distance)
+		Handoff(it.outgoing, it.incoming, it.fromOffset, it.toOffset, it.distance, it.effect)
 	}
 
 	/** Continue only the remaining visual distance after the real fragment commit. */
@@ -78,26 +87,50 @@ internal class DirectionalSlidePresentation {
 		) return
 		val fraction = kotlin.math.abs(handoff.incomingOffset / handoff.distance).coerceIn(0f, 1f)
 		if (fraction <= 0.01f) return
-		val pair = PairState(outgoing, incoming, outgoing.translationX, incoming.translationX,
-			outgoing.visibility, handoff.distance)
+		val pair = pairState(outgoing, incoming, outgoing.visibility, handoff.distance, handoff.effect)
 		val duration = (outgoing.resources.getInteger(R.integer.navigation_slide_duration) * fraction).toLong().coerceAtLeast(1L)
 		animate(pair, handoff.outgoingOffset, handoff.incomingOffset, duration)
 	}
 
+	private fun pairState(outgoing: View, incoming: View, after: Int, distance: Float, effect: ScreenTransition): PairState {
+		val custom = effect != ScreenTransition.DIRECTIONAL_SLIDE
+		return PairState(outgoing, incoming, outgoing.translationX, incoming.translationX, after, distance,
+			effect, if (custom) ScreenTransitionRoot(outgoing) else null, if (custom) ScreenTransitionRoot(incoming) else null)
+	}
+
+	private fun render(pair: PairState, fromOffset: Float, toOffset: Float) {
+		pair.fromOffset = fromOffset
+		pair.toOffset = toOffset
+		val outgoing = pair.outgoingRoot
+		val incoming = pair.incomingRoot
+		if (outgoing == null || incoming == null) {
+			pair.outgoing.translationX = pair.fromX + fromOffset
+			pair.incoming.translationX = pair.toX + toOffset
+			return
+		}
+		val remaining = (toOffset / pair.distance).coerceIn(0f, 1f)
+		val parent = pair.incoming.parent as? View
+		val width = kotlin.math.abs(pair.distance)
+		val height = (parent?.height ?: pair.incoming.height).toFloat().coerceAtLeast(1f)
+		if (pair.distance > 0f) ScreenTransitionTransformer.render(pair.effect, outgoing, incoming, 1f - remaining, width, height)
+		else ScreenTransitionTransformer.render(pair.effect, incoming, outgoing, remaining, width, height)
+		outgoing.accessibilityHidden(true)
+		// A visually absent incoming root should not advertise accessibility nodes.
+		incoming.accessibilityHidden(incoming.view.visibility != View.VISIBLE)
+	}
+
 	private fun animate(pair: PairState, fromOffset: Float, toOffset: Float, durationMs: Long) {
 		state = pair
-		pair.outgoing.translationX = pair.fromX + fromOffset
-		pair.incoming.translationX = pair.toX + toOffset
 		pair.outgoing.visibility = View.VISIBLE
 		pair.incoming.visibility = View.VISIBLE
+		render(pair, fromOffset, toOffset)
 		animator = ValueAnimator.ofFloat(0f, 1f).apply {
 			duration = durationMs
 			interpolator = DecelerateInterpolator()
 			addUpdateListener {
 				if (state === pair) {
 					val progress = it.animatedValue as Float
-					pair.outgoing.translationX = pair.fromX + fromOffset + (-pair.distance - fromOffset) * progress
-					pair.incoming.translationX = pair.toX + toOffset * (1f - progress)
+					render(pair, fromOffset + (-pair.distance - fromOffset) * progress, toOffset * (1f - progress))
 				}
 			}
 			addListener(object : AnimatorListenerAdapter() {
@@ -118,9 +151,14 @@ internal class DirectionalSlidePresentation {
 		old?.removeAllUpdateListeners()
 		old?.cancel()
 		pair?.let {
-			it.outgoing.translationX = it.fromX
-			it.incoming.translationX = it.toX
-			it.outgoing.visibility = it.outgoingAfter
+			if (it.outgoingRoot != null && it.incomingRoot != null) {
+				it.outgoingRoot.restore(it.outgoingAfter)
+				it.incomingRoot.restore(View.VISIBLE)
+			} else {
+				it.outgoing.translationX = it.fromX
+				it.incoming.translationX = it.toX
+				it.outgoing.visibility = it.outgoingAfter
+			}
 		}
 	}
 }

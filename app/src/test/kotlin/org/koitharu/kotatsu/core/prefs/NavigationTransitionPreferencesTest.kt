@@ -16,6 +16,12 @@ class NavigationTransitionPreferencesTest {
 		}
 	}
 
+	@Test fun transitionValuesRoundTripWithoutOrdinals() {
+		assertEquals(8, ScreenTransition.entries.size)
+		assertEquals(8, ScreenTransition.entries.map { it.storedValue }.distinct().size)
+		for (effect in ScreenTransition.entries) assertEquals(effect, ScreenTransition.parse(effect.storedValue))
+	}
+
 	@Test fun transitionUsesIndependentStableDefault() {
 		assertEquals(ScreenTransition.DIRECTIONAL_SLIDE, ScreenTransition.parse("directional_slide"))
 		for (value in listOf(null, "", "fluid_lens", 1, false)) {

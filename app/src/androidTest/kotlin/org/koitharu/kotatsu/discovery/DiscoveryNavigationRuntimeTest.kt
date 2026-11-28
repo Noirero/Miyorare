@@ -664,6 +664,105 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	@Test fun customTransitionFramesReverseAndRestoreRootProperties() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			for (effect in ScreenTransition.entries.filter { it != ScreenTransition.DIRECTIONAL_SLIDE }) {
+				val parent = FrameLayout(app)
+				val first = View(app).apply { translationX = 3f; alpha = 0.8f; scaleX = 0.9f; pivotX = 17f }
+				val second = View(app).apply { translationY = 5f; visibility = View.GONE; clipBounds = Rect(2, 3, 290, 98) }
+				val third = View(app).apply { visibility = View.GONE }
+				val pages = mapOf(1 to first, 2 to second, 3 to third)
+				for (child in pages.values) parent.addView(child, FrameLayout.LayoutParams(300, 100))
+				parent.layout(0, 0, 300, 100)
+				val camera = first.cameraDistance
+				val z = second.translationZ
+				val a11y = second.importantForAccessibility
+				val slide = InteractiveTabSlidePresentation()
+				fun seek(fraction: Float) = assertTrue(slide.seek(TabSlideFrame(1, 2, fraction), 1, first, effect) { pages[it] })
+				fun visual() = listOf(first, second).map { listOf(it.translationX, it.translationY, it.rotationY,
+					it.scaleX, it.scaleY, it.alpha, it.pivotX, it.pivotY, it.translationZ, it.visibility.toFloat(), it.clipBounds) }
+				seek(0.25f)
+				val initial = visual()
+				seek(0.75f)
+				assertNotEquals(effect.name, initial, visual())
+				seek(0.25f)
+				assertEquals(effect.name, initial, visual())
+				val handoff = checkNotNull(slide.captureHandoff(2))
+				assertEquals(effect, handoff.effect)
+				assertEquals(225f, handoff.incomingOffset, 0.01f)
+				assertTrue(slide.seek(TabSlideFrame(2, 3, 0.4f), 1, first, effect) { pages[it] })
+				assertEquals(View.INVISIBLE, first.visibility)
+				if (effect == ScreenTransition.CARD_STACK) {
+					assertEquals(0f, second.translationX, 0.01f)
+					assertEquals(z, second.translationZ, 0.01f)
+				}
+				if (effect == ScreenTransition.CURTAIN_REVEAL) assertEquals(Rect(2, 3, 290, 98), second.clipBounds)
+				seek(0.25f)
+				assertEquals("Role change must restore the original frame: ${effect.name}", initial, visual())
+				slide.finish()
+				assertEquals(View.VISIBLE, first.visibility)
+				assertEquals(View.GONE, second.visibility)
+				assertEquals(View.GONE, third.visibility)
+				assertEquals(3f, first.translationX, 0.01f)
+				assertEquals(0.8f, first.alpha, 0.01f)
+				assertEquals(0.9f, first.scaleX, 0.01f)
+				assertEquals(0f, first.rotationY, 0.01f)
+				assertEquals(17f, first.pivotX, 0.01f)
+				assertEquals(camera, first.cameraDistance, 0.01f)
+				assertEquals(5f, second.translationY, 0.01f)
+				assertEquals(z, second.translationZ, 0.01f)
+				assertEquals(Rect(2, 3, 290, 98), second.clipBounds)
+				assertEquals(a11y, second.importantForAccessibility)
+			}
+		}
+	}
+
+	@Test fun flipPreviewKeepsFullLocalViewportAndRestoresFavoritesHeader() = withFractionalTabPreview {
+		NavigationTransitionPreferences(app).setTransition(ScreenTransition.FLIP_3D)
+		fullLocalPreviewUsesSameVerticalViewportAsCommittedLocal()
+	}
+
+	@Test fun customTransitionsRapidTapRetainsOnlyLastCommittedPage() = withFractionalTabPreview {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		val prefs = NavigationTransitionPreferences(app)
+		launch().use { scenario ->
+			for (effect in ScreenTransition.entries.filter { it != ScreenTransition.DIRECTIONAL_SLIDE }) {
+				prefs.setTransition(effect)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val bar = checkNotNull(activity.bottomNav as? FloatingBottomNavigationView)
+					bar.selectFromUser(R.id.nav_local)
+					bar.selectFromUser(R.id.nav_favorites)
+					bar.selectFromUser(R.id.nav_history)
+					bar.selectFromUser(R.id.nav_local)
+				}
+				// Force the same lifecycle cleanup used on a real pause.
+				scenario.moveToState(Lifecycle.State.STARTED)
+				scenario.moveToState(Lifecycle.State.RESUMED)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val fm = activity.supportFragmentManager
+					val pages = fm.fragments.filter { it.id == R.id.container && it.isAdded }
+					val active = pages.single { !it.isHidden }
+					assertTrue(effect.name, active is LocalListFragment)
+					assertEquals(Lifecycle.State.RESUMED, active.lifecycle.currentState)
+					assertEquals(R.id.nav_local, activity.bottomNav!!.selectedItemId)
+					assertEquals(0, fm.backStackEntryCount)
+					for (page in pages.filter { it.isHidden }) {
+						assertEquals(Lifecycle.State.STARTED, page.lifecycle.currentState)
+						page.view?.let { assertNotEquals(effect.name, View.VISIBLE, it.visibility) }
+					}
+					assertEquals(View.VISIBLE, active.requireView().visibility)
+					assertEquals(0f, active.requireView().rotationY, 0.01f)
+					assertEquals(1f, active.requireView().scaleX, 0.01f)
+					assertEquals(1f, active.requireView().alpha, 0.01f)
+				}
+				assertEquals(effect, NavigationTransitionPreferences(app).transition)
+			}
+		}
+	}
+
 	/**
 	 * The general emulator workflow disables animations. Exercise the real enabled path
 	 * explicitly and restore the setting before the next test. Screenshots contain only
@@ -862,6 +961,55 @@ class DiscoveryNavigationRuntimeTest {
 			instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(previousNight) }
 			if (previousScale == "null" || previousScale.isBlank()) shell("settings delete global animator_duration_scale")
 			else shell("settings put global animator_duration_scale $previousScale")
+		}
+	}
+
+	/** Compare the same warmed pages and display budget. Diagnostic evidence, not a universal FPS gate. */
+	@Test fun screenTransitionFrameTimingEvidence() = withFractionalTabPreview {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		val prefs = NavigationTransitionPreferences(app)
+		prefs.reset()
+		PreferenceManager.getDefaultSharedPreferences(app).edit().putBoolean(AppSettings.KEY_NAV_LEGACY, false).commit()
+		launch().use { scenario ->
+			fun select(id: Int) = scenario.onActivity {
+				checkNotNull(it.bottomNav as? FloatingBottomNavigationView).selectFromUser(id)
+			}
+			select(R.id.nav_local)
+			assertLocalContentReady(scenario)
+			select(R.id.nav_favorites)
+			SystemClock.sleep(500)
+			compose.waitForIdle()
+			lateinit var window: Window
+			var refreshHz = 0f
+			scenario.onActivity {
+				window = it.window
+				refreshHz = window.decorView.display?.refreshRate ?: 0f
+			}
+			assertTrue(refreshHz > 0f)
+			val budgetNs = (1_000_000_000.0 / refreshHz).toLong()
+			repeat(2) { repeatIndex ->
+				for (effect in ScreenTransition.entries) {
+					prefs.setTransition(effect)
+					compose.waitForIdle()
+					measureNavigationFrames(scenario, window, budgetNs,
+						"screen_transition=${effect.storedValue} scenario=warm_roundtrip refresh_hz=$refreshHz repeat=${repeatIndex + 1}") {
+						select(R.id.nav_local)
+						SystemClock.sleep(500)
+						select(R.id.nav_favorites)
+						SystemClock.sleep(500)
+					}
+					compose.waitForIdle()
+					scenario.onActivity { activity ->
+						val active = activity.supportFragmentManager.fragments.single { it.id == R.id.container && it.isAdded && !it.isHidden }
+						assertTrue(active is FavouritesContainerFragment)
+						assertEquals(Lifecycle.State.RESUMED, active.lifecycle.currentState)
+						assertEquals(View.VISIBLE, active.requireView().visibility)
+						assertEquals(0f, active.requireView().rotationY, 0.01f)
+						assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
+					}
+				}
+			}
 		}
 	}
 
@@ -1114,8 +1262,10 @@ class DiscoveryNavigationRuntimeTest {
 						scenario.onActivity {
 							ready = bar.selectedItemId == id && (0 until pages.childCount).all { index ->
 								val v = pages.getChildAt(index)
-								kotlin.math.abs(v.translationX) < 0.1f &&
-									(v.visibility == View.VISIBLE) == (index == page)
+								kotlin.math.abs(v.translationX) < 0.1f && kotlin.math.abs(v.translationY) < 0.1f &&
+									kotlin.math.abs(v.rotationY) < 0.1f && kotlin.math.abs(v.scaleX - 1f) < 0.01f &&
+									kotlin.math.abs(v.scaleY - 1f) < 0.01f && kotlin.math.abs(v.alpha - 1f) < 0.01f &&
+									v.clipBounds == null && (v.visibility == View.VISIBLE) == (index == page)
 							}
 						}
 						ready
@@ -1178,6 +1328,39 @@ class DiscoveryNavigationRuntimeTest {
 						}
 					} finally { send(MotionEvent.ACTION_CANCEL, 1f, 64) }
 					settled(R.id.nav_favorites, 0)
+				}
+				// Exercise every additional option through the actual settings menu.
+				// Both enabled and reduced-motion paths must settle the isolated demo.
+				shell("settings put global animator_duration_scale 1")
+				for ((effect, option) in listOf(
+					ScreenTransition.FLIP_3D to R.string.navigation_transition_flip_3d,
+					ScreenTransition.CUBE_3D to R.string.navigation_transition_cube_3d,
+					ScreenTransition.CROSSFADE to R.string.navigation_transition_crossfade,
+					ScreenTransition.ZOOM to R.string.navigation_transition_zoom,
+					ScreenTransition.CARD_STACK to R.string.navigation_transition_card_stack,
+					ScreenTransition.VERTICAL_SLIDE to R.string.navigation_transition_vertical_slide,
+					ScreenTransition.CURTAIN_REVEAL to R.string.navigation_transition_curtain_reveal,
+				)) {
+					compose.onNodeWithText(app.getString(R.string.navigation_screen_transition_title)).performScrollTo().performClick()
+					compose.onNodeWithText(app.getString(option)).performClick()
+					compose.waitUntil(5000) { prefs.transition == effect }
+					compose.onNodeWithText(app.getString(R.string.navigation_transition_preview)).performScrollTo()
+					compose.waitForIdle()
+					scenario.onActivity {
+						preview = checkNotNull(findNavigationPreview(it.window.decorView))
+						pages = preview.getChildAt(0) as FrameLayout
+						bar = preview.getChildAt(1) as FloatingBottomNavigationView
+						bar.selectFromUser(R.id.nav_discovery_hub)
+					}
+					settled(R.id.nav_discovery_hub, 1)
+					scenario.onActivity { bar.selectFromUser(R.id.nav_favorites) }
+					settled(R.id.nav_favorites, 0)
+					shell("settings put global animator_duration_scale 0")
+					scenario.onActivity { bar.selectFromUser(R.id.nav_discovery_hub) }
+					settled(R.id.nav_discovery_hub, 1)
+					scenario.onActivity { bar.selectFromUser(R.id.nav_favorites) }
+					settled(R.id.nav_favorites, 0)
+					shell("settings put global animator_duration_scale 1")
 				}
 				prefs.setMotion(NavigationMotion.FLUID_LENS)
 				compose.waitForIdle()

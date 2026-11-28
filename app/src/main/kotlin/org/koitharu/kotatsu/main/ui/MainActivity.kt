@@ -297,6 +297,15 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		scheduleColdStartWarmups()
 	}
 
+	// A fresh touch must not reach an outgoing visual-only page. Complete only
+	// the custom settlement; the navbar still owns its original gesture stream.
+	override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+		if (ev.actionMasked == MotionEvent.ACTION_DOWN && ::navigationDelegate.isInitialized) {
+			navigationDelegate.finishCustomTransitionOnTouch()
+		}
+		return super.dispatchTouchEvent(ev)
+	}
+
 	override fun onPause() {
 		if (::navigationDelegate.isInitialized) navigationDelegate.cancelTabDrag()
 		super.onPause()

@@ -89,7 +89,18 @@ class NavigationTransitionSettingsFragment : BaseComposeSettingsFragment(R.strin
 								item { pos ->
 									ListSettingsItem(
 										title = stringResource(R.string.navigation_screen_transition_title),
-										entries = listOf(stringResource(R.string.navigation_transition_directional)),
+										entries = ScreenTransition.entries.map { effect ->
+											stringResource(when (effect) {
+												ScreenTransition.DIRECTIONAL_SLIDE -> R.string.navigation_transition_directional
+												ScreenTransition.FLIP_3D -> R.string.navigation_transition_flip_3d
+												ScreenTransition.CUBE_3D -> R.string.navigation_transition_cube_3d
+												ScreenTransition.CROSSFADE -> R.string.navigation_transition_crossfade
+												ScreenTransition.ZOOM -> R.string.navigation_transition_zoom
+												ScreenTransition.CARD_STACK -> R.string.navigation_transition_card_stack
+												ScreenTransition.VERTICAL_SLIDE -> R.string.navigation_transition_vertical_slide
+												ScreenTransition.CURTAIN_REVEAL -> R.string.navigation_transition_curtain_reveal
+											})
+										},
 										entryValues = ScreenTransition.entries.map { it.storedValue },
 										selectedValue = transition.storedValue,
 										onValueChange = { prefs.setTransition(ScreenTransition.parse(it)) },
