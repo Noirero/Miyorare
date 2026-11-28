@@ -19,6 +19,10 @@ internal class NormalDownloadScanLifecycleObserver(
 			firstStart = false
 			return
 		}
-		if (prefs.getBoolean(NormalDownloadScanCoordinator.KEY_SCAN_ON_RESUME, true)) resume()
+		if (prefs.getBoolean(
+				NormalDownloadScanCoordinator.KEY_SCAN_ON_RESUME,
+				NormalDownloadScanCoordinator.DEFAULT_SCAN_ON_RESUME,
+			)
+		) resume()
 	}
 }

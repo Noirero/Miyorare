@@ -214,6 +214,8 @@ internal class NormalDownloadScanCoordinator @Inject constructor(
 
 	companion object {
 		const val KEY_SCAN_ON_RESUME = "normal_download_scan_on_resume"
+		// Owner-approved Q27 revision: only an unset preference defaults to OFF.
+		const val DEFAULT_SCAN_ON_RESUME = false
 		private const val QUERY_SIZE = 500
 		private const val WORK_SIZE = 32
 	}

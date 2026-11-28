@@ -83,7 +83,17 @@ class NormalDownloadScanSettingsTest {
 			assertEquals(NormalScanOutcome.UNAVAILABLE, startup.outcome)
 			ActivityScenario.launch<SettingsActivity>(intent).use {
 				val toggle = compose.onNode(hasText(context.getString(R.string.normal_download_resume_scan)) and hasClickAction())
+				toggle.performScrollTo()
+				assertFalse("Opening Settings must not persist an unset default", prefs.contains(key))
+				// The first tap must turn the default OFF into an explicit ON.
+				toggle.performClick()
+				compose.waitUntil(10_000) { prefs.contains(key) && prefs.getBoolean(key, false) }
+				assertFalse(prefs.getBoolean(exKey, true))
+			}
+			ActivityScenario.launch<SettingsActivity>(intent).use {
+				val toggle = compose.onNode(hasText(context.getString(R.string.normal_download_resume_scan)) and hasClickAction())
 				toggle.performScrollTo().performClick()
+				// Reopening Settings must honor the stored ON; the tap turns it OFF.
 				compose.waitUntil(10_000) { prefs.contains(key) && !prefs.getBoolean(key, true) }
 				assertFalse(prefs.getBoolean(exKey, true))
 				val full = compose.onNode(hasText(context.getString(R.string.normal_download_full_scan)) and hasClickAction())

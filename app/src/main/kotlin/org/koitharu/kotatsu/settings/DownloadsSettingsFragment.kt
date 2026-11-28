@@ -294,7 +294,10 @@ private fun DownloadsScreen(
 	var privateNotificationDetails by rememberBooleanPref(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)
 	var scanExhentaiOnResume by rememberBooleanPref(ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME, true)
 	val presence by presenceState.collectAsState()
-	var scanNormalOnResume by rememberBooleanPref(NormalDownloadScanCoordinator.KEY_SCAN_ON_RESUME, true)
+	var scanNormalOnResume by rememberBooleanPref(
+		NormalDownloadScanCoordinator.KEY_SCAN_ON_RESUME,
+		NormalDownloadScanCoordinator.DEFAULT_SCAN_ON_RESUME,
+	)
 	val normalScan by normalScanState.collectAsState()
 
 	LaunchedEffect(metered) { onMeteredChanged() }

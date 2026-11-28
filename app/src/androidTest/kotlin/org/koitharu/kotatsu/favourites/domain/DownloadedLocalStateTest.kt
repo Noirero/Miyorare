@@ -2914,8 +2914,8 @@ class DownloadedLocalStateTest {
 		val exKey = ExhentaiPresenceDiscovery.KEY_SCAN_ON_RESUME
 		val exBefore = prefs.getBoolean(exKey, true)
 		prefs.edit(commit = true) { remove(key) }
-		assertTrue(prefs.getBoolean(key, true))
-		prefs.edit(commit = true) { putBoolean(key, false) }
+		assertFalse(prefs.getBoolean(key, NormalDownloadScanCoordinator.DEFAULT_SCAN_ON_RESUME))
+		assertFalse(prefs.contains(key))
 		val observer = NormalDownloadScanLifecycleObserver(prefs, { coordinator.start(scope) }, coordinator::requestFull)
 		lateinit var registry: LifecycleRegistry
 		instrumentation.runOnMainSync {
@@ -2939,6 +2939,16 @@ class DownloadedLocalStateTest {
 				registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
 			}
 			assertNull(withTimeoutOrNull(400) { coordinator.state.first { it.completedRuns > startup.completedRuns } })
+			assertFalse("Reading the unset default must not persist it", prefs.contains(key))
+			assertEquals(file.path, store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.path)
+			prefs.edit(commit = true) { putBoolean(key, false) }
+			instrumentation.runOnMainSync {
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+				registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+			}
+			assertNull(withTimeoutOrNull(400) { coordinator.state.first { it.completedRuns > startup.completedRuns } })
+			assertTrue(prefs.contains(key))
+			assertFalse(prefs.getBoolean(key, true))
 			coordinator.requestFull()
 			val manual = awaitRun(startup.completedRuns)
 			assertEquals(NormalScanOutcome.COMPLETE, manual.outcome)
@@ -2968,13 +2978,15 @@ class DownloadedLocalStateTest {
 				registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
 			}
 			assertEquals(NormalScanOutcome.COMPLETE, awaitRun(recovered.completedRuns).outcome)
+			assertTrue("Explicit ON must survive resume", prefs.getBoolean(key, false))
+			assertEquals(file.path, store.readVisible(listOf(manga), FavouriteSpace.NORMAL)[manga.id]?.fact?.path)
 			prefs.edit(commit = true) { remove(key) }
 			val beforeDefaultResume = coordinator.state.value.completedRuns
 			instrumentation.runOnMainSync {
 				registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
 				registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
 			}
-			assertEquals(NormalScanOutcome.COMPLETE, awaitRun(beforeDefaultResume).outcome)
+			assertNull(withTimeoutOrNull(400) { coordinator.state.first { it.completedRuns > beforeDefaultResume } })
 			assertFalse(prefs.contains(key))
 			assertEquals(exBefore, prefs.getBoolean(exKey, true))
 		} finally {
