@@ -227,6 +227,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	internal fun setNavigationMotion(motion: NavigationMotion) = tabDrag.setMotion(motion)
+	internal val isRefractionActive: Boolean get() = tabDrag.isRefractionActive
 
 	override fun setSelectedItemId(@IdRes itemId: Int) {
 		cancelTabDrag()

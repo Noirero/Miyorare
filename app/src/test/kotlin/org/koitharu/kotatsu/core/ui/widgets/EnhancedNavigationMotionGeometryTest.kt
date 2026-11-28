@@ -47,6 +47,17 @@ class EnhancedNavigationMotionGeometryTest {
 		}
 	}
 
+	@Test fun refractGlassKeepsFluidGeometryAndBoundedFallback() {
+		for (vertical in listOf(false, true)) {
+			for (x in listOf(19f, 150f, 289f)) {
+				for (active in listOf(0f, 0.5f, 1f)) {
+					assertEquals(shape(NavigationMotion.FLUID_LENS, x = x, active = active, vertical = vertical),
+						shape(NavigationMotion.REFRACT_GLASS, x = x, active = active, vertical = vertical))
+				}
+			}
+		}
+	}
+
 	@Test fun elasticEdgePullIsResistedAndReversible() {
 		val near = EnhancedNavigationMotionGeometry.edgePull(305f, 40f, 289f)
 		val far = EnhancedNavigationMotionGeometry.edgePull(353f, 40f, 289f)

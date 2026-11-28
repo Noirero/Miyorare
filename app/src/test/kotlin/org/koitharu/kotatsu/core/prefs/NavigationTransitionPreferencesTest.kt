@@ -5,6 +5,8 @@ import org.junit.Test
 
 class NavigationTransitionPreferencesTest {
 	@Test fun motionValuesRoundTripWithoutOrdinals() {
+		assertEquals(listOf("classic_glide", "elastic_glide", "fluid_lens", "refract_glass"),
+			NavigationMotion.entries.map { it.storedValue })
 		for (motion in NavigationMotion.entries) {
 			assertEquals(motion, NavigationMotion.parse(motion.storedValue))
 		}

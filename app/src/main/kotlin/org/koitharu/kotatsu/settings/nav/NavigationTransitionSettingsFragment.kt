@@ -79,7 +79,14 @@ class NavigationTransitionSettingsFragment : BaseComposeSettingsFragment(R.strin
 								item { pos ->
 									ListSettingsItem(
 										title = stringResource(R.string.navigation_motion_title),
-										entries = listOf(stringResource(R.string.navigation_motion_classic), stringResource(R.string.navigation_motion_elastic), stringResource(R.string.navigation_motion_fluid)),
+										entries = NavigationMotion.entries.map { option ->
+											stringResource(when (option) {
+												NavigationMotion.CLASSIC_GLIDE -> R.string.navigation_motion_classic
+												NavigationMotion.ELASTIC_GLIDE -> R.string.navigation_motion_elastic
+												NavigationMotion.FLUID_LENS -> R.string.navigation_motion_fluid
+												NavigationMotion.REFRACT_GLASS -> R.string.navigation_motion_refract
+											})
+										},
 										entryValues = NavigationMotion.entries.map { it.storedValue },
 										selectedValue = motion.storedValue,
 										onValueChange = { prefs.setMotion(NavigationMotion.parse(it)) },
