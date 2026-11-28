@@ -124,7 +124,7 @@ class DiscoveryNavigationRuntimeTest {
 		scenario.onActivity { it.bottomNav!!.selectedItemId = R.id.nav_discovery_hub }
 		compose.waitUntil(10000) { compose.onAllNodesWithTag("catalog_spotlight").fetchSemanticsNodes().isNotEmpty() }
 	}
-	// Matched pre-feature experiment: keep this method body identical on both source revisions.
+	// Matched pre-feature experiment: compare measurements only with the same harness revision.
 	// Observed settle after a fixed dwell is not input-to-photon latency or exact animation duration.
 	@Test fun matchedPreFeatureHubTapFrames() = matchedPreFeatureTapFrames(NavItem.DISCOVERY_HUB, "hub")
 	@Test fun matchedPreFeatureLocalTapFrames() = matchedPreFeatureTapFrames(NavItem.LOCAL, "local")
@@ -167,7 +167,7 @@ class DiscoveryNavigationRuntimeTest {
 				assertTrue("A measured display refresh rate is required", refreshHz > 0f)
 				assertEquals(AndroidConfiguration.UI_MODE_NIGHT_YES, actualNight)
 				val prefix = "motion=classic_glide actual_night=$actualNight refresh_hz=$refreshHz scale=1 scenario=matched_pre_feature_${route}_tap"
-				Log.i("MiyorareNavMatched", "$prefix harness=2 animator=1 transition=1 window=1 dwell_ms=750")
+				Log.i("MiyorareNavMatched", "$prefix harness=3 animator=1 transition=1 window=1 dwell_ms=750 readiness=window_focus")
 				// Resolve fresh geometry because the selected label changes floating-tab widths.
 				fun center(item: NavItem, step: String): Offset {
 					val bounds = compose.onNodeWithContentDescription(app.getString(item.navTitle))
@@ -240,6 +240,29 @@ class DiscoveryNavigationRuntimeTest {
 					SystemClock.sleep(750)
 					compose.waitForIdle()
 					observedSettled(item, step)
+				}
+				// Compose idle and ActivityScenario RESUMED do not imply input-window focus.
+				// Wait once, outside the measured interval, before injecting the first physical tap.
+				val readinessStart = SystemClock.uptimeMillis()
+				var readinessState = "not_sampled"
+				var inputReady = false
+				try {
+					compose.waitUntil(10_000) {
+						scenario.onActivity { activity ->
+							val decor = activity.window.decorView
+							val bar = activity.bottomNav
+							val focused = activity.hasWindowFocus()
+							val resumed = activity.lifecycle.currentState == Lifecycle.State.RESUMED
+							val attached = decor.isAttachedToWindow && decor.windowToken != null
+							val visible = decor.isShown && bar?.isShown == true && bar.isLaidOut &&
+								bar.width > 0 && bar.height > 0
+							inputReady = focused && resumed && attached && visible
+							readinessState = "focus=$focused resumed=$resumed attached=$attached visible=$visible"
+						}
+						inputReady
+					}
+				} finally {
+					Log.i("MiyorareNavMatched", "$prefix input_ready=$inputReady $readinessState wait_ms=${SystemClock.uptimeMillis() - readinessStart}")
 				}
 				// Keep Hub and Local as separate test cases: baseline B01 must remain a real failure,
 				// not prevent the independent Hub experiment from running.
