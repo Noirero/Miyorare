@@ -11,16 +11,22 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.main.ui.MainActivity
 import java.io.File
 import javax.inject.Inject
+import javax.inject.Provider
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.about.WhatsNewFragment
 import org.koitharu.kotatsu.settings.nav.NavigationTransitionSettingsFragment
@@ -32,7 +38,19 @@ class WhatsNewRuntimeTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     @Inject lateinit var settings: AppSettings
 
-    @Before fun setup() { hilt.inject() }
+    @Inject @BaseHttpClient lateinit var baseHttpClient: Provider<OkHttpClient>
+
+    @Before fun setup() {
+        // HiltTestApplication replaces production WorkManager configuration and network warmup.
+        if (!WorkManager.isInitialized()) {
+            WorkManager.initialize(context, Configuration.Builder().build())
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            hilt.inject()
+        }
+        // Match DownloadDestinationSettingsTest: construct the real singleton off-main.
+        runBlocking { withContext(Dispatchers.IO) { baseHttpClient.get() } }
+    }
 
     @Test fun earlierInstallationShowsOnePopupAndAcknowledgementSurvivesRecreation() {
         val stateFile = AtomicFile(File(context.noBackupFilesDir, "whats-new-state.json"))
@@ -47,9 +65,6 @@ class WhatsNewRuntimeTest {
             assertTrue(store.write(previous))
             settings.isOnboardingCompleted = true
             settings.isAppProtectionEnabled = false
-            runCatching { WorkManager.getInstance(context) }.getOrElse {
-                WorkManager.initialize(context, Configuration.Builder().build())
-            }
             ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
                 fun awaitPopup() {
                     compose.waitUntil(10_000) {
