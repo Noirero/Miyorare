@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.explore.ui
 
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -15,12 +16,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -48,10 +52,29 @@ class SourceOverviewSkeletonTest {
     private fun state(vararg shelves: SourceOverviewViewModel.Shelf) =
         SourceOverviewViewModel.State(manga.source, shelves.toList(), loading = false)
 
+    private fun closeSearchAfterAssertion(view: View) {
+        val ime = WindowInsetsCompat.Type.ime()
+        // The fake navigation callback does not leave the Activity. Hide the IME while
+        // the input is still served, then remove the focused editor before teardown.
+        compose.runOnIdle { ViewCompat.getWindowInsetsController(view)?.hide(ime) }
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.runOnIdle { ViewCompat.getRootWindowInsets(view)?.isVisible(ime) == false }
+        }
+        val back = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.back)
+        compose.onNodeWithContentDescription(back).performClick()
+        compose.onNode(hasSetTextAction()).assertDoesNotExist()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.runOnIdle { ViewCompat.getRootWindowInsets(view)?.isVisible(ime) == false }
+        }
+    }
+
     @Test
     fun keyboardSearchSubmitsTrimmedQueryOnce() {
         val submitted = mutableListOf<String>()
+        lateinit var view: View
         compose.setContent {
+            val hostView = LocalView.current
+            SideEffect { view = hostView }
             MaterialTheme {
                 SourceOverview("Fixture", state(), {}, { submitted.add(it) }, {}, {}, {}, {}, {})
             }
@@ -64,12 +87,17 @@ class SourceOverviewSkeletonTest {
         compose.runOnIdle { assertTrue(submitted.isEmpty()) }
         input.performImeAction()
         compose.runOnIdle { assertEquals(listOf("girl"), submitted) }
+        closeSearchAfterAssertion(view)
+        compose.runOnIdle { assertEquals(listOf("girl"), submitted) }
     }
 
     @Test
     fun iconSearchStillSubmitsTrimmedQueryOnce() {
         val submitted = mutableListOf<String>()
+        lateinit var view: View
         compose.setContent {
+            val hostView = LocalView.current
+            SideEffect { view = hostView }
             MaterialTheme {
                 SourceOverview("Fixture", state(), {}, { submitted.add(it) }, {}, {}, {}, {}, {})
             }
@@ -81,12 +109,17 @@ class SourceOverviewSkeletonTest {
         compose.runOnIdle { assertTrue(submitted.isEmpty()) }
         icon.performClick()
         compose.runOnIdle { assertEquals(listOf("girl"), submitted) }
+        closeSearchAfterAssertion(view)
+        compose.runOnIdle { assertEquals(listOf("girl"), submitted) }
     }
 
     @Test
     fun whitespaceOnlyQueryCannotBeSubmittedByIconOrKeyboard() {
         val submitted = mutableListOf<String>()
+        lateinit var view: View
         compose.setContent {
+            val hostView = LocalView.current
+            SideEffect { view = hostView }
             MaterialTheme {
                 SourceOverview("Fixture", state(), {}, { submitted.add(it) }, {}, {}, {}, {}, {})
             }
@@ -98,6 +131,8 @@ class SourceOverviewSkeletonTest {
         input.performClick().performTextInput("   ")
         icon.assertIsNotEnabled()
         input.performImeAction()
+        compose.runOnIdle { assertTrue(submitted.isEmpty()) }
+        closeSearchAfterAssertion(view)
         compose.runOnIdle { assertTrue(submitted.isEmpty()) }
     }
 
@@ -229,9 +264,13 @@ class SourceOverviewSkeletonTest {
             // The target endpoint is also the Compose zero-duration-scale fallback.
             compose.runOnIdle { phase.value = 1f }
             val stopped = node.captureToImage().toPixelMap()
-            assertTrue("Stopped shimmer equals the static skeleton", (0 until stopped.width).all { col ->
-                (0 until stopped.height).all { row -> stopped[col, row] == baseline[col, row] }
-            })
+            assertEquals("Stopped shimmer width (light=$isLight)", baseline.width, stopped.width)
+            assertEquals("Stopped shimmer height (light=$isLight)", baseline.height, stopped.height)
+            val mismatch = (0 until stopped.width).sumOf { col ->
+                (0 until stopped.height).count { row -> stopped[col, row] != baseline[col, row] }
+            }
+            assertEquals("Stopped shimmer equals the static skeleton (light=$isLight, " +
+                "center baseline=$baseCenter stopped=${stopped[x, y]})", 0, mismatch)
         }
     }
 
