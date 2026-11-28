@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,6 +37,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsCompat
@@ -111,6 +114,9 @@ internal fun SourceOverview(
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    fun submitSearch() {
+        query.trim().takeIf { it.isNotEmpty() }?.let(onSearch)
+    }
     val colors = MaterialTheme.colorScheme
     val shimmerPhase = rememberOverviewSkeletonPhase(
         !state.loading && !state.openCatalog && !state.failed &&
@@ -141,6 +147,8 @@ internal fun SourceOverview(
                         onValueChange = { query = it },
                         label = { Text(stringResource(R.string.search)) },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
                         modifier = Modifier.weight(1f),
                     )
                 } else {
@@ -148,7 +156,7 @@ internal fun SourceOverview(
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 IconButton(
-                    onClick = { if (!searching) searching = true else onSearch(query.trim()) },
+                    onClick = { if (!searching) searching = true else submitSearch() },
                     enabled = !searching || query.isNotBlank(),
                 ) {
                     Icon(painterResource(R.drawable.ic_search), stringResource(R.string.search))
