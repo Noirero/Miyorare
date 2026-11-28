@@ -9,12 +9,15 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PACKAGE = "org.noirero.miyorare.validation"
 MAIN = "org.koitharu.kotatsu.main.ui.MainActivity"
 ONBOARDING = "org.koitharu.kotatsu.main.ui.welcome.OnboardingActivity"
+POLL_EVENTS = []
+LAST_HIERARCHY = None
 
 
 def require(condition, message):
@@ -48,8 +51,11 @@ def wait_for(description, predicate, seconds=90):
             value = predicate()
             if value is not None and value is not False:
                 return value
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError):
-            pass
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError) as exc:
+            event = {"time": time.time(), "wait": description, "exception": repr(exc),
+                     "output": str(getattr(exc, "output", None))}
+            POLL_EVENTS.append(event)
+            print("UI poll exception:", json.dumps(event), flush=True)
         time.sleep(2)
     raise AssertionError("Timed out: " + description)
 
@@ -64,8 +70,12 @@ def resumed(activity):
 def nodes():
     path = "/sdcard/validation-ui.xml"
     adb("shell", "rm", "-f", path)
-    adb("shell", "uiautomator", "dump", path, timeout=30)
-    root = ET.fromstring(adb("shell", "cat", path))
+    global LAST_HIERARCHY
+    output = adb("shell", "uiautomator", "dump", path, timeout=30)
+    POLL_EVENTS.append({"time": time.time(), "uiautomator": output})
+    raw = adb("shell", "cat", path)
+    LAST_HIERARCHY = (time.time(), raw)
+    root = ET.fromstring(raw)
     result = [node for node in root.iter("node") if node.get("package") == PACKAGE]
     require(not any(node.get("text") == "Install extensions" for node in result),
             "Unsupported installer control visible")
@@ -101,7 +111,52 @@ def installed():
     return "package:" + PACKAGE in adb("shell", "pm", "list", "packages", PACKAGE).splitlines()
 
 
-def smoke(apk):
+def capture_failure(directory, failure):
+    """Best-effort read-only emulator diagnostics; never change the test verdict."""
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "failure.txt").write_text(failure)
+    (directory / "poll-events.json").write_text(json.dumps(POLL_EVENTS, indent=2) + "\n")
+    if LAST_HIERARCHY is not None:
+        observed_at, raw = LAST_HIERARCHY
+        (directory / "last-observed-ui.xml").write_text(raw)
+        (directory / "last-observed-ui-time.txt").write_text(str(observed_at) + "\n")
+    captures = []
+
+    def capture(name, *args, timeout=20):
+        event = {"file": name, "command": list(args), "time": time.time()}
+        try:
+            result = subprocess.run(["adb", *args], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, timeout=timeout)
+            event["returncode"] = result.returncode
+            event["stderr"] = result.stderr.decode(errors="replace")
+            if name.endswith(".png") and not result.stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+                event["error"] = "No PNG returned"
+                event["stdout"] = result.stdout.decode(errors="replace")
+            else:
+                (directory / name).write_bytes(result.stdout)
+        except Exception as exc:
+            event["exception"] = repr(exc)
+        captures.append(event)
+
+    # Capture the screen and focused window before querying a new hierarchy.
+    capture("screen.png", "exec-out", "screencap", "-p")
+    capture("window.txt", "shell", "dumpsys", "window")
+    capture("activity.txt", "shell", "dumpsys", "activity", "activities")
+    capture("crash.txt", "logcat", "-b", "crash", "-d")
+    capture("activity-events.txt", "logcat", "-b", "events", "-d",
+            "-s", "am_anr", "am_crash", "am_proc_died", "wm_on_resume_called")
+    path = "/sdcard/validation-failure-ui.xml"
+    capture("ui-remove.txt", "shell", "rm", "-f", path)
+    capture("ui-dump.txt", "shell", "uiautomator", "dump", path, timeout=30)
+    capture("failure-ui.xml", "shell", "cat", path)
+    (directory / "capture-status.json").write_text(json.dumps(captures, indent=2) + "\n")
+    print("Failure diagnostics:", directory, json.dumps(captures), flush=True)
+
+
+def smoke(apk, diagnostic_dir):
+    global LAST_HIERARCHY
+    POLL_EVENTS.clear()
+    LAST_HIERARCHY = None
     require(not installed(), "Expected a genuinely fresh installation")
     adb("logcat", "-b", "crash", "-c")
     require("Success" in adb("install", str(apk), timeout=180), "APK install failed")
@@ -133,6 +188,10 @@ def smoke(apk):
         assert_no_crash()
         print("PASS: fresh install, permission page, onboarding completion and restart", flush=True)
     except Exception:
+        try:
+            capture_failure(diagnostic_dir, traceback.format_exc())
+        except Exception as diagnostic_error:
+            print("Diagnostic capture failed:", repr(diagnostic_error), flush=True)
         print(adb("logcat", "-b", "crash", "-d"), flush=True)
         raise
     finally:
@@ -168,8 +227,10 @@ def main():
                 "--ks-key-alias", "probe", "--ks-pass", "env:PROBE_PASSWORD",
                 "--key-pass", "env:PROBE_PASSWORD", "--out", str(signed), str(aligned), env=env)
             run(str(tools / "apksigner"), "verify", str(signed))
-            smoke(signed)
+            diagnostic_dir = Path(os.environ["RUNNER_TEMP"]) / "validation-fresh-install-diagnostics" / directory.name
+            smoke(signed, diagnostic_dir)
             require(hashlib.sha256(source.read_bytes()).hexdigest() == expected, "Unsigned artifact modified")
+            print("PASS: unsigned digest unchanged", expected, flush=True)
 
 
 if __name__ == "__main__":
