@@ -15,7 +15,9 @@ class DiscordTokenWebClient(private val callback: DiscordAuthActivity) : Browser
 	}
 
 	private fun checkToken(view: WebView) {
-		view.evaluateJavascript("window.localStorage.token") { result ->
+		view.evaluateJavascript(
+			"window.location.origin === 'https://discord.com' ? window.localStorage.token : null",
+		) { result ->
 			val token = result
 				?.replace("\\\"", "")
 				?.removeSurrounding('"')

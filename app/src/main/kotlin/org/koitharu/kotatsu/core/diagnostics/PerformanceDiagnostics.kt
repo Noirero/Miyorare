@@ -117,6 +117,15 @@ internal object PerformanceDiagnostics {
 		)
 	}
 
+	enum class DiscordEvent { TOKEN_CHECK, COVER_PROXY, GATEWAY_READY, GATEWAY_CLOSED, GATEWAY_ERROR, PRESENCE_ATTEMPT }
+
+	fun discord(recording: String?, event: DiscordEvent, code: Int? = null) {
+		if (!BuildConfig.DEBUG || recording == null) return
+		session?.takeIf { it.id == recording }?.captureDiagnostic(
+			"Discord", event.name, null, code?.let { "code=$it" }.orEmpty(),
+		)
+	}
+
 	fun pageRoute(recording: String, reader: Long, route: PageRoute) {
 		session?.takeIf { it.id == recording }?.captureDiagnostic(
 			"Reader", "PAGE_ROUTE", null, "reader=$reader route=${route.name}",

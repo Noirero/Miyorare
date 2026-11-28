@@ -1,10 +1,12 @@
 package org.koitharu.kotatsu.settings.discord
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -48,6 +50,10 @@ class DiscordSettingsFragment : BaseComposeSettingsFragment(R.string.discord) {
 
 	private val viewModel by viewModels<DiscordSettingsViewModel>()
 
+	private val signInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+		if (result.resultCode == Activity.RESULT_OK) viewModel.refreshTokenState()
+	}
+
 	override fun onCreateView(
 		inflater: LayoutInflater,
 		container: ViewGroup?,
@@ -66,7 +72,7 @@ class DiscordSettingsFragment : BaseComposeSettingsFragment(R.string.discord) {
 	}
 
 	private fun openSignIn() {
-		startActivity(Intent(requireContext(), DiscordAuthActivity::class.java))
+		signInLauncher.launch(Intent(requireContext(), DiscordAuthActivity::class.java))
 	}
 }
 

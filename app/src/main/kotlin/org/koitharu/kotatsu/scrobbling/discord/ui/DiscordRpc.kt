@@ -21,9 +21,11 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import okio.utf8Size
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.diagnostics.PerformanceDiagnostics
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -61,6 +63,7 @@ class DiscordRpc @Inject constructor(
 	private var lastUpdate = 0L
 
 	private var rpc: KizzyRPC? = null
+	private var gatewayDiagnostics: DiscordGatewayDiagnostics? = null
 	private var rpcRequestJob: Job? = null
 	private var rpcUpdateJob: Job? = null
 
@@ -92,6 +95,8 @@ class DiscordRpc @Inject constructor(
 	fun clearRpc() = synchronized(this) {
 		rpcUpdateJob?.cancel()
 		rpcUpdateJob = null
+		gatewayDiagnostics?.retire()
+		gatewayDiagnostics = null
 		rpc?.closeRPC()
 		rpc = null
 		lastActivity = null
@@ -124,7 +129,9 @@ class DiscordRpc @Inject constructor(
 				clearRpc()
 				return@launchRpcRequest
 			}
-			getRpc()?.updateRpcAsync(
+			val diagnosticEligible = BuildConfig.DEBUG && !state.incognito && !state.isPeek
+			val recording = if (diagnosticEligible) PerformanceDiagnostics.recordingId() else null
+			getRpc(diagnosticEligible)?.updateRpcAsync(
 				activity = Activity(
 					applicationId = appId,
 					name = appName,
@@ -144,6 +151,7 @@ class DiscordRpc @Inject constructor(
 					metadata = Metadata(listOf(manga.publicUrl)),
 				),
 				idle = false,
+				recording = recording,
 			)
 		}
 	}
@@ -161,7 +169,7 @@ class DiscordRpc @Inject constructor(
 		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
 	}.getOrDefault(true)
 
-	private fun KizzyRPC.updateRpcAsync(activity: Activity, idle: Boolean) {
+	private fun KizzyRPC.updateRpcAsync(activity: Activity, idle: Boolean, recording: String? = null) {
 		val prevJob = rpcUpdateJob
 		rpcUpdateJob = coroutineScope.launch {
 			prevJob?.cancelAndJoin()
@@ -176,8 +184,8 @@ class DiscordRpc @Inject constructor(
 			val mappedActivity = activity.copy(
 				assets = activity.assets?.let {
 					it.copy(
-						largeImage = it.largeImage?.toMediaProxyUrl(mangaId),
-						smallImage = it.smallImage?.toMediaProxyUrl(),
+						largeImage = it.largeImage?.toMediaProxyUrl(mangaId, recording),
+						smallImage = it.smallImage?.toMediaProxyUrl(recording = recording),
 					)
 				},
 				buttons = activity.buttons.takeUnless { hideButtons },
@@ -199,13 +207,13 @@ class DiscordRpc @Inject constructor(
 		}
 	}
 
-	suspend fun String.toMediaProxyUrl(mangaId: Long? = null): String? {
+	suspend fun String.toMediaProxyUrl(mangaId: Long? = null, recording: String? = null): String? {
 		if (mangaId != null && isPrivateOnly(mangaId)) return null
 		if (repository.isMediaProxyUrl(this)) return this
 		mpCache[this]?.let { return it }
 		if (mangaId != null && isPrivateOnly(mangaId)) return null
 		return runCatchingCancellable {
-			repository.getMediaProxyUrl(this)
+			repository.getMediaProxyUrl(this, recording)
 		}.onSuccess { url ->
 			mpCache[this] = url
 		}.onFailure {
@@ -213,15 +221,25 @@ class DiscordRpc @Inject constructor(
 		}.getOrNull()
 	}
 
-	private fun getRpc(): KizzyRPC? {
+	private fun getRpc(diagnosticEligible: Boolean? = null): KizzyRPC? = synchronized(this) {
 		if (!settings.isDiscordRpcEnabled) {
 			clearRpc()
-			return null
+			return@synchronized null
 		}
-		rpc?.let { return it }
-		return synchronized(this) {
-			rpc?.let { return@synchronized it }
-			settings.discordToken?.let { KizzyRPC(it) }.also { rpc = it }
+		rpc?.let {
+			if (diagnosticEligible != null) gatewayDiagnostics?.setEligible(diagnosticEligible)
+			return@synchronized it
 		}
+		settings.discordToken?.let { token ->
+			if (!BuildConfig.DEBUG) {
+				KizzyRPC(token)
+			} else {
+				val diagnostics = DiscordGatewayDiagnostics(
+					PerformanceDiagnostics::recordingId,
+					PerformanceDiagnostics::discord,
+				).apply { setEligible(diagnosticEligible == true) }
+				KizzyRPC(token, diagnostics).also { gatewayDiagnostics = diagnostics }
+			}
+		}.also { rpc = it }
 	}
 }
