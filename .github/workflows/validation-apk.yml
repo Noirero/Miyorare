@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/validation-apk.yml'
       - '.github/scripts/validation-apk.py'
+      - '.github/scripts/validation-fresh-install.py'
   workflow_dispatch:
     inputs:
       pr_number:
@@ -53,7 +54,7 @@ jobs:
           import re
           from pathlib import Path
           workflow = Path(".github/workflows/validation-apk.yml").read_text()
-          actions = re.findall(r"(?m)^\s*- uses:\s+(\S+)", workflow)
+          actions = re.findall(r"(?m)^\s*(?:-\s+)?uses:\s+(\S+)", workflow)
           assert actions and all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", a) for a in actions), actions
           PY
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -105,6 +106,73 @@ jobs:
               raise AssertionError("Wrong certificate accepted")
           print("PASS: actual apksigner signature and certificate output accepted by production verifier")
           PY
+  fresh-install-contract:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - source: 08dd370161017769f7cab1e7a8dd6b83c34ed761
+            slot: 0
+            version: '1.1.9'
+          - source: d1563673d56bb0a3ecd112795580a71d7f189343
+            slot: 1
+            version: ''
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ matrix.source }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-read-only: true
+      - name: Build exact historical Validation source without secrets
+        env:
+          EXPECTED: ${{ github.event.pull_request.head.sha }}
+          SOURCE: ${{ matrix.source }}
+          SLOT: ${{ matrix.slot }}
+          VERSION: ${{ matrix.version }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          test "$(git -C trusted rev-parse HEAD)" = "$EXPECTED"
+          script="$GITHUB_WORKSPACE/trusted/.github/scripts/validation-apk.py"
+          out="$GITHUB_WORKSPACE/unsigned/$SLOT"
+          common=(--sha "$SOURCE" --workflow-sha "$EXPECTED" --pr "$PR" --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --run-attempt "$GITHUB_RUN_ATTEMPT" --slot "$SLOT")
+          version=()
+          if [[ -n "$VERSION" ]]; then version=(--version-name "$VERSION"); fi
+          python3 "$script" prepare "${common[@]}" --root source --out "$out" "${version[@]}"
+          git -C source diff --check HEAD --
+          (cd source && bash gradlew :app:assembleDebug -PMIYORARE_VALIDATION=true --max-workers=4 --no-daemon --stacktrace)
+          mapfile -t apks < <(find source/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk')
+          test "${#apks[@]}" = 1
+          cp "${apks[0]}" "$out/unsigned.apk"
+          python3 "$script" verify "${common[@]}" --directory "$out" --apk unsigned.apk --record-unsigned --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Fresh-install onboarding on Android 16
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 trusted/.github/scripts/validation-fresh-install.py unsigned/${{ matrix.slot }}
+
   contract:
     if: github.event_name == 'pull_request' && github.base_ref == 'Amain2'
     runs-on: ubuntu-latest
@@ -242,6 +310,18 @@ jobs:
           assert a["versionCode"] < b["versionCode"], "Upgrade must increase version code"
           PY
           fi
+      - name: Enable KVM for disposable Validation runtime test
+        run: sudo chmod 666 /dev/kvm
+      - name: Fresh-install onboarding before signing handoff
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 trusted/.github/scripts/validation-fresh-install.py unsigned/*
       - name: Upload unsigned handoff
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
