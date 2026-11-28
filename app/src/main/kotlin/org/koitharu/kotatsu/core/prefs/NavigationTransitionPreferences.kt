@@ -7,7 +7,8 @@ import androidx.preference.PreferenceManager
 internal enum class NavigationMotion(val storedValue: String) {
 	CLASSIC_GLIDE("classic_glide"),
 	ELASTIC_GLIDE("elastic_glide"),
-	FLUID_LENS("fluid_lens");
+	FLUID_LENS("fluid_lens"),
+	REFRACT_GLASS("refract_glass");
 
 	companion object {
 		fun parse(value: Any?): NavigationMotion =

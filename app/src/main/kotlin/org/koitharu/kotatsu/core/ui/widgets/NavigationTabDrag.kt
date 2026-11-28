@@ -60,6 +60,8 @@ internal class NavigationTabDrag(
 	private var lensShader: LinearGradient? = null
 	private var lensTop = 0
 	private var lensBottom = 0
+	private val refraction = RefractGlassRenderer(host)
+	internal val isRefractionActive: Boolean get() = refraction.isActive
 
 	fun setMotionViewport(bounds: Rect?) {
 		if (motionViewport == bounds) return
@@ -68,6 +70,7 @@ internal class NavigationTabDrag(
 	}
 
 	private fun invalidateIndicator() {
+		updateRefraction()
 		host.invalidate()
 		if (motion != NavigationMotion.CLASSIC_GLIDE) onVisualFrameChanged()
 	}
@@ -249,12 +252,12 @@ internal class NavigationTabDrag(
 			duration = when (motion) {
 				NavigationMotion.CLASSIC_GLIDE -> 210L
 				NavigationMotion.ELASTIC_GLIDE -> 310L
-				NavigationMotion.FLUID_LENS -> 285L
+				NavigationMotion.FLUID_LENS, NavigationMotion.REFRACT_GLASS -> 285L
 			}
 			interpolator = when (motion) {
 				NavigationMotion.CLASSIC_GLIDE -> OvershootInterpolator(0.8f)
 				NavigationMotion.ELASTIC_GLIDE -> OvershootInterpolator(1.15f)
-				NavigationMotion.FLUID_LENS -> DecelerateInterpolator()
+				NavigationMotion.FLUID_LENS, NavigationMotion.REFRACT_GLASS -> DecelerateInterpolator()
 			}
 			addUpdateListener {
 				progress = it.animatedValue as Float
@@ -318,7 +321,7 @@ internal class NavigationTabDrag(
 	/** Draw-only bridge for both Compose renderers, without changing their layout or hit areas. */
 	fun drawInMotionViewport(canvas: Canvas) {
 		val viewport = motionViewport ?: return
-		if (vertical || !motionEnabled || motion == NavigationMotion.CLASSIC_GLIDE || indicatorBounds == null) return
+		if (vertical || !motionEnabled || motion == NavigationMotion.CLASSIC_GLIDE || indicatorBounds == null || refraction.isActive) return
 		host.getLocationInWindow(origin)
 		val saved = canvas.save()
 		canvas.translate(origin[0] - viewport.left, origin[1] - viewport.top)
@@ -326,14 +329,14 @@ internal class NavigationTabDrag(
 		canvas.restoreToCount(saved)
 	}
 
-	private fun drawEnhanced(canvas: Canvas, underlay: Boolean) {
-		val from = indicatorBounds ?: return
+	private fun enhancedGeometry(): EnhancedNavigationMotionGeometry.Shape? {
+		val from = indicatorBounds ?: return null
 		val to = settleId?.let { id -> visibleSlots().firstOrNull { it.first == id }?.second } ?: from
 		fun blend(a: Float, b: Float) = a + (b - a) * progress
 		host.getLocationInWindow(origin)
 		val viewport = motionViewport
 		val active = if (pressed) (1f - progress).coerceIn(0f, 1f) else 0f
-		val geometry = EnhancedNavigationMotionGeometry.calculate(
+		return EnhancedNavigationMotionGeometry.calculate(
 			motion = motion,
 			centerX = (blend(from.center.x, to.center.x) - origin[0]) / density,
 			centerY = (blend(from.center.y, to.center.y) - origin[1]) / density,
@@ -348,7 +351,30 @@ internal class NavigationTabDrag(
 			stretch = stretch,
 			vertical = vertical,
 			edgePull = edgePull,
-		) ?: return
+		)
+	}
+
+	private fun updateRefraction() {
+		val viewport = motionViewport
+		if (motion != NavigationMotion.REFRACT_GLASS || vertical || !motionEnabled || viewport == null || !refraction.isSupported) {
+			refraction.clear()
+			return
+		}
+		val geometry = enhancedGeometry()
+		if (geometry == null) {
+			refraction.clear()
+			return
+		}
+		refraction.update(
+			geometry, density, viewport.left - origin[0], viewport.right - origin[0],
+			if (pressed) (1f - progress).coerceIn(0f, 1f) else 0f,
+			ColorUtils.calculateLuminance(surfaceColor()) >= 0.5,
+		)
+	}
+
+	private fun drawEnhanced(canvas: Canvas, underlay: Boolean) {
+		val geometry = enhancedGeometry() ?: return
+		val active = if (pressed) (1f - progress).coerceIn(0f, 1f) else 0f
 		shape.set(geometry.left * density, geometry.top * density, geometry.right * density, geometry.bottom * density)
 		val radius = geometry.radius * density
 		val tint = accent()

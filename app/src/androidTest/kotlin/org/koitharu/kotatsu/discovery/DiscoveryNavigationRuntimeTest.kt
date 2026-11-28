@@ -1277,6 +1277,7 @@ class DiscoveryNavigationRuntimeTest {
 				}
 				for ((motion, option) in listOf(NavigationMotion.ELASTIC_GLIDE to R.string.navigation_motion_elastic,
 					NavigationMotion.FLUID_LENS to R.string.navigation_motion_fluid,
+					NavigationMotion.REFRACT_GLASS to R.string.navigation_motion_refract,
 					NavigationMotion.CLASSIC_GLIDE to R.string.navigation_motion_classic)) {
 					compose.onNodeWithText(app.getString(R.string.navigation_motion_title)).performScrollTo().performClick()
 					compose.onNodeWithText(app.getString(option)).performClick()
@@ -1649,6 +1650,9 @@ class DiscoveryNavigationRuntimeTest {
 				assertTrue(target.isHidden)
 				assertEquals(R.id.nav_favorites, activity.bottomNav!!.selectedItemId)
 			}
+			scenario.onActivity { activity ->
+				assertFalse((activity.bottomNav as FloatingBottomNavigationView).isRefractionActive)
+			}
 			capture("idle")
 			down = SystemClock.uptimeMillis()
 			var released = false
@@ -1657,6 +1661,11 @@ class DiscoveryNavigationRuntimeTest {
 				// until a screenshot finishes could invoke its existing Private long-click.
 				send(MotionEvent.ACTION_DOWN, 0f, 0)
 				send(MotionEvent.ACTION_MOVE, 0.35f, 32)
+				scenario.onActivity { activity ->
+					val bar = activity.bottomNav as FloatingBottomNavigationView
+					assertEquals(motion == NavigationMotion.REFRACT_GLASS && android.os.Build.VERSION.SDK_INT >= 33 && bar.isHardwareAccelerated,
+						bar.isRefractionActive)
+				}
 				capture("drag-35")
 				assertProgress(0.35f)
 				assertLocalContentReady(scenario)
@@ -1687,6 +1696,11 @@ class DiscoveryNavigationRuntimeTest {
 					settled
 				}
 				assertLocalContentReady(scenario)
+				compose.waitUntil(5000) {
+					var inactive = false
+					scenario.onActivity { inactive = !(it.bottomNav as FloatingBottomNavigationView).isRefractionActive }
+					inactive
+				}
 				capture("settled")
 			} finally {
 				if (!released) send(MotionEvent.ACTION_CANCEL, 0f, 192)
