@@ -60,11 +60,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Reproduce certificate output compatibility with Build Tools 37
+      - name: Verify certificate output compatibility using a disposable APK
         run: |
           set -euo pipefail
           umask 077
-          tools="$ANDROID_HOME/build-tools/37.0.0"
+          tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           test -x "$tools/aapt2" && test -x "$tools/apksigner" && test -x "$tools/zipalign"
           "$tools/apksigner" version
           cat "$tools/source.properties"
@@ -88,24 +88,22 @@ jobs:
           "$tools/zipalign" -c -P 16 4 "$tmp/signed.apk"
           "$tools/apksigner" verify --verbose --print-certs "$tmp/signed.apk" | tee "$tmp/verify.txt"
           python3 - "$tmp/verify.txt" "$expected" <<'PY'
-          import ast
-          import re
+          import runpy
           import sys
           from pathlib import Path
-          tree = ast.parse(Path(".github/scripts/validation-apk.py").read_text())
-          verifier = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "verify")
-          assign = next(n for n in ast.walk(verifier) if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "fingerprints" for t in n.targets))
+          verify = runpy.run_path(".github/scripts/validation-apk.py")["verify_signing_certificate"]
           output = Path(sys.argv[1]).read_text()
           expected = sys.argv[2]
-          fingerprints = eval(compile(ast.Expression(assign.value), "<production parser>", "eval"), {"re": re, "output": output})
-          actual_lines = [line for line in output.splitlines() if "certificate SHA-256 digest:" in line]
           print("Temporary certificate SHA-256:", expected)
-          print("Certificate output lines:", actual_lines)
-          print("Production parser fingerprints:", fingerprints)
-          assert actual_lines, "No certificate digest in actual apksigner output"
-          assert all(line.rsplit(":", 1)[-1].strip().lower() == expected for line in actual_lines), "Unexpected actual signer identity"
-          assert [f.lower() for f in fingerprints] != [expected], "Hypothesis not reproduced: production parser accepts actual output"
-          print("REPRODUCED: successful signature verification and matching temporary certificate, rejected by production parser")
+          assert verify(output, expected) == expected
+          wrong = "0" * 64 if expected != "0" * 64 else "1" * 64
+          try:
+              verify(output, wrong)
+          except ValueError:
+              print("Wrong certificate correctly rejected")
+          else:
+              raise AssertionError("Wrong certificate accepted")
+          print("PASS: actual apksigner signature and certificate output accepted by production verifier")
           PY
   contract:
     if: github.event_name == 'pull_request' && github.base_ref == 'Amain2'

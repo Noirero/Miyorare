@@ -251,6 +251,22 @@ def manifest_check(root, code, version):
     require(launchers == ["org.koitharu.kotatsu.main.ui.MainActivity"], "Expected one MainActivity launcher")
 
 
+def verify_signing_certificate(output, certificate):
+    # The legacy CLI numbers signers; Build Tools 37 labels the v3.0 signer.
+    # Accept only one recognized certificate line and one reported signer.
+    lines = output.splitlines()
+    counts = [line for line in lines if line.startswith("Number of signers:")]
+    require(counts == ["Number of signers: 1"], "Expected exactly one APK signer")
+    digests = [line for line in lines if "certificate SHA-256 digest:" in line]
+    require(len(digests) == 1, "Expected exactly one APK signing certificate digest")
+    match = re.fullmatch(r"(?:Signer #1 |V3\.0 Signer: )certificate SHA-256 digest: ([0-9a-fA-F]{64})", digests[0])
+    require(match is not None, "Unsupported signing certificate output")
+    expected = certificate.replace(":", "").lower()
+    require(re.fullmatch(r"[0-9a-f]{64}", expected) and match.group(1).lower() == expected,
+            "Signing certificate mismatch")
+    return expected
+
+
 def verify(args):
     directory = args.directory
     metadata = json.loads((directory / "build.json").read_text())
@@ -276,10 +292,7 @@ def verify(args):
             require(metadata["unsignedApkSha256"] == actual, "Unsigned APK digest mismatch")
     if args.certificate:
         output = subprocess.check_output([args.apksigner, "verify", "--verbose", "--print-certs", str(apk)], text=True)
-        fingerprints = re.findall(r"(?m)^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)\s*$", output)
-        expected = args.certificate.replace(":", "").lower()
-        require(re.fullmatch(r"[0-9a-f]{64}", expected) and [f.lower() for f in fingerprints] == [expected],
-                "Signing certificate mismatch")
+        expected = verify_signing_certificate(output, args.certificate)
         metadata["signingCertificateSha256"] = expected
         metadata["apkSha256"] = digest(apk)
         metadata["apkName"] = apk.name
@@ -288,6 +301,40 @@ def verify(args):
 
 
 class ContractTest(unittest.TestCase):
+    def test_signing_certificate_legacy_and_build_tools_37(self):
+        expected = "ab" * 32
+        for prefix in ("Signer #1 ", "V3.0 Signer: "):
+            with self.subTest(prefix=prefix):
+                output = (f"Verifies\nNumber of signers: 1\n{prefix}certificate SHA-256 digest: {expected.upper()}\n"
+                          f"{prefix}public key SHA-256 digest: {'cd' * 32}\n")
+                self.assertEqual(verify_signing_certificate(output, expected), expected)
+
+    def test_signing_certificate_rejects_ambiguous_or_wrong_identity(self):
+        expected = "ab" * 32
+        count = "Number of signers: 1\n"
+        legacy = f"Signer #1 certificate SHA-256 digest: {expected}\n"
+        modern = f"V3.0 Signer: certificate SHA-256 digest: {expected}\n"
+        cases = {
+            "wrong certificate": (count + modern.replace(expected, "cd" * 32), expected),
+            "invalid expected fingerprint": (count + modern, "ab"),
+            "no signer count": (modern, expected),
+            "duplicate signer count": (count + count + modern, expected),
+            "multiple signers": ("Number of signers: 2\n" + modern, expected),
+            "no certificate": (count, expected),
+            "public key only": (count + modern.replace("certificate", "public key"), expected),
+            "extra legacy signer": (count + legacy + legacy.replace("#1", "#2"), expected),
+            "duplicate digest": (count + modern + modern, expected),
+            "mixed format": (count + modern + legacy, expected),
+            "unknown signer format": (count + modern.replace("V3.0", "V9.0"), expected),
+            "unknown extra certificate": (count + modern + modern.replace("V3.0", "V9.0"), expected),
+            "invalid digest": (count + modern.replace(expected, "z" * 64), expected),
+            "truncated digest": (count + modern.replace(expected, expected[:-1]), expected),
+            "trailing garbage": (count + modern.rstrip() + " extra\n", expected),
+        }
+        for case, (output, certificate) in cases.items():
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                verify_signing_certificate(output, certificate)
+
     def test_version_sequence(self):
         self.assertLess(allocate(1, 0), allocate(1, 1))
         self.assertLess(allocate(1, 1), allocate(2, 0))
