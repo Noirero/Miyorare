@@ -7,10 +7,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.preference.PreferenceManager
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.atomic.AtomicReference
@@ -168,6 +174,78 @@ class OnboardingAppearanceIntegrationTest {
         assertEquals(second.visualPalette.selectedSurface, updated.selectedSurface)
         assertNotEquals(initial.primary, updated.primary)
         assertNotEquals(initial.secondary, updated.secondary)
+    }
+
+    @Test fun onboardingNavigationSettlesOnePageAtATimeAndFinishesOnlyAtEnd() {
+        var finished = 0
+        compose.setContent {
+            MiyorareTheme {
+                OnboardingScreen(
+                    selectedTheme = AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM,
+                    selectedColorScheme = ColorScheme.MIKU,
+                    selectedDesignStyle = MiyorareDesignStyle.MODERN,
+                    selectedThemePreset = MiyorareThemePreset.MIYORARE,
+                    selectedPaletteSource = MiyorareModernPaletteSource.MATCH_THEME,
+                    customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+                    customAdaptivePalette = null,
+                    effectLevel = VisualEffectLevel.BALANCED,
+                    isAmoledEnabled = false,
+                    storageSummary = null,
+                    isLoading = false,
+                    permissions = OnboardingPermissions(false, false, false),
+                    actions = OnboardingActions(
+                        onThemeChange = {},
+                        onColorSchemeChange = {},
+                        onDesignStyleChange = {},
+                        onThemePresetChange = {},
+                        onPaletteSourceChange = {},
+                        onAmoledChange = {},
+                        onAmoledReset = {},
+                        onSelectDestination = {},
+                        onPermissionInstall = {},
+                        onPermissionNotifications = {},
+                        onPermissionBattery = {},
+                        onSignInGoogle = {},
+                        onRestoreMiyorare = {},
+                        onRestoreTachiyomi = {},
+                        onOpenGithub = {},
+                        onOpenDiscord = {},
+                        onVisitWebsite = {},
+                        onFinish = { finished++ },
+                    ),
+                )
+            }
+        }
+        val next = compose.onNodeWithText(context.getString(R.string._continue))
+        // The pager may retain an offscreen, disabled Back node from another page.
+        val back = compose.onNode(hasText(context.getString(R.string.modern_onboarding_back)) and isEnabled())
+        val done = compose.onNodeWithText(context.getString(R.string.done))
+        fun assertPage(title: Int) {
+            compose.waitForIdle()
+            compose.onNodeWithText(context.getString(title)).assertIsDisplayed()
+        }
+        fun rapidClick(node: androidx.compose.ui.test.SemanticsNodeInteraction) {
+            // Deliver two callbacks in the same UI turn, before recomposition can disable the button.
+            node.performSemanticsAction(SemanticsActions.OnClick) { click ->
+                click()
+                click()
+            }
+        }
+
+        assertPage(R.string.modern_onboarding_welcome_title)
+        rapidClick(next)
+        assertPage(R.string.modern_onboarding_storage_title)
+        rapidClick(next)
+        assertPage(R.string.modern_onboarding_sync_title)
+        rapidClick(back)
+        assertPage(R.string.modern_onboarding_storage_title)
+        next.performClick()
+        assertPage(R.string.modern_onboarding_sync_title)
+        next.performClick()
+        assertPage(R.string.modern_onboarding_finish_title)
+        compose.runOnIdle { assertEquals(0, finished) }
+        done.performClick()
+        compose.runOnIdle { assertEquals(1, finished) }
     }
 
     private fun restoringPrefs(block: (SharedPreferences) -> Unit) {
