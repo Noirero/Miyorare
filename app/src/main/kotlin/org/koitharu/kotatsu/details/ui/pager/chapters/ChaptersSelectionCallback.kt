@@ -18,7 +18,8 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.toCollection
 import org.koitharu.kotatsu.core.util.ext.toSet
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
-import org.koitharu.kotatsu.local.ui.LocalChaptersRemoveService
+import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.showExhentaiPhysicalDeleteConfirmation
 
@@ -93,43 +94,35 @@ class ChaptersSelectionCallback(
 					viewModel.isSmartLocal -> org.koitharu.kotatsu.local.ui.confirmLocalChapterDeletion(
 						recyclerView.context,
 					) { viewModel.deleteSmartLocalChapters(ids) }
-					ids.size == manga.chapters?.size -> {
-						if (isExhentaiConfirmation) {
-							// Never fall back to unconfirmed deletion if this view is detached.
-							recyclerView.findViewTreeLifecycleOwner()?.let { owner ->
-								showExhentaiPhysicalDeleteConfirmation(recyclerView.context, owner.lifecycleScope, viewModel)
-							}
-						} else viewModel.deleteLocal()
+					isExhentaiConfirmation && ids.size == manga.chapters?.size -> {
+						recyclerView.findViewTreeLifecycleOwner()?.let { owner ->
+							showExhentaiPhysicalDeleteConfirmation(recyclerView.context, owner.lifecycleScope, viewModel)
+						}
+					}
+					isExhentaiConfirmation -> {
+						Toast.makeText(recyclerView.context, R.string.exhentai_delete_target_unavailable, Toast.LENGTH_LONG).show()
 					}
 					else -> {
-						// Main/Gekko archives expose a single gallery chapter. A partial
-						// selection cannot authorize deletion of an entire physical CBZ.
-						if (isExhentaiConfirmation) {
-							Toast.makeText(
-								recyclerView.context, R.string.exhentai_delete_target_unavailable, Toast.LENGTH_LONG,
-							).show()
-							mode?.finish()
-							return true
-						}
-						LocalChaptersRemoveService.start(
-							recyclerView.context,
-							manga,
-							ids.toSet(),
-							viewModel.favouriteSpace,
-						)
-						try {
-							Snackbar.make(
-								recyclerView,
-								R.string.chapters_will_removed_background,
-								Snackbar.LENGTH_LONG,
-							).show()
-						} catch (e: IllegalArgumentException) {
-							e.printStackTraceDebug()
-							Toast.makeText(
-								recyclerView.context,
-								R.string.chapters_will_removed_background,
-								Toast.LENGTH_SHORT,
-							).show()
+						val details = viewModel.mangaDetails.value
+						val locators = viewModel.chapters.value.filter { it.chapter.id in ids }
+							.associate { it.chapter.id to it.chapter.url }
+						val legacyWhole = ids.size == manga.chapters?.size
+						if (details != null) recyclerView.findViewTreeLifecycleOwner()?.lifecycleScope?.launch {
+							runCatchingCancellable {
+								val request = viewModel.prepareChapterDeletion(details, ids, locators)
+								// A selected Normal chapter set never implies permission to delete other
+								// physical chapters just because the remote list has the same size.
+								if (request.approval == null && legacyWhole) viewModel.deleteLocal()
+								else {
+									viewModel.startChapterDeletion(recyclerView.context, request)
+									try {
+										Snackbar.make(recyclerView, R.string.chapters_will_removed_background, Snackbar.LENGTH_LONG).show()
+									} catch (e: IllegalArgumentException) {
+										e.printStackTraceDebug()
+										Toast.makeText(recyclerView.context, R.string.chapters_will_removed_background, Toast.LENGTH_SHORT).show()
+									}
+								}
+							}.onFailure(viewModel::reportDeletionError)
 						}
 					}
 				}

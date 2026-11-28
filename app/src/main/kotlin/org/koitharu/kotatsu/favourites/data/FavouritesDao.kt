@@ -151,6 +151,20 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 			.build(),
 	)
 
+	/** One-shot query within the scoped visibility transaction; pagination stays in SQL. */
+	suspend fun findDownloadedPage(
+		space: FavouriteSpace,
+		ownershipCondition: String,
+		order: ListSortOrder,
+		filterOptions: Set<ListFilterOption>,
+		limit: Int,
+		pinned: List<Long>,
+	): List<MangaWithTags> = findDownloadedPageImpl(
+		downloadedQuery(ownershipCondition, filterOptions)
+			.orderBy("${getDownloadedOrderBy(order, pinned, space)}, manga.manga_id")
+			.limit(limit).build(),
+	)
+
 	private fun downloadedQuery(ownershipCondition: String, filterOptions: Set<ListFilterOption>) =
 		MangaQueryBuilder("manga", ::getDownloadedCondition)
 			.where("manga.source != 'LOCAL'")
@@ -370,6 +384,10 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		HistoryEntity::class, TrackEntity::class, MangaTagsEntity::class,
 	])
 	protected abstract fun observeDownloadedImpl(query: SupportSQLiteQuery): Flow<List<MangaWithTags>>
+
+	@Transaction
+	@RawQuery
+	protected abstract suspend fun findDownloadedPageImpl(query: SupportSQLiteQuery): List<MangaWithTags>
 
 	@RawQuery
 	protected abstract suspend fun findDownloadedSearchEntriesImpl(query: SupportSQLiteQuery): List<FavouriteSearchEntry>

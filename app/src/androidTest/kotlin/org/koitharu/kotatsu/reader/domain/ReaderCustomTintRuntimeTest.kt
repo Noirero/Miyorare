@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.core.db.migrations.Migration52To53
 import org.koitharu.kotatsu.core.db.migrations.Migration53To54
 import org.koitharu.kotatsu.core.db.migrations.Migration54To55
 import org.koitharu.kotatsu.core.db.migrations.Migration55To56
+import org.koitharu.kotatsu.core.db.migrations.Migration56To57
 import kotlinx.coroutines.test.runTest
 
 @RunWith(AndroidJUnit4::class)
@@ -93,11 +94,12 @@ class ReaderCustomTintRuntimeTest {
             sql.execSQL("DROP TABLE chapter_progress")
             // v52 predates the new v55 bookmark ownership column.
             sql.execSQL("ALTER TABLE bookmarks DROP COLUMN origin")
+            sql.execSQL("DROP TABLE normal_download_observation")
             sql.execSQL("DROP TABLE room_master_table")
             sql.version = 52
         }
         val migrated = Room.databaseBuilder(context, MangaDatabase::class.java, name)
-            .addMigrations(Migration52To53(), Migration53To54(), Migration54To55(), Migration55To56()).build()
+            .addMigrations(Migration52To53(), Migration53To54(), Migration54To55(), Migration55To56(), Migration56To57()).build()
         try {
             val pref = checkNotNull(migrated.getPreferencesDao().find(manga.id))
             assertEquals(0.2f, pref.cfBrightness, 0f)

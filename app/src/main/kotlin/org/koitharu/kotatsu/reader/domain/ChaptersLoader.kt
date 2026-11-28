@@ -11,6 +11,10 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.FreshChapterPagesRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.domain.NormalDownloadReadResolver
+import org.koitharu.kotatsu.parsers.model.Manga
+import java.io.IOException
 import org.koitharu.kotatsu.local.domain.model.ExhentaiContentVersion
 import org.koitharu.kotatsu.local.library.LocalContentReader
 import org.koitharu.kotatsu.local.library.ReaderBackingLeaseContext
@@ -27,6 +31,7 @@ private const val PAGES_TRIM_THRESHOLD = 120
 class ChaptersLoader @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val localContentReader: LocalContentReader,
+	private val normalReadResolver: NormalDownloadReadResolver,
 ) {
 
 	@Volatile internal var diagnostics: ReaderDiagnostics? = null
@@ -43,13 +48,35 @@ class ChaptersLoader @Inject constructor(
 
     private var initializedMangaId: Long? = null
     private var exhentaiContentVersion: ExhentaiContentVersion? = null
+    private var normalReaderManga: Manga? = null
+    private var normalReaderSpace: FavouriteSpace? = null
+    private var normalReader = false
+    private var normalSnapshotSelectors: Map<Long, MangaChapter> = emptyMap()
+    // Once selected, a failed retry must not silently choose a different file or remote.
+    private val normalSelected = HashMap<Long, MangaChapter>()
 
-	suspend fun init(manga: MangaDetails) = mutex.withLock {
+	suspend fun init(
+        manga: MangaDetails,
+        normalProvenance: FavouriteSpace? = null,
+        useScopedNormal: Boolean = false,
+    ) = mutex.withLock {
         val mangaId = manga.toManga().id
         if (initializedMangaId != mangaId) {
             releaseAllLocked()
             chapterPages.clear()
             initializedMangaId = mangaId
+            normalSelected.clear()
+            normalReader = false
+            normalReaderManga = null
+            normalReaderSpace = null
+            normalSnapshotSelectors = emptyMap()
+        }
+        if (useScopedNormal) {
+            normalReader = normalReader || manga.local?.normalReaderSelectors != null ||
+                normalReadResolver.appliesTo(manga.sourceManga, normalProvenance)
+            normalReaderManga = manga.sourceManga.takeIf { normalReader }
+            normalReaderSpace = normalProvenance
+            normalSnapshotSelectors = manga.local?.normalReaderSelectors.orEmpty()
         }
         updateChapterMetadata(manga)
 	}
@@ -61,6 +88,11 @@ class ChaptersLoader @Inject constructor(
 		manga.allChapters.forEach {
 			chapters.put(it.id, it)
 		}
+        // A later metadata emission cannot turn an already selected local chapter
+        // into an online one. Page leases/snapshots remain as they were.
+        normalSelected.forEach { (id, selector) ->
+            chapters.put(id, selector.copy(id = id))
+        }
 		// Keep the remote/source counterpart separately. Downloaded chapters in allChapters deliberately
 		// use LocalMangaSource, but if that local artifact is missing/corrupt we can verify lazily at the
 		// exact chapter the user opens and fall back to the source instead of probing every file in Details.
@@ -156,16 +188,19 @@ class ChaptersLoader @Inject constructor(
 	 */
 	@CheckResult
 	suspend fun refreshChapterPages(chapterId: Long): Boolean {
-		val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
-		val sourceChapter = (if (chapter.source == LocalMangaSource) sourceChapters[chapterId] else chapter)
-			?: return false
-		if (sourceChapter.source == LocalMangaSource) return false
+		val sourceChapter = mutex.withLock {
+            if (chapterId in normalSelected || chapterId in normalSnapshotSelectors) return@withLock null
+            val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
+            (if (chapter.source == LocalMangaSource) sourceChapters[chapterId] else chapter)
+                ?.takeUnless { it.source == LocalMangaSource }
+        } ?: return false
 		val repository = mangaRepositoryFactory.create(sourceChapter.source)
 		val freshRepository = repository as? FreshChapterPagesRepository ?: return false
 		val pages = runCatchingCancellable { freshRepository.getFreshPages(sourceChapter) }.getOrNull()
 		if (pages.isNullOrEmpty()) return false
 		val readerPages = pages.mapIndexed { index, page -> ReaderPage(page, index, chapterId) }
 		return mutex.withLock {
+            if (chapterId in normalSelected || chapterId in normalSnapshotSelectors) return@withLock false
             val replaced = chapterPages.replace(chapterId, readerPages)
             if (replaced) owners.remove(chapterId)?.let { releaseLease(it) }
             replaced
@@ -234,11 +269,36 @@ class ChaptersLoader @Inject constructor(
     private suspend fun loadChapter(chapterId: Long, token: Any): List<ReaderPage> =
         withContext(ReaderBackingLeaseContext(token)) {
             val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
-            loadPagesLocalFirst(chapter).mapIndexed { index, page ->
+            loadScopedPages(chapter).mapIndexed { index, page ->
                 val versionedId = exhentaiContentVersion?.pageId(chapterId, page.id) ?: page.id
                 ReaderPage(if (versionedId == page.id) page else page.copy(id = versionedId), index, chapterId)
             }
         }
+
+    private suspend fun loadScopedPages(chapter: MangaChapter): List<MangaPage> {
+        val manga = normalReaderManga ?: return loadPagesLocalFirst(chapter)
+        // No historical fallback, even when the active root changed while this Reader was open.
+        val selected = normalReadResolver.resolve(manga, normalReaderSpace)
+            ?.normalReaderSelectors?.get(chapter.id)
+        val expected = normalSelected[chapter.id] ?: normalSnapshotSelectors[chapter.id]
+        if (expected != null && (selected == null || selected.id != expected.id ||
+                selected.url != expected.url || selected.source != expected.source)) {
+            throw IOException("Selected local chapter changed; reopen Reader")
+        }
+        if (selected != null) {
+            normalSelected[chapter.id] = selected
+            chapters.put(chapter.id, selected.copy(id = chapter.id))
+            diagnostics?.begin()?.event(ReaderEvent.LOCAL_SELECTED)
+            // Use the embedded selector, but keep the logical ID in ReaderPage.
+            // Neither an exception nor an empty result can choose the source counterpart.
+            val pages = mangaRepositoryFactory.create(selected.source).getPages(selected)
+            if (pages.isEmpty()) throw IOException("Selected local chapter has no readable pages")
+            return pages
+        }
+        val remote = sourceChapters[chapter.id] ?: chapter.takeUnless { it.source == LocalMangaSource }
+            ?: throw IOException("Selected local chapter is unavailable")
+        return loadPagesLocalFirst(remote)
+    }
 
     private suspend fun loadPagesLocalFirst(chapter: MangaChapter): List<MangaPage> {
         val diagnostic = diagnostics?.begin()

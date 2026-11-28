@@ -33,6 +33,14 @@ data class ExhentaiPresenceCandidate(
 	val title: String,
 )
 
+/** Read-only metadata used to detect conflicting deterministic download title claims. */
+data class NormalScannerTitleClaim(
+	val mangaId: Long,
+	val source: String,
+	val title: String,
+	val url: String,
+)
+
 data class MangaMigrationRef(
 	val id: Long,
 	val sourceName: String,
@@ -56,6 +64,10 @@ abstract class MangaDao {
 	/** Lightweight title projection, for manual ExHentai file presence only. */
 	@Query("SELECT manga_id AS mangaId, source, title FROM manga WHERE source IN (:sources)")
 	abstract suspend fun findExhentaiPresenceCandidates(sources: Collection<String>): List<ExhentaiPresenceCandidate>
+
+	/** Capture once per scanner work batch, never per card/row binding. */
+	@Query("SELECT manga_id AS mangaId, source, title, url FROM manga WHERE source != 'LOCAL'")
+	abstract suspend fun findNormalScannerTitleClaims(): List<NormalScannerTitleClaim>
 
 	/** Keyset batches for the prediction sheet; no tags, descriptions or full library snapshot. */
 	@Query(

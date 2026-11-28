@@ -920,8 +920,7 @@ class MihonBackupManager @Inject constructor(
   }
 
   private fun restorePreferences(preferences: List<MihonBackupPreference>) {
-    val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-    prefs.edit {
+    settings.editRestoredPreferences {
       preferences.forEach { pref ->
         when (val value = pref.value) {
           is MihonBooleanPreferenceValue -> putBoolean(pref.key, value.value)

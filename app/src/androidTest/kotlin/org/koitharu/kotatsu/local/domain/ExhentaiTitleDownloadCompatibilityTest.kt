@@ -2714,12 +2714,12 @@ class ExhentaiTitleDownloadCompatibilityTest {
 		assertTrue(chapter.exists())
 	}
 
-	private fun sqlDownloadedCondition(id: Long): Boolean {
-		val clause = classifier.getDownloadedCondition(FavouriteSpace.NORMAL, "m.manga_id")
-		return database.openHelper.readableDatabase
-			.query("SELECT $clause FROM manga m WHERE m.manga_id = $id")
-			.use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
-	}
+	private suspend fun sqlDownloadedCondition(id: Long): Boolean =
+		classifier.withDownloadedCondition(FavouriteSpace.NORMAL, "m.manga_id") { clause ->
+			database.openHelper.readableDatabase
+				.query("SELECT $clause FROM manga m WHERE m.manga_id = $id")
+				.use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
+		}
 
 	private fun gallery(id: Long, sourceName: String): Manga {
 		val source = MangaSource(sourceName)

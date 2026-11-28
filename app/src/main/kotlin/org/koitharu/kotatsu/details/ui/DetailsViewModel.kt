@@ -85,6 +85,9 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
+import org.koitharu.kotatsu.local.domain.NormalDownloadChapterAction
+import org.koitharu.kotatsu.local.domain.NormalDownloadReadResolver
+import org.koitharu.kotatsu.local.domain.NormalStandaloneSelection
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -122,6 +125,14 @@ data class DetailsRelatedUiState(
 	val error: Throwable? = null,
 )
 
+internal data class ChapterRenameRequest(
+	val source: Manga,
+	val space: FavouriteSpace?,
+	val root: File,
+	val file: File,
+	val normalApproval: NormalStandaloneSelection?,
+)
+
 @HiltViewModel
 class DetailsViewModel @Inject constructor(
 	private val historyRepository: HistoryRepository,
@@ -140,6 +151,8 @@ class DetailsViewModel @Inject constructor(
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val localMangaRepository: LocalMangaRepository,
 	private val downloadedMangaResolver: DownloadedMangaResolver,
+	private val normalChapterAction: NormalDownloadChapterAction,
+	private val normalReadResolver: NormalDownloadReadResolver,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val syncProgressFromScrobblersUseCase: SyncProgressFromScrobblersUseCase,
@@ -165,6 +178,8 @@ class DetailsViewModel @Inject constructor(
 	favouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
 	),
+	downloadSpaceProvenance = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let { FavouriteSpace.fromArgument(it) },
+	normalDetailsResolver = normalReadResolver,
 	deleteLocalMangaUseCase = deleteLocalMangaUseCase,
 	localStorageChanges = localStorageChanges,
 	mangaDataRepository = mangaDataRepository,
@@ -631,7 +646,7 @@ class DetailsViewModel @Inject constructor(
 		launchJob(Dispatchers.Default + SkipErrors) {
 			val manga = mangaDetails.firstOrNull { !it?.chapters.isNullOrEmpty() } ?: return@launchJob
 			val h = history.firstOrNull()
-			if (h != null) {
+			if (h != null && !normalReadResolver.appliesTo(manga.sourceManga, intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) })) {
 				progressUpdateUseCase(manga.toManga())
 			}
 		}
@@ -645,8 +660,8 @@ class DetailsViewModel @Inject constructor(
 		// are reflected instantly, without waiting for a manual reload or re-entering the screen.
 		mangaDataRepository.observeOverridesTrigger(emitInitialState = false)
 			.onEach {
-				val current = mangaDetails.value ?: return@onEach
-				mangaDetails.value = current.withOverride(mangaDataRepository.getOverride(mangaId))
+				val override = mangaDataRepository.getOverride(mangaId)
+				mangaDetails.update { it?.withOverride(override) }
 			}
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
@@ -753,16 +768,31 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
-	fun renameChapterDownload(item: ChapterListItem, name: String) {
-		val details = mangaDetails.value ?: return
-		val file = details.renameableChapterFile(item) ?: return
-		val root = details.local?.file ?: return
+	/** Capture the actual selected target before showing the existing confirmation dialog. */
+	internal suspend fun prepareChapterRename(item: ChapterListItem): ChapterRenameRequest? {
+		val details = mangaDetails.value ?: return null
+		val file = details.renameableChapterFile(item) ?: return null
+		val root = details.local?.file ?: return null
 		val source = details.sourceManga
 		val space = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }
+		val approved = if (normalChapterAction.appliesTo(source, space)) {
+			normalChapterAction.previewRename(source, space, root, file, item.chapter.id, item.chapter.url)
+		} else null
+		return ChapterRenameRequest(source, space, root, file, approved)
+	}
+
+	internal fun renameChapterDownload(request: ChapterRenameRequest, name: String) {
 		launchJob(Dispatchers.IO) {
 			runCatchingCancellable {
-				localMangaRepository.renameChapterDownload(source, root, file, name) {
-					downloadedMangaResolver.findSavedManga(source, space)
+				val (source, space, root, file, approved) = request
+				if (approved != null) {
+					normalChapterAction.rename(source, space, approved, name)
+				} else {
+					// A scope change while the dialog was open must not bypass the new proof.
+					check(!normalChapterAction.appliesTo(source, space)) { "Download context changed; refresh Details" }
+					localMangaRepository.renameChapterDownload(source, root, file, name) {
+						downloadedMangaResolver.findSavedManga(source, space)
+					}
 				}
 			}.onSuccess { renamed ->
 				if (renamed) onChapterDownloadRenameMessage.call(R.string.chapter_download_renamed_refresh)
@@ -885,7 +915,10 @@ class DetailsViewModel @Inject constructor(
 					firstEmission = false
 					if (it.allChapters.isNotEmpty()) {
 						val manga = it.toManga()
-						val hist = PerformanceDiagnostics.measure("repository", "details_history", performanceTrace) { historyRepository.getOne(manga) }
+						val hist = PerformanceDiagnostics.measure("repository", "details_history", performanceTrace) {
+							if (it.exactNormalDownloadIdentity || normalReadResolver.appliesTo(it.sourceManga, intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) }))
+								historyRepository.getOneExact(manga.id) else historyRepository.getOne(manga)
+						}
 						val preferredBranch = manga.getPreferredBranch(hist)
 						val resolvedBranch = resolveSelectedBranch(
 							selectedBranch = selectedBranch.value,
@@ -896,12 +929,12 @@ class DetailsViewModel @Inject constructor(
 							selectedBranch.value = resolvedBranch
 						}
 					}
-					mangaDetails.update { previous ->
+					publishDetailsSnapshot(it) { previous, incoming ->
 						val local = previous?.local
 						// A confirmed archive can arrive while the source refresh is in flight.
-						if (it.isOfficialExhentai && previous?.id == it.id &&
+						if (incoming.isOfficialExhentai && previous?.id == incoming.id &&
 							local != null && local !== localFromLoad && local.file.exists()
-						) it.copy(localManga = local) else it
+						) incoming.copy(localManga = local) else incoming
 					}
 					localFromLoad = it.local
 					PerformanceDiagnostics.milestone(performanceTrace, "manga_ready")
@@ -912,7 +945,8 @@ class DetailsViewModel @Inject constructor(
 						initialLoading = false
 					}
 					_isRefreshing.value = !initialLoading && !it.isLoaded
-					if (force && it.isLoaded && !scrobblingSynced) {
+					if (force && it.isLoaded && !scrobblingSynced &&
+						!normalReadResolver.appliesTo(it.sourceManga, intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) })) {
 						scrobblingSynced = true
 						launchJob(Dispatchers.Default + SkipErrors) {
 							syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->

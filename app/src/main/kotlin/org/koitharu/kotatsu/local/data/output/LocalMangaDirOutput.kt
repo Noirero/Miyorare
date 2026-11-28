@@ -25,10 +25,15 @@ class LocalMangaDirOutput private constructor(
 	prepareForDownload: Boolean,
 	private val newArchive: ExhentaiNewArchive?,
 	private val archiveComment: String?,
+	private val commitOps: RootFileCommitOps = RealRootFileCommitOps,
 ) : LocalMangaOutput(rootFile) {
 
 	constructor(rootFile: File, manga: Manga, prepareForDownload: Boolean = false) :
 		this(rootFile, manga, prepareForDownload, null, null)
+
+	/** Per-writer fault injection for the actual standalone finalization path. */
+	internal constructor(rootFile: File, manga: Manga, commitOps: RootFileCommitOps) :
+		this(rootFile, manga, false, null, null, commitOps)
 
 	internal constructor(newArchive: ExhentaiNewArchive, manga: Manga, archiveComment: String?) :
 		this(checkNotNull(newArchive.target.parentFile), manga, false, newArchive, archiveComment)
@@ -201,12 +206,12 @@ class LocalMangaDirOutput private constructor(
 				return@runInterruptible
 			}
 			val resFile = File(file.absolutePath.removeSuffix(SUFFIX_TMP))
-			if (!file.renameTo(resFile)) {
+			if (!commitOps.rename(file, resFile)) {
 				// Some Android/external-storage stacks can reject rename even inside one directory.
 				// Falling back to a copy keeps a fully written CBZ instead of silently reporting success
 				// while only the .tmp archive remains.
-				file.copyTo(resFile, overwrite = true)
-				check(file.delete() || !file.exists()) { "Cannot remove temporary CBZ $file" }
+				commitOps.copy(file, resFile)
+				check(commitOps.delete(file) || !commitOps.exists(file)) { "Cannot remove temporary CBZ $file" }
 			}
 			check(resFile.isFile && resFile.length() > 0L) { "CBZ was not finalized: $resFile" }
 		} else {

@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.ui.pager
 
 import android.app.Activity
+import android.content.Context
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
@@ -76,6 +77,8 @@ import org.koitharu.kotatsu.local.data.ExhentaiDownloadedCopy
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.ExhentaiDeletionApproval
+import org.koitharu.kotatsu.local.domain.NormalDeleteApproval
+import org.koitharu.kotatsu.local.ui.LocalChaptersRemoveService
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaState
@@ -88,6 +91,7 @@ import tachiyomi.core.common.util.lang.compareToWithCollator
 import org.koitharu.kotatsu.details.data.ChapterPersonalMetadata
 import org.koitharu.kotatsu.details.data.ChapterPersonalRepository
 import org.koitharu.kotatsu.details.data.ChapterProgressRepository
+import org.koitharu.kotatsu.local.domain.NormalDownloadReadResolver
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -105,6 +109,8 @@ abstract class ChaptersPagesViewModel(
 	protected val chapterProgressRepository: ChapterProgressRepository,
     private val localContentReader: LocalContentReader,
 	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
+	private val downloadSpaceProvenance: FavouriteSpace? = null,
+	private val normalDetailsResolver: NormalDownloadReadResolver? = null,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
@@ -224,6 +230,7 @@ abstract class ChaptersPagesViewModel(
 		.distinctUntilChanged { old, new ->
 			old?.id == new?.id &&
 				old?.isLocal == new?.isLocal &&
+				old?.exactNormalDownloadIdentity == new?.exactNormalDownloadIdentity &&
 				old?.sourceManga?.chapters === new?.sourceManga?.chapters &&
 				old?.local?.manga?.chapters === new?.local?.manga?.chapters
 		}
@@ -465,6 +472,28 @@ abstract class ChaptersPagesViewModel(
 					if (mangaDetails.value?.id == id) chapterReadOverrides.value = overrides
 				}
 		}
+		normalDetailsResolver?.let { resolver ->
+			launchJob(Dispatchers.Default) {
+				combine(mangaDetails.map { it?.sourceManga }.distinctUntilChanged(),
+					resolver.observeDetailsChanges(), isScanlatorsMerged) { source, _, _ -> source }
+					.filterNotNull().collect { source ->
+						var leftScope = false
+						resolver.withDetailsProjection(source, downloadSpaceProvenance) { scoped, _, local ->
+							while (true) {
+								val latest = mangaDetails.value ?: break
+								if (latest.sourceManga != source || (!scoped && !latest.exactNormalDownloadIdentity)) break
+								val candidate = latest.copy(localManga = local, exactNormalDownloadIdentity = scoped)
+								val updated = if (scoped && isScanlatorsMerged.value) candidate.withMergedBranches() else candidate
+								if (mangaDetails.compareAndSet(latest, updated)) {
+									leftScope = !scoped && latest.exactNormalDownloadIdentity
+									break
+								}
+							}
+						}
+						if (leftScope) reload()
+					}
+			}
+		}
 		launchJob(Dispatchers.Default) {
 			localStorageChanges
 				.collect { onDownloadComplete(it) }
@@ -635,7 +664,7 @@ abstract class ChaptersPagesViewModel(
 		val details = mangaDetails.value ?: return ChapterOpenMode.NORMAL
 		val manga = details.toManga()
 		val history = runCatchingCancellable {
-			historyRepository.getOne(manga)
+			if (details.exactNormalDownloadIdentity) historyRepository.getOneExact(manga.id) else historyRepository.getOne(manga)
 		}.getOrNull() ?: return ChapterOpenMode.NORMAL
 		if (chapterId == history.chapterId) {
 			return ChapterOpenMode.NORMAL
@@ -811,7 +840,7 @@ abstract class ChaptersPagesViewModel(
 				favouriteSpace = favouriteSpace,
 				allowDiagnosticExport = allowDiagnosticExport,
 			)
-			downloadScheduler.schedule(setOf(manga to task))
+			downloadScheduler.schedule(setOf(manga to task), explicitSpace = downloadSpaceProvenance)
 			onDownloadStarted.call(Unit)
 		}
 	}
@@ -828,6 +857,52 @@ abstract class ChaptersPagesViewModel(
 		val details = mangaDetails.value ?: return null
 		return deleteLocalMangaUseCase.previewExhentaiPhysicalDeletion(details.sourceManga, favouriteSpace, file)
 	}
+
+	internal data class ChapterDeleteRequest(
+		val manga: Manga, val ids: Set<Long>, val approval: NormalDeleteApproval?,
+	)
+
+	internal data class WholeNormalDeleteRequest(val manga: Manga, val approval: NormalDeleteApproval)
+
+	/** Called with the rendered Details/Reader snapshot and selected row locators, before confirmation. */
+	internal suspend fun prepareChapterDeletion(
+		details: MangaDetails, ids: Set<Long>, locators: Map<Long, String>,
+	): ChapterDeleteRequest {
+		val remote = details.sourceManga
+		if (!deleteLocalMangaUseCase.appliesNormalDeletion(remote, downloadSpaceProvenance)) {
+			return ChapterDeleteRequest(details.toManga(), ids, null)
+		}
+		check(locators.keys == ids && ids.isNotEmpty()) { "Selected chapter changed; refresh Details" }
+		val container = checkNotNull(details.local?.file) { "Selected download is unavailable" }
+		val approval = deleteLocalMangaUseCase.previewNormalDeletion(remote, downloadSpaceProvenance, container, locators)
+		return ChapterDeleteRequest(remote, ids, approval)
+	}
+
+	internal fun startChapterDeletion(context: Context, request: ChapterDeleteRequest) {
+		val approval = request.approval
+		if (approval != null) {
+			LocalChaptersRemoveService.startVerifiedNormal(context, request.manga, request.ids, favouriteSpace, approval)
+		} else {
+			LocalChaptersRemoveService.start(context, request.manga, request.ids, favouriteSpace, downloadSpaceProvenance)
+		}
+	}
+
+	internal suspend fun prepareWholeNormalDeletion(details: MangaDetails): WholeNormalDeleteRequest? {
+		val remote = details.sourceManga
+		if (!deleteLocalMangaUseCase.appliesNormalDeletion(remote, downloadSpaceProvenance)) return null
+		val container = checkNotNull(details.local?.file) { "Selected download is unavailable" }
+		return WholeNormalDeleteRequest(remote,
+			deleteLocalMangaUseCase.previewNormalDeletion(remote, downloadSpaceProvenance, container))
+	}
+
+	internal fun deleteConfirmedNormal(request: WholeNormalDeleteRequest) {
+		launchLoadingJob(Dispatchers.IO) {
+			check(deleteLocalMangaUseCase.deleteConfirmedNormal(request.manga, downloadSpaceProvenance, request.approval))
+			onMangaRemoved.call(request.manga)
+		}
+	}
+
+	internal fun reportDeletionError(error: Throwable) = errorEvent.call(error)
 
 	fun deleteLocal() = deleteLocal(approvedExhentaiFile = null)
 
@@ -876,6 +951,9 @@ abstract class ChaptersPagesViewModel(
 			} else {
 				if (remote != null && EhentaiSourceFamily.supportsTitleMatchedDownloads(remote.source.name)) {
 					deleteLocalMangaUseCase.requireSourceOwnedExhentaiDeletion(remote, favouriteSpace, local.file)
+				}
+				if (remote != null) check(!deleteLocalMangaUseCase.appliesNormalDeletion(remote, downloadSpaceProvenance)) {
+					"Selected Normal download requires exact confirmation"
 				}
 				deleteLocalMangaUseCase(m)
 			}
@@ -958,6 +1036,31 @@ abstract class ChaptersPagesViewModel(
 		reload()
 	}
 
+	/** Source-load emissions may be older than an observation; never publish their local payload. */
+	protected suspend fun publishDetailsSnapshot(
+		incoming: MangaDetails,
+		legacyMerge: (MangaDetails?, MangaDetails) -> MangaDetails = { _, value -> value },
+	) {
+		val resolver = normalDetailsResolver
+		if (resolver == null) {
+			mangaDetails.update { legacyMerge(it, incoming) }
+			return
+		}
+		resolver.withDetailsProjection(incoming.sourceManga, downloadSpaceProvenance) { scoped, sourceCurrent, local ->
+			mangaDetails.update { previous ->
+				if (scoped) {
+					if (!sourceCurrent && previous?.exactNormalDownloadIdentity == true &&
+						previous.id == incoming.id && previous.sourceManga != incoming.sourceManga
+					) previous else {
+						val projected = incoming.copy(localManga = local, exactNormalDownloadIdentity = true)
+						if (isScanlatorsMerged.value) projected.withMergedBranches() else projected
+					}
+				} else legacyMerge(previous, if (incoming.exactNormalDownloadIdentity)
+					incoming.copy(localManga = null, exactNormalDownloadIdentity = false) else incoming)
+			}
+		}
+	}
+
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		if (isSmartLocal) return
 		// A versioned Reader owns its displayed CBZ until an explicit reload or close.
@@ -965,6 +1068,8 @@ abstract class ChaptersPagesViewModel(
 		if (this is ReaderViewModel && hasPinnedExhentaiVersion) return
 		if (downloadedManga != null && this is ReaderViewModel && hasExhentaiSessionChoice) return
 		val current = mangaDetails.value ?: return
+		if (current.exactNormalDownloadIdentity ||
+			normalDetailsResolver?.appliesTo(current.sourceManga, downloadSpaceProvenance) == true) return
 		// Official ExHentai publications carry an explicit space; the generic signal is for Local.
 		if (downloadedManga != null && current.isOfficialExhentai) return
 		val sourceName = current.sourceManga.source.name
@@ -1017,7 +1122,8 @@ abstract class ChaptersPagesViewModel(
 		// Do not pre-filter by Local id: sidecar-free downloads can have a different physical Local id.
 		val updated = interactor.updateLocal(current, downloadedManga) ?: return
 		if (updated === current) return
-		mangaDetails.value = if (isScanlatorsMerged.value) updated.withMergedBranches() else updated
+		if (normalDetailsResolver?.appliesTo(current.sourceManga, downloadSpaceProvenance) == true) return
+		if (!mangaDetails.compareAndSet(current, if (isScanlatorsMerged.value) updated.withMergedBranches() else updated)) return
 		// A normal download only enriches a remote title with an on-device copy. Updating Details is
 		// enough; reloading Reader would blank the current content and refetch the chapter. Local-source
 		// file changes still reload because their chapter/page URLs can genuinely have changed.

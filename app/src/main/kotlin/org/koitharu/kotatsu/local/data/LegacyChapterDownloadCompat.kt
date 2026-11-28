@@ -105,6 +105,68 @@ internal object LegacyChapterDownloadCompat {
 	}
 
 	/**
+	 * Scanner-only filename evidence. Do not trust ordinal-derived local IDs, chapter numbers or
+	 * a mismatched URL hash. Require a unique candidate in both directions. The legacy matcher
+	 * remains unchanged for existing consumers.
+	 */
+	internal fun matchStandaloneNames(
+		remoteChapters: List<MangaChapter>,
+		fileNames: Collection<String>,
+	): Map<String, MangaChapter> {
+		val byBase = HashMap<String, MutableSet<MangaChapter>>()
+		val byHash = HashMap<Pair<String, String>, MutableSet<MangaChapter>>()
+		for (chapter in remoteChapters) {
+			// Writer sanitizes scanlator and title separately, then joins with "_" and
+			// truncates. Preserve punctuation: Chapter 1! is not Chapter 1.
+			// Do not reconstruct a title-less writer ordinal after listing changes.
+			val title = chapter.title?.takeIf { it.isNotEmpty() }
+			val group = chapter.scanlator?.takeIf { it.isNotEmpty() }
+			val bases = LinkedHashSet<String>()
+			if (title != null) {
+				val writerBase = buildString {
+					if (group != null) append(readableChapterFileName(group)).append('_')
+					append(readableChapterFileName(title))
+				}.take(MAX_MANGA_CHAPTER_FILENAME_LENGTH)
+				bases += writerBase
+				// Explicit historical hashless / Mihon naming forms, not arbitrary
+				// punctuation-stripping or number-based equivalence.
+				for (base in generatedDownloadBases(chapter)) {
+					bases += base
+					bases += readableChapterFileName(base).take(MAX_MANGA_CHAPTER_FILENAME_LENGTH)
+				}
+			}
+			val hash = chapter.url.mihonUrlHash()
+			for (base in bases) {
+				val key = base.lowercase(Locale.ROOT)
+				if (key.isBlank()) continue
+				byBase.getOrPut(key) { LinkedHashSet() }.add(chapter)
+				if (hash != null) byHash.getOrPut(key to hash) { LinkedHashSet() }.add(chapter)
+			}
+		}
+		val proposals = LinkedHashMap<String, Set<MangaChapter>>()
+		val claims = HashMap<Long, Int>()
+		for (name in fileNames) {
+			if (!name.endsWith(".cbz", true) && !name.endsWith(".zip", true)) continue
+			val stem = name.substringBeforeLast('.')
+			val candidates = LinkedHashSet<MangaChapter>()
+			candidates += byBase[stem.lowercase(Locale.ROOT)].orEmpty()
+			parseHashedStem(stem)?.let { hashed ->
+				candidates += byHash[hashed.base.lowercase(Locale.ROOT) to hashed.token.lowercase(Locale.ROOT)].orEmpty()
+			}
+			if (candidates.isEmpty()) continue
+			proposals[name] = candidates
+		}
+		// Count every possible claim, even an ambiguous filename. A literal title
+		// resembling a valid hash must not steal the hashed chapter (or vice versa).
+		for (candidates in proposals.values) {
+			for (id in candidates.mapTo(HashSet()) { it.id }) claims[id] = (claims[id] ?: 0) + 1
+		}
+		return proposals.mapNotNull { (name, candidates) ->
+			candidates.singleOrNull()?.takeIf { claims[it.id] == 1 }?.let { name to it }
+		}.toMap()
+	}
+
+	/**
 	 * Score a physical CBZ against a remote chapter for UI-side fallback matching.
 	 * 2 = the six-character suffix equals Mihon's MD5(url) hash, 1 = unique compatible basename,
 	 * 0 = not a compatible artifact.

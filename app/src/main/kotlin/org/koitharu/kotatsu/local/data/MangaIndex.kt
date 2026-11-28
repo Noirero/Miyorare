@@ -132,6 +132,10 @@ class MangaIndex(source: String?) {
 		json.put(KEY_COVER_ENTRY, name)
 	}
 
+	/** Raw stored pattern for scanner validation without compiling untrusted archive regex. */
+	internal fun getStoredChapterEntriesPattern(chapterId: Long): String? =
+		json.optJSONObject(KEY_CHAPTERS)?.optJSONObject(chapterId.toString())?.getStringOrNull(KEY_ENTRIES)
+
 	fun getChapterNamesPattern(chapter: MangaChapter): Regex {
 		val chapters = json.getJSONObject(KEY_CHAPTERS)
 		val storedPattern = chapters

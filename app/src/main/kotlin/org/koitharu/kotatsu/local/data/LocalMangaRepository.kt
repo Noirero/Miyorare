@@ -225,6 +225,16 @@ class LocalMangaRepository @Inject constructor(
 		result
 	}
 
+	/** Physical deletion already happened. Keep cleanup path-scoped and do not emit a
+	 * positive LocalManga event: the generic ownership collector can adopt such a path.
+	 * The Normal mutation intent separately queues current-root revalidation.
+	 */
+	internal suspend fun publishNormalDeletion(mangaId: Long, removedPaths: Set<String>) {
+		localMangaIndex.removeExactPaths(removedPaths)
+		favouriteDownloadOwnershipIndex.removeConfirmedNormalPaths(mangaId, removedPaths)
+		localStorageChanges.emit(null)
+	}
+
 	private suspend fun clearDeletedMangaState(manga: Manga, file: File) {
 		localMangaIndex.delete(manga.id)
 		favouriteDownloadOwnershipIndex.removePath(file)

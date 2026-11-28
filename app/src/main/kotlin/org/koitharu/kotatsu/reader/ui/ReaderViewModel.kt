@@ -157,6 +157,7 @@ class ReaderViewModel @Inject constructor(
     favouriteSpace = FavouriteSpace.fromArgument(
         savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
     ),
+    downloadSpaceProvenance = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let { FavouriteSpace.fromArgument(it) },
     deleteLocalMangaUseCase = deleteLocalMangaUseCase,
     localStorageChanges = localStorageChanges,
     mangaDataRepository = dataRepository,
@@ -382,7 +383,7 @@ class ReaderViewModel @Inject constructor(
         val pages = chaptersLoader.getPagesCount(state.chapterId)
         if (pages <= 0) return
         val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
-        val key = resolveChapterPersonalKey(chapter, sourceChapters)
+        val key = resolveChapterPersonalKey(chapter, sourceChapters, exactNormal = mangaDetails.value?.exactNormalDownloadIdentity == true)
         // Respect user ordering: an unread swipe made after this visit must not be undone
         // when an older queued database write eventually completes.
         val (isNewVisit, token) = visitAcknowledgement.capture(state.chapterId)
@@ -412,11 +413,11 @@ class ReaderViewModel @Inject constructor(
         if (manga.isNovelContent) return ReaderState(chapterId, 0, 0)
         val chapter = chaptersLoader.peekChapter(chapterId) ?: return ReaderState(chapterId, 0, 0)
         val sourceChapters = mangaDetails.value?.sourceManga?.chapters.orEmpty()
-        val key = resolveChapterPersonalKey(chapter, sourceChapters)
+        val key = resolveChapterPersonalKey(chapter, sourceChapters, exactNormal = mangaDetails.value?.exactNormalDownloadIdentity == true)
         val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key, chapterId)
         if (saved != null) return ReaderState(chapterId, saved.page, saved.scroll)
         // Only the current legacy History cursor is known; never infer visits to older chapters.
-        val history = historyRepository.getOne(manga)
+        val history = if (mangaDetails.value?.exactNormalDownloadIdentity == true) historyRepository.getOneExact(manga.id) else historyRepository.getOne(manga)
         return if (history?.chapterId == chapterId) ReaderState(history) else ReaderState(chapterId, 0, 0)
     }
 
@@ -882,7 +883,11 @@ class ReaderViewModel @Inject constructor(
                         if (mangaDetails.value == null) {
                             mangaDetails.value = details
                         }
-                        chaptersLoader.init(details)
+                        chaptersLoader.init(
+                            details,
+                            normalProvenance = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
+                            useScopedNormal = true,
+                        )
                         val manga = details.toManga()
                         // obtain state
                         if (readingState.value == null) {
@@ -1238,7 +1243,7 @@ class ReaderViewModel @Inject constructor(
             if (settings.getChapterReadOverrides(manga.id)[chapterId] == false ||
                 settings.getChapterPageResetStamp(manga.id, chapterId, favouriteSpace.dbValue) < 0
             ) return ReaderState(chapterId, 0, 0)
-            val key = resolveChapterPersonalKey(selectedChapter, details.sourceManga.chapters.orEmpty())
+            val key = resolveChapterPersonalKey(selectedChapter, details.sourceManga.chapters.orEmpty(), exactNormal = details.exactNormalDownloadIdentity)
             val saved = chapterProgressRepository.get(manga.id, favouriteSpace, key, chapterId)
             if (saved != null) return ReaderState(chapterId, saved.page, saved.scroll)
             val history = database.getHistoryDao().find(manga.id)
@@ -1263,7 +1268,7 @@ class ReaderViewModel @Inject constructor(
 
         val requestedBranch: String? = savedStateHandle[ReaderIntent.EXTRA_BRANCH]
         // continue reading
-        val history = historyRepository.getOne(manga)
+        val history = if (details.exactNormalDownloadIdentity) historyRepository.getOneExact(manga.id) else historyRepository.getOne(manga)
         if (history != null) {
             val chapter = manga.findChapterById(history.chapterId)
             val resume = if (!manga.isNovelContent &&

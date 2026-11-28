@@ -403,6 +403,10 @@ class LocalMangaIndex @Inject constructor(
 		}
 	}
 
+	/** Read-only migration hint. Scanner must independently verify source, locator and space. */
+	internal fun getDownloadAliasForScanner(remoteMangaId: Long): DownloadPathAlias? =
+		readDownloadAlias(remoteMangaId)
+
 	/**
 	 * Persist a provider-specific remote id as an alias to an existing download without changing the
 	 * download's metadata, moving files, or adding a duplicate item to the Local index.

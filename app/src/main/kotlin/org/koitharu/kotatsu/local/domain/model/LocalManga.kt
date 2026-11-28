@@ -6,6 +6,7 @@ import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.util.ext.contains
 import org.koitharu.kotatsu.core.util.ext.creationTime
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.util.longHashCode
 import java.io.File
@@ -14,6 +15,8 @@ data class LocalManga(
 	val manga: Manga,
 	val file: File = manga.url.toUri().toFile(),
 	val exhentaiContentVersion: ExhentaiContentVersion? = null,
+	// Reader-only mapping: logical ID to actual embedded/file selector, not mutation authority.
+	val normalReaderSelectors: Map<Long, MangaChapter>? = null,
 ) {
 
 	var createdAt: Long = -1L

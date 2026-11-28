@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
@@ -107,10 +108,11 @@ class FavouritesRepository @Inject constructor(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 		filterOptions: Set<ListFilterOption> = emptySet(),
 	): List<FavouriteSearchEntry> =
-		db.getFavouritesDao().findDownloadedSearchEntries(downloadedShelfCondition(space), filterOptions)
+		downloadedContentClassifier.withDownloadedCondition(space, "manga.manga_id") { ownership ->
+			db.getFavouritesDao().findDownloadedSearchEntries(downloadedShelfCondition(space, ownership), filterOptions)
+		}
 
-	private fun downloadedShelfCondition(space: FavouriteSpace): String {
-		val ownership = downloadedContentClassifier.getDownloadedCondition(space, "manga.manga_id")
+	private fun downloadedShelfCondition(space: FavouriteSpace, ownership: String): String {
 		val inPrivate = "EXISTS(SELECT 1 FROM private_favourites WHERE " +
 			"private_favourites.manga_id = manga.manga_id AND private_favourites.deleted_at = 0)"
 		if (space == FavouriteSpace.PRIVATE) return "$ownership AND $inPrivate"
@@ -172,9 +174,18 @@ class FavouritesRepository @Inject constructor(
 		limit: Int,
 		pinned: List<Long> = emptyList(),
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
-	): Flow<List<Manga>> = db.getFavouritesDao()
-		.observeDownloaded(space, downloadedShelfCondition(space), order, filterOptions, limit, pinned)
-		.map { it.toMangaList() }
+	): Flow<List<Manga>> = if (space == FavouriteSpace.NORMAL) {
+		observeDownloadedShelfChanges(space).mapLatest {
+			downloadedContentClassifier.withDownloadedCondition(space, "manga.manga_id") { ownership ->
+				db.getFavouritesDao().findDownloadedPage(space, downloadedShelfCondition(space, ownership),
+					order, filterOptions, limit, pinned).toMangaList()
+			}
+		}.distinctUntilChanged()
+	} else {
+		val condition = downloadedShelfCondition(space, downloadedContentClassifier.getLegacyDownloadedCondition(space, "manga.manga_id"))
+		db.getFavouritesDao().observeDownloaded(space, condition, order, filterOptions, limit, pinned)
+			.map { it.toMangaList() }
+	}
 
 	fun observeAll(
 		order: ListSortOrder,
@@ -250,18 +261,24 @@ class FavouritesRepository @Inject constructor(
 			emitInitialState = true,
 		).map { Unit }
 
-	fun observeDownloadedChanges(): Flow<Unit> = db.invalidationTracker.createFlow(
-		tables = arrayOf("local_index", "favourite_download_index", "exhentai_presence"),
-		emitInitialState = true,
-	).map { Unit }
+	fun observeDownloadedChanges(space: FavouriteSpace = FavouriteSpace.NORMAL): Flow<Unit> {
+		val legacy = db.invalidationTracker.createFlow(
+			tables = arrayOf("local_index", "favourite_download_index", "exhentai_presence"),
+			emitInitialState = true,
+		).map { Unit }
+		return if (space == FavouriteSpace.NORMAL) merge(legacy, downloadedContentClassifier.observeNormalChanges()) else legacy
+	}
 
-	fun observeDownloadedShelfChanges(): Flow<Unit> = db.invalidationTracker.createFlow(
-		tables = arrayOf(
-			"local_index", "favourite_download_index", "exhentai_presence", TABLE_PRIVATE_FAVOURITES,
-			TABLE_FAVOURITE_CATEGORIES, TABLE_MANGA, TABLE_MANGA_TAGS, TABLE_HISTORY, "tracks",
-		),
-		emitInitialState = true,
-	).map { Unit }
+	fun observeDownloadedShelfChanges(space: FavouriteSpace = FavouriteSpace.NORMAL): Flow<Unit> {
+		val legacy = db.invalidationTracker.createFlow(
+			tables = arrayOf(
+				"local_index", "favourite_download_index", "exhentai_presence", TABLE_PRIVATE_FAVOURITES,
+				TABLE_FAVOURITE_CATEGORIES, TABLE_MANGA, TABLE_MANGA_TAGS, TABLE_HISTORY, "tracks",
+			),
+			emitInitialState = true,
+		).map { Unit }
+		return if (space == FavouriteSpace.NORMAL) merge(legacy, downloadedContentClassifier.observeNormalChanges()) else legacy
+	}
 
 	/** Global APIs below remain flattened; only navigation callers opt into this overload. */
 	fun observeSets(space: FavouriteSpace): Flow<List<FavouriteCategorySetEntity>> =

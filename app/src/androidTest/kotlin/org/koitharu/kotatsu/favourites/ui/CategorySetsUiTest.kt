@@ -1,6 +1,9 @@
 package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
+import androidx.core.content.edit
+import androidx.preference.PreferenceManager
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.view.ViewGroup
@@ -42,6 +45,9 @@ import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.prefs.DownloadFormat
+import org.koitharu.kotatsu.core.util.ext.MimeType
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -81,6 +87,8 @@ class CategorySetsUiTest {
 	@Inject lateinit var sourceFilters: FavouriteSourceFilterStore
 	@Inject lateinit var display: FavouriteDisplayPreferences
 	@Inject lateinit var destinations: DownloadDestinationStore
+	@Inject lateinit var mangaData: MangaDataRepository
+	@Inject internal lateinit var normalObservations: NormalDownloadObservationStore
 	@Inject lateinit var privateSessionProvider: javax.inject.Provider<PrivateFavouritesSession>
 	@Inject lateinit var imageLoaderProvider: javax.inject.Provider<coil3.ImageLoader>
 	private lateinit var privateSession: PrivateFavouritesSession
@@ -537,8 +545,12 @@ class CategorySetsUiTest {
 		val type = FavouriteContentType.MANGA
 		val normalCategory = categoryIds.getValue(normal).first()[3]
 		val privateCategory = categoryIds.getValue(privateSpace).first()[6]
+		val badgeManga = manga.copy(chapters = listOf(SampleData.chapter.copy(
+			id = manga.id * 10, title = "Chapter 1", number = 1f, scanlator = null, source = manga.source,
+		)))
 		runBlocking {
-			repository.updateCategoryMemberships(listOf(manga), mapOf(normalCategory to true), normal)
+			mangaData.storeManga(badgeManga, replaceExisting = true)
+			repository.updateCategoryMemberships(listOf(badgeManga), mapOf(normalCategory to true), normal)
 			repository.updateCategoryMemberships(listOf(otherManga), mapOf(privateCategory to true), privateSpace)
 		}
 		types.setLastCategoryId(type, normalCategory, normal)
@@ -552,56 +564,83 @@ class CategorySetsUiTest {
 			return container.takeIf { current?.categoryId == categoryId }
 		}
 
-		ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { normalScenario ->
-			var selectedNormal: FavouritesContainerFragment? = null
-			await {
-				normalScenario.onActivity { selectedNormal = selectedContainer(it, normalCategory) }
-				selectedNormal != null
-			}
-			val normalContainer = checkNotNull(selectedNormal)
-			val privateIntent = Intent(context, FavouritesActivity::class.java)
-				.putExtra(EXTRA_FAVOURITE_SPACE, privateSpace.dbValue)
-			var privateActivity: FavouritesActivity? = null
-			try {
-				// Start from Normal so its activity and pager stay in the same back stack.
-				normalScenario.onActivity { it.startActivity(privateIntent) }
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val oldRoot = prefs.getString(AppSettings.KEY_LOCAL_STORAGE, null)
+		val root = File(context.cacheDir, "normal-badge-${System.nanoTime()}").canonicalFile
+		check(root.mkdirs())
+		try {
+			prefs.edit(commit = true) { putString(AppSettings.KEY_LOCAL_STORAGE, root.path) }
+			ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { normalScenario ->
+				var selectedNormal: FavouritesContainerFragment? = null
 				await {
-					var ready = false
-					instrumentation.runOnMainSync {
-						privateActivity = ActivityLifecycleMonitorRegistry.getInstance()
-							.getActivitiesInStage(Stage.RESUMED).filterIsInstance<FavouritesActivity>().singleOrNull()
-						ready = privateActivity?.let { selectedContainer(it, privateCategory) } != null
-					}
-					ready
+					normalScenario.onActivity { selectedNormal = selectedContainer(it, normalCategory) }
+					selectedNormal != null
 				}
-				assertEquals(privateCategory, types.getLastCategoryId(type, privateSpace))
-
-				// Mirror completion at the ownership index boundary while the Normal view is retained.
-				val root = checkNotNull(destinations.effectiveRoot(normal))
-				val downloadDir = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
-				runBlocking {
-					database.getFavouriteDownloadIndexDao().upsert(
-						listOf(FavouriteDownloadIndexEntity(manga.id, normal.dbValue, File(downloadDir, "badge-fixture.cbz").absolutePath)),
-					)
-				}
-				await {
-					var count: Int? = null
-					instrumentation.runOnMainSync {
-						val pager = normalContainer.view?.findViewById<ViewPager2>(R.id.pager)
-						val adapter = pager?.adapter as? FavouritesContainerAdapter
-						count = adapter?.let { rows ->
-							(0 until rows.itemCount).asSequence().map(rows::getItem)
-								.firstOrNull { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID }?.count
+				val normalContainer = checkNotNull(selectedNormal)
+				val privateIntent = Intent(context, FavouritesActivity::class.java)
+					.putExtra(EXTRA_FAVOURITE_SPACE, privateSpace.dbValue)
+				var privateActivity: FavouritesActivity? = null
+				try {
+					// Start from Normal so its activity and pager stay in the same back stack.
+					normalScenario.onActivity { it.startActivity(privateIntent) }
+					await {
+						var ready = false
+						instrumentation.runOnMainSync {
+							privateActivity = ActivityLifecycleMonitorRegistry.getInstance()
+								.getActivitiesInStage(Stage.RESUMED).filterIsInstance<FavouritesActivity>().singleOrNull()
+							ready = privateActivity?.let { selectedContainer(it, privateCategory) } != null
 						}
+						ready
 					}
-					count == 1
+					assertEquals(privateCategory, types.getLastCategoryId(type, privateSpace))
+
+					// Publish real scanner evidence while the Normal view is retained behind Private.
+					runBlocking {
+						assertEquals(root.canonicalFile, checkNotNull(destinations.effectiveRoot(normal)).canonicalFile)
+						val image = File(root, "fixture.png")
+						val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+						try {
+							image.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+						} finally { bitmap.recycle() }
+						val chapter = badgeManga.chapters.orEmpty().single()
+						val output = LocalMangaOutput.getOrCreate(root, badgeManga, DownloadFormat.MULTIPLE_CBZ)
+						try {
+							output.addPage(IndexedValue(0, chapter), image, 0, MimeType("image/png"))
+							assertTrue(output.flushChapter(chapter))
+							output.finish()
+						} finally { output.close() }
+						val container = output.rootFile.canonicalFile
+						database.getFavouriteDownloadIndexDao().upsert(
+							listOf(FavouriteDownloadIndexEntity(badgeManga.id, normal.dbValue, container.path)),
+						)
+						assertTrue(normalObservations.scan(badgeManga, normal))
+						assertEquals(NormalObservationStatus.PRESENT,
+							normalObservations.readVisible(listOf(badgeManga), normal)[badgeManga.id]?.fact?.status)
+					}
+					await {
+						var count: Int? = null
+						instrumentation.runOnMainSync {
+							val pager = normalContainer.view?.findViewById<ViewPager2>(R.id.pager)
+							val adapter = pager?.adapter as? FavouritesContainerAdapter
+							count = adapter?.let { rows ->
+								(0 until rows.itemCount).asSequence().map(rows::getItem)
+									.firstOrNull { it.id == DOWNLOADED_FAVOURITES_CATEGORY_ID }?.count
+							}
+						}
+						count == 1
+					}
+					assertEquals("Normal badge refresh changed the Private category", privateCategory, types.getLastCategoryId(type, privateSpace))
+					assertEquals(normalCategory, types.getLastCategoryId(type, normal))
+				} finally {
+					instrumentation.runOnMainSync { privateActivity?.finish() }
+					instrumentation.waitForIdleSync()
 				}
-				assertEquals("Normal badge refresh changed the Private category", privateCategory, types.getLastCategoryId(type, privateSpace))
-				assertEquals(normalCategory, types.getLastCategoryId(type, normal))
-			} finally {
-				instrumentation.runOnMainSync { privateActivity?.finish() }
-				instrumentation.waitForIdleSync()
 			}
+		} finally {
+			prefs.edit(commit = true) {
+				if (oldRoot == null) remove(AppSettings.KEY_LOCAL_STORAGE) else putString(AppSettings.KEY_LOCAL_STORAGE, oldRoot)
+			}
+			root.deleteRecursively()
 		}
 	}
 
