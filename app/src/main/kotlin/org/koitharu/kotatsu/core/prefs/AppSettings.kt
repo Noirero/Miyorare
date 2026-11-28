@@ -1402,7 +1402,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	// values over the current ones, not wipe everything first — clearing dropped local-only prefs
 	// (e.g. the per-install onboarding state) and sent the app back to the welcome screen.
 	fun upsertAll(m: Map<String, *>) = prefs.edit {
-		putAll(m)
+		putAll(RestoredPreferencePolicy.filterNative(m))
 	}
 
 	private fun isBackgroundNetworkRestricted(): Boolean {

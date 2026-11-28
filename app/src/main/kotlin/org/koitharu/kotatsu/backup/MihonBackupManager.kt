@@ -159,6 +159,8 @@ class MihonBackupManager @Inject constructor(
     val restoredTrackingCount: Int,
     val missingSources: List<String>,
     val missingTrackers: List<Int>,
+    val restoredSettingsCount: Int = 0,
+    val skippedSettingsCount: Int = 0,
   )
 
   private class RestoreAccumulator(
@@ -170,12 +172,16 @@ class MihonBackupManager @Inject constructor(
     val categoryTypes = LinkedHashMap<Long, FavouriteContentType>()
     var restoredMangaCount = 0
     var restoredTrackingCount = 0
+    var restoredSettingsCount = 0
+    var skippedSettingsCount = 0
 
     fun toReport() = RestoreReport(
       restoredMangaCount = restoredMangaCount,
       restoredTrackingCount = restoredTrackingCount,
       missingSources = missingSources.sorted(),
       missingTrackers = missingTrackers.sorted(),
+      restoredSettingsCount = restoredSettingsCount,
+      skippedSettingsCount = skippedSettingsCount,
     )
   }
 
@@ -188,6 +194,7 @@ class MihonBackupManager @Inject constructor(
     val categories: MutableList<MihonBackupCategory> = ArrayList(),
     val sources: MutableList<MihonBackupSource> = ArrayList(),
     val preferences: MutableList<MihonBackupPreference> = ArrayList(),
+    var undecodedAppPreferences: Int = 0,
     val sourcePreferences: MutableList<MihonBackupSourcePreferences> = ArrayList(),
     val extensionRepos: MutableList<MihonBackupExtensionRepo> = ArrayList(),
     val titles: MutableList<String> = ArrayList(),
@@ -351,7 +358,10 @@ class MihonBackupManager @Inject constructor(
       }
 
       if (options.appSettings) {
-        restorePreferences(scan.preferences)
+        val plan = ExternalPreferenceImportPolicy.plan(scan.preferences)
+        if (plan.values.isNotEmpty()) settings.upsertAll(plan.values)
+        accumulator.restoredSettingsCount = plan.values.size
+        accumulator.skippedSettingsCount = plan.skippedCount + scan.undecodedAppPreferences
       }
       if (options.sourceSettings) {
         restoreSourcePreferences(scan.sourcePreferences, accumulator)
@@ -425,7 +435,8 @@ class MihonBackupManager @Inject constructor(
             MihonBackupWire.FIELD_SOURCE -> scan.sources +=
               MihonBackupWire.decodeMessage(payload, serializer<MihonBackupSource>())
             MihonBackupWire.FIELD_PREFERENCE -> if (options.appSettings) {
-              decodeOptional<MihonBackupPreference>(payload)?.let(scan.preferences::add)
+              val preference = decodeOptional<MihonBackupPreference>(payload)
+              if (preference == null) scan.undecodedAppPreferences++ else scan.preferences.add(preference)
             }
             MihonBackupWire.FIELD_SOURCE_PREFERENCE -> if (options.sourceSettings) {
               decodeOptional<MihonBackupSourcePreferences>(payload)?.let(scan.sourcePreferences::add)
@@ -917,22 +928,6 @@ class MihonBackupManager @Inject constructor(
         if (chapter.index == index) chapter else chapter.copy(index = index)
       },
     )
-  }
-
-  private fun restorePreferences(preferences: List<MihonBackupPreference>) {
-    val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-    prefs.edit {
-      preferences.forEach { pref ->
-        when (val value = pref.value) {
-          is MihonBooleanPreferenceValue -> putBoolean(pref.key, value.value)
-          is MihonFloatPreferenceValue -> putFloat(pref.key, value.value)
-          is MihonIntPreferenceValue -> putInt(pref.key, value.value)
-          is MihonLongPreferenceValue -> putLong(pref.key, value.value)
-          is MihonStringPreferenceValue -> putString(pref.key, value.value)
-          is MihonStringSetPreferenceValue -> putStringSet(pref.key, value.value)
-        }
-      }
-    }
   }
 
   private fun restoreSourcePreferences(

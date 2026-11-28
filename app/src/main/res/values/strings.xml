@@ -239,6 +239,7 @@
     <string name="data_restored_with_errors">The data was restored, but there are errors</string>
     <string name="backup_include_source_settings">Source settings</string>
     <string name="restore_report_restored_simple">Restored items: %1$d manga</string>
+    <string name="restore_report_app_settings">App settings: %1$d restored, %2$d skipped.</string>
     <string name="just_now">Just now</string>
     <string name="yesterday">Yesterday</string>
     <string name="long_ago">Long ago</string>

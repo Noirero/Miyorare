@@ -275,7 +275,13 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 				BackupOperationTracker.success(
 					BackupOperationTracker.Kind.MIHON_RESTORE,
 					report?.let {
-						appContext.getString(R.string.backup_operation_restored_count, it.restoredMangaCount)
+						buildString {
+						append(appContext.getString(R.string.backup_operation_restored_count, it.restoredMangaCount))
+						if (it.restoredSettingsCount > 0 || it.skippedSettingsCount > 0) {
+							append('\n')
+							append(appContext.getString(R.string.restore_report_app_settings, it.restoredSettingsCount, it.skippedSettingsCount))
+						}
+					}
 					},
 				)
 				report?.let {
@@ -360,6 +366,10 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 
 		val details = buildString {
 			append(ctx.getString(R.string.restore_report_restored_simple, report.restoredMangaCount))
+			if (report.restoredSettingsCount > 0 || report.skippedSettingsCount > 0) {
+				append('\n')
+				append(ctx.getString(R.string.restore_report_app_settings, report.restoredSettingsCount, report.skippedSettingsCount))
+			}
 			if (report.missingSources.isNotEmpty()) {
 				append('\n')
 				append(report.missingSources.joinToString())
