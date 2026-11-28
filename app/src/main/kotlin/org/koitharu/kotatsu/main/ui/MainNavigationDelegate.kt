@@ -545,7 +545,12 @@ class MainNavigationDelegate(
 		if (committingTabDrag || (userNavbar && current != null)) transaction.commitNow() else transaction.commit()
 		if (outgoingView != null) {
 			val incomingView = shownFragment.view
-			if (incomingView != null && outgoingView.parent != null && outgoingView.parent === incomingView.parent && primaryFragment === shownFragment) {
+			// A postponed special effect or a detached root is not a safe presentation
+			// pair. The fragment transaction remains the source of truth in that case.
+			if (incomingView != null && outgoingView.isAttachedToWindow && incomingView.isAttachedToWindow &&
+				outgoingView.parent === incomingView.parent && current?.isHidden == true &&
+				outgoingView.visibility != View.VISIBLE && incomingView.visibility == View.VISIBLE &&
+				primaryFragment === shownFragment) {
 				slidePresentation.start(outgoingView, incomingView, direction, outgoingView.visibility, effect)
 			}
 		}
