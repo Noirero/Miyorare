@@ -39,12 +39,14 @@ internal class InteractiveTabSlidePresentation {
 			if (id !in roots) roots[id] = captureRoot(view)
 		}
 		if (effect != ScreenTransition.DIRECTIONAL_SLIDE) {
-			// Restore pages leaving the active pair; do not rebuild or reparent them.
-			for ((id, root) in roots) {
-				if (!next.contains(id) || next.leftId == next.rightId) {
+			// A shared page can change from the right role to the left role when
+			// the pointer crosses a slot. Restore the old role's scale, clip and Z
+			// before rendering the new pair. Do not reset properties every frame.
+			if (frame?.leftId != next.leftId || frame?.rightId != next.rightId) {
+				for ((id, root) in roots) {
 					root.transform?.restore(if (next.contains(id)) View.VISIBLE else if (id == committed) View.INVISIBLE else root.visibility)
+					root.transform?.accessibilityHidden(id != committed)
 				}
-				root.transform?.accessibilityHidden(id != committed)
 			}
 			if (next.leftId != next.rightId) {
 				val left = checkNotNull(roots[next.leftId]?.transform)
@@ -84,8 +86,10 @@ internal class InteractiveTabSlidePresentation {
 		val otherId = if (target == shown.leftId) shown.rightId else shown.leftId
 		val outgoing = roots[otherId] ?: return null
 		val distance = if (target == shown.rightId) width else -width
-		val incomingOffset = if (target == shown.rightId) width * (1f - shown.fraction) else -width * shown.fraction
-		val outgoingOffset = incomingOffset - distance
+		val incomingOffset = if (effect == ScreenTransition.DIRECTIONAL_SLIDE) incoming.view.translationX - incoming.x
+			else if (target == shown.rightId) width * (1f - shown.fraction) else -width * shown.fraction
+		val outgoingOffset = if (effect == ScreenTransition.DIRECTIONAL_SLIDE) outgoing.view.translationX - outgoing.x
+			else incomingOffset - distance
 		return DirectionalSlidePresentation.Handoff(outgoing.view, incoming.view, outgoingOffset, incomingOffset, distance, effect)
 	}
 

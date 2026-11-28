@@ -670,15 +670,17 @@ class DiscoveryNavigationRuntimeTest {
 				val parent = FrameLayout(app)
 				val first = View(app).apply { translationX = 3f; alpha = 0.8f; scaleX = 0.9f; pivotX = 17f }
 				val second = View(app).apply { translationY = 5f; visibility = View.GONE; clipBounds = Rect(2, 3, 290, 98) }
-				for (child in listOf(first, second)) parent.addView(child, FrameLayout.LayoutParams(300, 100))
+				val third = View(app).apply { visibility = View.GONE }
+				val pages = mapOf(1 to first, 2 to second, 3 to third)
+				for (child in pages.values) parent.addView(child, FrameLayout.LayoutParams(300, 100))
 				parent.layout(0, 0, 300, 100)
 				val camera = first.cameraDistance
 				val z = second.translationZ
 				val a11y = second.importantForAccessibility
 				val slide = InteractiveTabSlidePresentation()
-				fun seek(fraction: Float) = assertTrue(slide.seek(TabSlideFrame(1, 2, fraction), 1, first, effect) { second })
+				fun seek(fraction: Float) = assertTrue(slide.seek(TabSlideFrame(1, 2, fraction), 1, first, effect) { pages[it] })
 				fun visual() = listOf(first, second).map { listOf(it.translationX, it.translationY, it.rotationY,
-					it.scaleX, it.scaleY, it.alpha, it.pivotX, it.pivotY, it.translationZ, it.visibility.toFloat()) }
+					it.scaleX, it.scaleY, it.alpha, it.pivotX, it.pivotY, it.translationZ, it.visibility.toFloat(), it.clipBounds) }
 				seek(0.25f)
 				val initial = visual()
 				seek(0.75f)
@@ -688,9 +690,19 @@ class DiscoveryNavigationRuntimeTest {
 				val handoff = checkNotNull(slide.captureHandoff(2))
 				assertEquals(effect, handoff.effect)
 				assertEquals(225f, handoff.incomingOffset, 0.01f)
+				assertTrue(slide.seek(TabSlideFrame(2, 3, 0.4f), 1, first, effect) { pages[it] })
+				assertEquals(View.INVISIBLE, first.visibility)
+				if (effect == ScreenTransition.CARD_STACK) {
+					assertEquals(0f, second.translationX, 0.01f)
+					assertEquals(z, second.translationZ, 0.01f)
+				}
+				if (effect == ScreenTransition.CURTAIN_REVEAL) assertEquals(Rect(2, 3, 290, 98), second.clipBounds)
+				seek(0.25f)
+				assertEquals("Role change must restore the original frame: ${effect.name}", initial, visual())
 				slide.finish()
 				assertEquals(View.VISIBLE, first.visibility)
 				assertEquals(View.GONE, second.visibility)
+				assertEquals(View.GONE, third.visibility)
 				assertEquals(3f, first.translationX, 0.01f)
 				assertEquals(0.8f, first.alpha, 0.01f)
 				assertEquals(0.9f, first.scaleX, 0.01f)
@@ -703,6 +715,11 @@ class DiscoveryNavigationRuntimeTest {
 				assertEquals(a11y, second.importantForAccessibility)
 			}
 		}
+	}
+
+	@Test fun flipPreviewKeepsFullLocalViewportAndRestoresFavoritesHeader() = withFractionalTabPreview {
+		NavigationTransitionPreferences(app).setTransition(ScreenTransition.FLIP_3D)
+		fullLocalPreviewUsesSameVerticalViewportAsCommittedLocal()
 	}
 
 	@Test fun customTransitionsRapidTapRetainsOnlyLastCommittedPage() = withFractionalTabPreview {

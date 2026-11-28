@@ -23,19 +23,38 @@ internal class ScreenTransitionRoot(val view: View) {
 	private val clip = view.clipBounds?.let(::Rect)
 	private val accessibility = view.importantForAccessibility
 	private var pivotChanged = false
+	private var xChanged = false
+	private var yChanged = false
+	private var alphaChanged = false
+	private var scaleChanged = false
+	private var rotationChanged = false
+	private var zChanged = false
+	private var clipChanged = false
+	private var accessibilityChanged = false
 
-	fun translate(dx: Float = 0f, dy: Float = 0f) {
-		view.translationX = x + dx
-		view.translationY = y + dy
+	fun translate(dx: Float? = null, dy: Float? = null) {
+		if (dx != null) {
+			xChanged = true
+			view.translationX = x + dx
+		}
+		if (dy != null) {
+			yChanged = true
+			view.translationY = y + dy
+		}
 	}
 
-	fun opacity(value: Float) { view.alpha = alpha * value }
+	fun opacity(value: Float) {
+		alphaChanged = true
+		view.alpha = alpha * value
+	}
 	fun scale(value: Float) {
+		scaleChanged = true
 		view.scaleX = scaleX * value
 		view.scaleY = scaleY * value
 	}
 
 	fun rotate(angle: Float, distance: Float, pivot: Float? = null, centerY: Float = 0f) {
+		rotationChanged = true
 		view.rotationY = rotation + angle
 		view.cameraDistance = distance
 		if (pivot != null) {
@@ -46,6 +65,7 @@ internal class ScreenTransitionRoot(val view: View) {
 	}
 
 	fun above(other: ScreenTransitionRoot) {
+		zChanged = true
 		view.translationZ = maxOf(z, other.view.z - view.elevation + 1f)
 	}
 
@@ -55,22 +75,34 @@ internal class ScreenTransitionRoot(val view: View) {
 		val left = (w * (1f - fraction) / 2f).roundToInt()
 		val bounds = Rect(left, 0, w - left, h)
 		if (clip != null && !bounds.intersect(clip)) bounds.setEmpty()
+		clipChanged = true
 		view.clipBounds = bounds
 	}
 
 	fun accessibilityHidden(hidden: Boolean) {
+		accessibilityChanged = true
 		view.importantForAccessibility = if (hidden) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else accessibility
 	}
 
 	fun restore(visible: Int = visibility) {
-		view.translationX = x
-		view.translationY = y
-		view.translationZ = z
-		view.alpha = alpha
-		view.scaleX = scaleX
-		view.scaleY = scaleY
-		view.rotationY = rotation
-		view.cameraDistance = camera
+		if (xChanged) view.translationX = x
+		if (yChanged) view.translationY = y
+		if (zChanged) view.translationZ = z
+		if (alphaChanged) view.alpha = alpha
+		if (scaleChanged) {
+			view.scaleX = scaleX
+			view.scaleY = scaleY
+		}
+		if (rotationChanged) {
+			view.rotationY = rotation
+			view.cameraDistance = camera
+		}
+		xChanged = false
+		yChanged = false
+		zChanged = false
+		alphaChanged = false
+		scaleChanged = false
+		rotationChanged = false
 		if (pivotChanged) {
 			if (Build.VERSION.SDK_INT >= 28 && !explicitPivot) view.resetPivot()
 			else {
@@ -79,8 +111,10 @@ internal class ScreenTransitionRoot(val view: View) {
 			}
 			pivotChanged = false
 		}
-		view.clipBounds = clip
-		view.importantForAccessibility = accessibility
+		if (clipChanged) view.clipBounds = clip
+		if (accessibilityChanged) view.importantForAccessibility = accessibility
+		clipChanged = false
+		accessibilityChanged = false
 		view.visibility = visible
 	}
 }
@@ -102,8 +136,11 @@ internal object ScreenTransitionTransformer {
 			}
 			ScreenTransition.FLIP_3D -> {
 				val camera = maxOf(width, height) * 4f
-				left.rotate(-180f * p, camera)
-				right.rotate(180f * q, camera)
+				// On API 28+ the implicit pivot can be restored exactly. Older
+				// releases retain the page's native (normally centered) pivot.
+				val center = if (Build.VERSION.SDK_INT >= 28) width / 2f else null
+				left.rotate(-180f * p, camera, center, height / 2f)
+				right.rotate(180f * q, camera, center, height / 2f)
 				// Never expose mirrored back faces, including on a reversed gesture.
 				left.view.visibility = if (p < 0.5f) View.VISIBLE else View.INVISIBLE
 				right.view.visibility = if (p >= 0.5f) View.VISIBLE else View.INVISIBLE

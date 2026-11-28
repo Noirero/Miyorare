@@ -38,6 +38,8 @@ internal class DirectionalSlidePresentation {
 		val effect: ScreenTransition = ScreenTransition.DIRECTIONAL_SLIDE,
 		val outgoingRoot: ScreenTransitionRoot? = null,
 		val incomingRoot: ScreenTransitionRoot? = null,
+		var fromOffset: Float = 0f,
+		var toOffset: Float = 0f,
 	)
 
 	internal data class Handoff(
@@ -71,8 +73,7 @@ internal class DirectionalSlidePresentation {
 
 	/** Snapshot visual offsets before the delegate restores views and commits a valid target. */
 	fun captureHandoff(incoming: View): Handoff? = state?.takeIf { it.incoming === incoming }?.let {
-		Handoff(it.outgoing, it.incoming, it.outgoing.translationX - it.fromX,
-			it.incoming.translationX - it.toX, it.distance, it.effect)
+		Handoff(it.outgoing, it.incoming, it.fromOffset, it.toOffset, it.distance, it.effect)
 	}
 
 	/** Continue only the remaining visual distance after the real fragment commit. */
@@ -98,6 +99,8 @@ internal class DirectionalSlidePresentation {
 	}
 
 	private fun render(pair: PairState, fromOffset: Float, toOffset: Float) {
+		pair.fromOffset = fromOffset
+		pair.toOffset = toOffset
 		val outgoing = pair.outgoingRoot
 		val incoming = pair.incomingRoot
 		if (outgoing == null || incoming == null) {
