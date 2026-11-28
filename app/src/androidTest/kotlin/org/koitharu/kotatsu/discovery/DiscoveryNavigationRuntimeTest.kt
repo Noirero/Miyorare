@@ -664,6 +664,88 @@ class DiscoveryNavigationRuntimeTest {
 		}
 	}
 
+	@Test fun customTransitionFramesReverseAndRestoreRootProperties() {
+		InstrumentationRegistry.getInstrumentation().runOnMainSync {
+			for (effect in ScreenTransition.entries.filter { it != ScreenTransition.DIRECTIONAL_SLIDE }) {
+				val parent = FrameLayout(app)
+				val first = View(app).apply { translationX = 3f; alpha = 0.8f; scaleX = 0.9f; pivotX = 17f }
+				val second = View(app).apply { translationY = 5f; visibility = View.GONE; clipBounds = Rect(2, 3, 290, 98) }
+				for (child in listOf(first, second)) parent.addView(child, FrameLayout.LayoutParams(300, 100))
+				parent.layout(0, 0, 300, 100)
+				val camera = first.cameraDistance
+				val z = second.translationZ
+				val a11y = second.importantForAccessibility
+				val slide = InteractiveTabSlidePresentation()
+				fun seek(fraction: Float) = assertTrue(slide.seek(TabSlideFrame(1, 2, fraction), 1, first, effect) { second })
+				fun visual() = listOf(first, second).map { listOf(it.translationX, it.translationY, it.rotationY,
+					it.scaleX, it.scaleY, it.alpha, it.pivotX, it.pivotY, it.translationZ, it.visibility.toFloat()) }
+				seek(0.25f)
+				val initial = visual()
+				seek(0.75f)
+				assertNotEquals(effect.name, initial, visual())
+				seek(0.25f)
+				assertEquals(effect.name, initial, visual())
+				val handoff = checkNotNull(slide.captureHandoff(2))
+				assertEquals(effect, handoff.effect)
+				assertEquals(225f, handoff.incomingOffset, 0.01f)
+				slide.finish()
+				assertEquals(View.VISIBLE, first.visibility)
+				assertEquals(View.GONE, second.visibility)
+				assertEquals(3f, first.translationX, 0.01f)
+				assertEquals(0.8f, first.alpha, 0.01f)
+				assertEquals(0.9f, first.scaleX, 0.01f)
+				assertEquals(0f, first.rotationY, 0.01f)
+				assertEquals(17f, first.pivotX, 0.01f)
+				assertEquals(camera, first.cameraDistance, 0.01f)
+				assertEquals(5f, second.translationY, 0.01f)
+				assertEquals(z, second.translationZ, 0.01f)
+				assertEquals(Rect(2, 3, 290, 98), second.clipBounds)
+				assertEquals(a11y, second.importantForAccessibility)
+			}
+		}
+	}
+
+	@Test fun customTransitionsRapidTapRetainsOnlyLastCommittedPage() = withFractionalTabPreview {
+		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
+		settings.mainNavItems = listOf(NavItem.LOCAL, NavItem.HISTORY, NavItem.EXPLORE)
+		val prefs = NavigationTransitionPreferences(app)
+		launch().use { scenario ->
+			for (effect in ScreenTransition.entries.filter { it != ScreenTransition.DIRECTIONAL_SLIDE }) {
+				prefs.setTransition(effect)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val bar = checkNotNull(activity.bottomNav as? FloatingBottomNavigationView)
+					bar.selectFromUser(R.id.nav_local)
+					bar.selectFromUser(R.id.nav_favorites)
+					bar.selectFromUser(R.id.nav_history)
+					bar.selectFromUser(R.id.nav_local)
+				}
+				// Force the same lifecycle cleanup used on a real pause.
+				scenario.moveToState(Lifecycle.State.STARTED)
+				scenario.moveToState(Lifecycle.State.RESUMED)
+				compose.waitForIdle()
+				scenario.onActivity { activity ->
+					val fm = activity.supportFragmentManager
+					val pages = fm.fragments.filter { it.id == R.id.container && it.isAdded }
+					val active = pages.single { !it.isHidden }
+					assertTrue(effect.name, active is LocalListFragment)
+					assertEquals(Lifecycle.State.RESUMED, active.lifecycle.currentState)
+					assertEquals(R.id.nav_local, activity.bottomNav!!.selectedItemId)
+					assertEquals(0, fm.backStackEntryCount)
+					for (page in pages.filter { it.isHidden }) {
+						assertEquals(Lifecycle.State.STARTED, page.lifecycle.currentState)
+						page.view?.let { assertNotEquals(effect.name, View.VISIBLE, it.visibility) }
+					}
+					assertEquals(View.VISIBLE, active.requireView().visibility)
+					assertEquals(0f, active.requireView().rotationY, 0.01f)
+					assertEquals(1f, active.requireView().scaleX, 0.01f)
+					assertEquals(1f, active.requireView().alpha, 0.01f)
+				}
+				assertEquals(effect, NavigationTransitionPreferences(app).transition)
+			}
+		}
+	}
+
 	/**
 	 * The general emulator workflow disables animations. Exercise the real enabled path
 	 * explicitly and restore the setting before the next test. Screenshots contain only

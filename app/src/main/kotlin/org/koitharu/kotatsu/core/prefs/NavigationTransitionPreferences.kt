@@ -16,7 +16,14 @@ internal enum class NavigationMotion(val storedValue: String) {
 }
 
 internal enum class ScreenTransition(val storedValue: String) {
-	DIRECTIONAL_SLIDE("directional_slide");
+	DIRECTIONAL_SLIDE("directional_slide"),
+	FLIP_3D("flip_3d"),
+	CUBE_3D("cube_3d"),
+	CROSSFADE("crossfade"),
+	ZOOM("zoom"),
+	CARD_STACK("card_stack"),
+	VERTICAL_SLIDE("vertical_slide"),
+	CURTAIN_REVEAL("curtain_reveal");
 
 	companion object {
 		fun parse(value: Any?): ScreenTransition =

@@ -317,6 +317,10 @@ class MainNavigationDelegate(
 		clearTabPreview()
 	}
 
+	internal fun finishCustomTransitionOnTouch() {
+		if (slidePresentation.hasCustomTransition) slidePresentation.finish()
+	}
+
 	private fun applyMotionPreference() {
 		val motion = transitionPreferences.motion
 		(navBar as? FloatingBottomNavigationView)?.setNavigationMotion(motion)
@@ -417,7 +421,7 @@ class MainNavigationDelegate(
 		if (!interactiveSlide.isActive) slidePresentation.finish()
 		// Keep the existing FragmentManager as selection/lifecycle owner. Only the two
 		// visible pages of the continuous frame are resolved, at most once per gesture.
-		val rendered = interactiveSlide.seek(frame, currentId, currentView) { id ->
+		val rendered = interactiveSlide.seek(frame, currentId, currentView, transitionPreferences.transition) { id ->
 			if (id == currentId) currentView else previewFragment(id)?.view
 		}
 		if (!rendered) { clearTabPreview(); return }
@@ -493,12 +497,16 @@ class MainNavigationDelegate(
 			.setReorderingAllowed(true)
 		val involvesFavourites = fragmentClass == FavouritesContainerFragment::class.java ||
 			current is FavouritesContainerFragment
-		val direction = if (current != null && userNavbar && transitionPreferences.transition == ScreenTransition.DIRECTIONAL_SLIDE) {
+		val effect = transitionPreferences.transition
+		val direction = if (current != null && userNavbar) {
 			val targetId = (0 until navBar.menu.size).map { navBar.menu.getItem(it).itemId }
 				.firstOrNull { fragmentClassForItem(it) == fragmentClass }
 			if (targetId != null) slideDirection(getItemId(current), targetId) else 0
 		} else 0
-		if (userNavbar && direction != 0 && !dragPreviewMatched && navBar.context.isAnimationsEnabled) {
+		val customTap = userNavbar && direction != 0 && !dragPreviewMatched && navBar.context.isAnimationsEnabled &&
+			effect != ScreenTransition.DIRECTIONAL_SLIDE
+		val outgoingView = if (customTap) current?.view else null
+		if (userNavbar && direction != 0 && !dragPreviewMatched && navBar.context.isAnimationsEnabled && !customTap) {
 			val animations = DirectionalSlide.animations(direction)
 			transaction.setCustomAnimations(animations.first, animations.second)
 		} else if (!userNavbar && !involvesFavourites && !committingTabDrag) {
@@ -535,6 +543,12 @@ class MainNavigationDelegate(
 		// A direct user selection is accepted synchronously so a later gesture cannot read a stale primary tab.
 		// Programmatic, restore and back paths retain their existing transaction policy.
 		if (committingTabDrag || (userNavbar && current != null)) transaction.commitNow() else transaction.commit()
+		if (outgoingView != null) {
+			val incomingView = shownFragment.view
+			if (incomingView != null && outgoingView.parent != null && outgoingView.parent === incomingView.parent && primaryFragment === shownFragment) {
+				slidePresentation.start(outgoingView, incomingView, direction, outgoingView.visibility, effect)
+			}
+		}
 		return true
 	}
 

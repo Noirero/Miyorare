@@ -86,7 +86,7 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 		if (detached) return
 		val current = pageViews[committed] ?: return
 		if (!interactive.isActive) presentation.finish()
-		if (!interactive.seek(frame, committed, current) { pageViews[it] }) restoreCommitted()
+		if (!interactive.seek(frame, committed, current, transition) { pageViews[it] }) restoreCommitted()
 	}
 
 	private fun commitDrag(id: Int) {
@@ -118,9 +118,7 @@ internal class NavigationTransitionPreview(context: Context) : LinearLayout(cont
 		val to = items.indexOfFirst { it.id == id }
 		val direction = DirectionalSlide.direction(from, to, layoutDirection == View.LAYOUT_DIRECTION_RTL)
 		visible = id
-		when (transition) {
-			ScreenTransition.DIRECTIONAL_SLIDE -> presentation.start(outgoing, incoming, direction, View.INVISIBLE)
-		}
+		presentation.start(outgoing, incoming, direction, View.INVISIBLE, transition)
 	}
 
 	override fun onAttachedToWindow() {

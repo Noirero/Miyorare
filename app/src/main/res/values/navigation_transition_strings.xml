@@ -8,6 +8,13 @@
     <string name="navigation_motion_fluid">Fluid Lens</string>
     <string name="navigation_screen_transition_title">Screen Transition</string>
     <string name="navigation_transition_directional">Directional Slide</string>
+    <string name="navigation_transition_flip_3d">3D Flip</string>
+    <string name="navigation_transition_cube_3d">3D Cube</string>
+    <string name="navigation_transition_crossfade">Crossfade</string>
+    <string name="navigation_transition_zoom">Zoom</string>
+    <string name="navigation_transition_card_stack">Card Stack</string>
+    <string name="navigation_transition_vertical_slide">Vertical Slide</string>
+    <string name="navigation_transition_curtain_reveal">Curtain Reveal</string>
     <string name="navigation_transition_preview">Interactive Preview</string>
     <string name="navigation_transition_preview_hint">Tap or drag the preview tabs. Your real pages are not opened.</string>
     <string name="navigation_transition_reset">Reset to defaults</string>
